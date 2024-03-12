@@ -1,4 +1,4 @@
-module kalpaccounting
+module KAPS-NIU
 
 go 1.19
 
@@ -6,7 +6,7 @@ require (
 	github.com/hyperledger/fabric-chaincode-go v0.0.0-20230228194215-b84622ba6a7a
 	github.com/hyperledger/fabric-contract-api-go v1.2.1
 	github.com/hyperledger/fabric-protos-go v0.3.0
-	github.com/p2eengineering/kalp-sdk v0.0.0-20230911102026-570ebdaeab22
+	github.com/p2eengineering/kalp-sdk v0.0.0-20240125163042-17770f3527df
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53
 	google.golang.org/protobuf v1.28.1
