@@ -27,6 +27,7 @@ const SPONSOR = "SPONSOR"
 const BROKER = "BROKER"
 const INVESTOR = "INVESTOR"
 const TRUSTEE = "TRUSTEE"
+const OwnerPrefix = "ownerId~assetId"
 
 // const legalPrefix = "legal~tokenId"
 
@@ -38,6 +39,18 @@ const MARKET = "MARKET"
 
 type SmartContract struct {
 	kalpsdk.Contract
+}
+
+type NIU struct {
+	Id       string      `json:"Id"`
+	DocType  string      `json:"DocType"`
+	Name     string      `json:"Name"`
+	Type     string      `json:"Type"`
+	Desc     string      `json:"Desc"`
+	Status   string      `json:"Status"`
+	Account  string      `json:"Account"`
+	MetaData interface{} `json:"Metadata"`
+	Amount   uint64      `json:"Amount"`
 }
 
 type Account struct {
@@ -87,6 +100,71 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 
 	return true, nil
+}
+
+func (s *SmartContract) DefineToken(ctx kalpsdk.TransactionContextInterface, data string) error {
+	//check if contract has been intilized first
+	fmt.Println("AddFunds---->")
+	initialized, err := kaps.CheckInitialized(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
+	}
+	if !initialized {
+		return fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
+	}
+
+	fmt.Println("AddFunds CheckInitialized---->")
+
+	// Parse input data into NIU struct.
+	var niuData NIU
+	errs := json.Unmarshal([]byte(data), &niuData)
+	if errs != nil {
+		return fmt.Errorf("failed to parse data: %v", errs)
+	}
+
+	niu, err := ctx.GetState(niuData.Id)
+	if err != nil {
+		return fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if niu != nil {
+		return fmt.Errorf("token %v already defined", niuData.Id)
+	}
+
+	if niuData.Amount <= 0 {
+		return fmt.Errorf("amount can't be less then 0")
+	}
+
+	if niuData.DocType == "" || (niuData.DocType != kaps.DocTypeNIU) {
+		return fmt.Errorf("not a valid DocType")
+	}
+
+	niuJSON, err := json.Marshal(niu)
+	if err != nil {
+		return fmt.Errorf("unable to Marshal Token struct : %v", err)
+	}
+
+	operator, err := kaps.GetUserId(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get client id: %v", err)
+	}
+
+	fmt.Println("MintToken operator---->", operator)
+
+	// Mint tokens
+	err = kaps.MintHelper(ctx, operator, []string{niuData.Account}, niuData.Id, niuData.Amount, niuData.DocType)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("MintToken Amount---->", niuData.Amount)
+
+	if err := ctx.PutStateWithKYC(niuData.Id, niuJSON); err != nil {
+		return fmt.Errorf("unable to put Asset struct in statedb: %v", err)
+	}
+
+	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: niuData.Account, ID: niuData.Id, Value: niuData.Amount}
+	return kaps.EmitTransferSingle(ctx, transferSingleEvent)
+
 }
 
 func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) error {
@@ -245,15 +323,15 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	fmt.Println("operator-->", operator, transferNIU.Sender)
 
 	// Check whether operator is owner or approved
-	if operator != transferNIU.Sender {
-		approved, err := kaps.IsApprovedForAll(ctx, transferNIU.Sender, operator)
-		if err != nil {
-			return err
-		}
-		if !approved {
-			return fmt.Errorf("caller is not owner nor is approved")
-		}
-	}
+	// if operator != transferNIU.Sender {
+	// 	approved, err := kaps.IsApprovedForAll(ctx, transferNIU.Sender, operator)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if !approved {
+	// 		return fmt.Errorf("caller is not owner nor is approved")
+	// 	}
+	// }
 
 	kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
 	if err != nil {
@@ -289,36 +367,32 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 
 }
 
-// // Internal chaincode function to check if the Asset already exists or Token is already minted.
-// func (s *SmartContract) GetBalance(ctx kalpsdk.TransactionContextInterface, id string, account string) (uint64, error) {
+func (s *SmartContract) GetBalanceForAccount(ctx kalpsdk.TransactionContextInterface, id string, account string) (uint64, error) {
+	var owner kaps.Owner
+	ownerKey, err := ctx.CreateCompositeKey(OwnerPrefix, []string{account, id})
 
-// 	queryString := `{"selector": {"id":"` + id + `", "account":"` + account + `", "docType":"Owner"}, "fields": ["amount"] }`
-// 	fmt.Println("queryString-", queryString)
-// 	resultsIterator, err := ctx.GetQueryResult(queryString)
-// 	if err != nil {
-// 		return 0, fmt.Errorf("failed to read from world state: %v", err)
-// 	}
-// 	if resultsIterator.HasNext() {
-// 		fmt.Println("Inside iterator")
-// 		result, err := resultsIterator.Next()
-// 		if err != nil {
-// 			return 0, fmt.Errorf("failed to retrieve query result: %v", err)
-// 		}
-// 		fmt.Println("no err in balance")
+	if err != nil {
+		return 0, fmt.Errorf("failed to create composite key for account %v and token %v: %v", account, id, err)
+	}
 
-// 		type AmountStruct struct{ Amount uint64 }
-// 		var amountJSON AmountStruct
-// 		err = json.Unmarshal(result.Value, &amountJSON)
-// 		if err != nil {
-// 			return 0, fmt.Errorf("failed to unmarshal token: %v", err)
-// 		}
-// 		fmt.Println("balance", amountJSON.Amount)
+	// Retrieve the current balance for the account and token ID
+	ownerBytes, err := ctx.GetState(ownerKey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read balance for account %v and token %v: %v", account, id, err)
+	}
 
-// 		return amountJSON.Amount, nil
-// 	}
+	if ownerBytes != nil {
+		// Unmarshal the current balance into an Owner struct
+		err = json.Unmarshal(ownerBytes, &owner)
+		if err != nil {
+			return 0, fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", account, id, err)
+		}
 
-// 	return 0, nil
-// }
+		return owner.Amount, nil
+	}
+
+	return 0, nil
+}
 
 func (s *SmartContract) GetBalance(ctx kalpsdk.TransactionContextInterface, id string, account string) (uint64, error) {
 

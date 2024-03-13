@@ -7,7 +7,7 @@ package main
 import (
 	"log"
 
-	kalpAccounting "kalpaccounting/niu"
+	kalpAccounting "KAPS-NIU/niu"
 
 	"github.com/p2eengineering/kalp-sdk/kalpsdk"
 )
