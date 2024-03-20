@@ -28,6 +28,9 @@ const BROKER = "BROKER"
 const INVESTOR = "INVESTOR"
 const TRUSTEE = "TRUSTEE"
 const OwnerPrefix = "ownerId~assetId"
+const GatewayRoleName = "MailabUserRole"
+const GatewayRoleValue = "GatewayAdmin"
+const GINI = "GINI"
 
 // const legalPrefix = "legal~tokenId"
 
@@ -54,13 +57,13 @@ type NIU struct {
 }
 
 type Account struct {
-	OffchainTxnId string `json:"OffchainTxnId"`
-	Id            string `json:"Id"`
-	Account       string `json:"Account"`
-	DocType       string `json:"DocType"`
-	Amount        uint64 `json:"Amount"`
-	Desc          string `json:"Desc"`
-	IsLocked      string `json:"IsLocked"`
+	OffchainTxnId string  `json:"OffchainTxnId"`
+	Id            string  `json:"Id"`
+	Account       string  `json:"Account"`
+	DocType       string  `json:"DocType"`
+	Amount        float64 `json:"Amount"`
+	Desc          string  `json:"Desc"`
+	IsLocked      string  `json:"IsLocked"`
 }
 
 type TransferNIU struct {
@@ -134,9 +137,7 @@ func (s *SmartContract) DefineToken(ctx kalpsdk.TransactionContextInterface, dat
 		return fmt.Errorf("amount can't be less then 0")
 	}
 
-	if niuData.DocType == "" || (niuData.DocType != kaps.DocTypeNIU) {
-		return fmt.Errorf("not a valid DocType")
-	}
+	niuData.DocType = kaps.DocTypeNIU
 
 	niuJSON, err := json.Marshal(niu)
 	if err != nil {
@@ -170,6 +171,7 @@ func (s *SmartContract) DefineToken(ctx kalpsdk.TransactionContextInterface, dat
 func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) error {
 	//check if contract has been intilized first
 	fmt.Println("AddFunds---->")
+
 	initialized, err := kaps.CheckInitialized(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
@@ -179,6 +181,10 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	fmt.Println("AddFunds CheckInitialized---->")
+	err = kaps.InvokerAssertAttributeValue(ctx, GatewayRoleName, GatewayRoleValue)
+	if err != nil {
+		return fmt.Errorf("gateway admin role check failed: %v", err)
+	}
 
 	// Parse input data into NIU struct.
 	var acc Account
@@ -199,10 +205,10 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		return fmt.Errorf("amount can't be less then 0")
 	}
 
-	if acc.DocType == "" || (acc.DocType != kaps.DocTypeNIU) {
-		return fmt.Errorf("not a valid DocType")
-	}
+	acc.Id = GINI
+	acc.DocType = kaps.DocTypeNIU
 
+	fmt.Println("GINI amount", acc.Amount)
 	accJSON, err := json.Marshal(acc)
 	if err != nil {
 		return fmt.Errorf("unable to Marshal Token struct : %v", err)
@@ -261,9 +267,8 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		return fmt.Errorf("transaction %v already accounted", acc.OffchainTxnId)
 	}
 
-	if acc.DocType == "" || (acc.DocType != kaps.DocTypeNIU) {
-		return fmt.Errorf("not a valid DocType")
-	}
+	acc.Id = GINI
+	acc.DocType = kaps.DocTypeNIU
 
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
@@ -308,9 +313,6 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		return fmt.Errorf("transaction %v already accounted", transferNIU.TxnId)
 	}
 
-	if transferNIU.DocType == "" || (transferNIU.DocType != kaps.DocTypeNIU) {
-		return fmt.Errorf("DocType is either null or not NIU")
-	}
 	if transferNIU.Sender == transferNIU.Receiver {
 		return fmt.Errorf("transfer to self is not allowed")
 	}
@@ -350,6 +352,9 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		return fmt.Errorf("user %s is not kyced", transferNIU.Receiver)
 	}
 
+	transferNIU.Id = GINI
+	transferNIU.DocType = kaps.DocTypeNIU
+
 	// Withdraw the funds from the sender address
 	err = kaps.RemoveBalance(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Amount)
 	if err != nil {
@@ -367,10 +372,11 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 
 }
 
-func (s *SmartContract) GetBalanceForAccount(ctx kalpsdk.TransactionContextInterface, id string, account string) (uint64, error) {
+func (s *SmartContract) GetBalanceForAccount(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
 	var owner kaps.Owner
+	id := GINI
 	ownerKey, err := ctx.CreateCompositeKey(OwnerPrefix, []string{account, id})
-
+	fmt.Println("ownerKey", ownerKey)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create composite key for account %v and token %v: %v", account, id, err)
 	}
@@ -382,11 +388,13 @@ func (s *SmartContract) GetBalanceForAccount(ctx kalpsdk.TransactionContextInter
 	}
 
 	if ownerBytes != nil {
+		fmt.Println("unmarshelling balance bytes")
 		// Unmarshal the current balance into an Owner struct
 		err = json.Unmarshal(ownerBytes, &owner)
 		if err != nil {
 			return 0, fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", account, id, err)
 		}
+		fmt.Println("owner", owner)
 
 		return owner.Amount, nil
 	}
