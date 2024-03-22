@@ -22,14 +22,14 @@ const attrRole = "hf.Type"
 // const admintype = "client"
 const nameKey = "name"
 const symbolKey = "symbol"
-const SMART_ADMIN = "SMART_ADMIN"
 const SPONSOR = "SPONSOR"
 const BROKER = "BROKER"
 const INVESTOR = "INVESTOR"
 const TRUSTEE = "TRUSTEE"
 const OwnerPrefix = "ownerId~assetId"
-const GatewayRoleName = "MailabUserRole"
+const MailabRoleAttrName = "MailabUserRole"
 const GatewayRoleValue = "GatewayAdmin"
+const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 
 // const legalPrefix = "legal~tokenId"
@@ -53,7 +53,7 @@ type NIU struct {
 	Status   string      `json:"Status"`
 	Account  string      `json:"Account"`
 	MetaData interface{} `json:"Metadata"`
-	Amount   uint64      `json:"Amount"`
+	Amount   float64     `json:"Amount"`
 }
 
 type Account struct {
@@ -67,13 +67,13 @@ type Account struct {
 }
 
 type TransferNIU struct {
-	TxnId     string `json:"TxnId"`
-	Sender    string `json:"Sender"`
-	Receiver  string `json:"Receiver"`
-	Id        string `json:"Id"`
-	DocType   string `json:"DocType"`
-	Amount    uint64 `json:"Amount"`
-	TimeStamp string `json:"TimeStamp"`
+	TxnId     string  `json:"TxnId"`
+	Sender    string  `json:"Sender"`
+	Receiver  string  `json:"Receiver"`
+	Id        string  `json:"Id"`
+	DocType   string  `json:"DocType"`
+	Amount    float64 `json:"Amount"`
+	TimeStamp string  `json:"TimeStamp"`
 }
 
 func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) error {
@@ -181,9 +181,9 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	fmt.Println("AddFunds CheckInitialized---->")
-	err = kaps.InvokerAssertAttributeValue(ctx, GatewayRoleName, GatewayRoleValue)
+	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
 	if err != nil {
-		return fmt.Errorf("gateway admin role check failed: %v", err)
+		return fmt.Errorf("payment admin role check failed: %v", err)
 	}
 
 	// Parse input data into NIU struct.
@@ -250,6 +250,11 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		return fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
 	}
 
+	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
+	if err != nil {
+		return fmt.Errorf("gateway admin role check failed: %v", err)
+	}
+
 	// Parse input data into NIU struct.
 	var acc Account
 	errs := json.Unmarshal([]byte(data), &acc)
@@ -298,7 +303,12 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 
 	var transferNIU TransferNIU
 
-	errs := json.Unmarshal([]byte(data), &transferNIU)
+	errs := kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
+	if errs != nil {
+		return fmt.Errorf("gateway admin role check failed: %v", errs)
+	}
+
+	errs = json.Unmarshal([]byte(data), &transferNIU)
 	if errs != nil {
 		return fmt.Errorf("error is parsing transfer request data: %v", errs)
 	}
@@ -323,18 +333,6 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	}
 
 	fmt.Println("operator-->", operator, transferNIU.Sender)
-
-	// Check whether operator is owner or approved
-	// if operator != transferNIU.Sender {
-	// 	approved, err := kaps.IsApprovedForAll(ctx, transferNIU.Sender, operator)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	if !approved {
-	// 		return fmt.Errorf("caller is not owner nor is approved")
-	// 	}
-	// }
-
 	kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
 	if err != nil {
 		return fmt.Errorf("not able to do KYC check for user:%s, error:%v", transferNIU.Sender, err)
@@ -400,51 +398,6 @@ func (s *SmartContract) GetBalanceForAccount(ctx kalpsdk.TransactionContextInter
 	}
 
 	return 0, nil
-}
-
-func (s *SmartContract) GetBalance(ctx kalpsdk.TransactionContextInterface, id string, account string) (uint64, error) {
-
-	queryString := `{"selector": {"id":"` + id + `", "account":"` + account + `", "docType":"Owner"}, "fields": ["amount"] }`
-	fmt.Println("queryString-", queryString)
-	resultsIterator, err := ctx.GetQueryResult(queryString)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read from world state: %v", err)
-	}
-	if resultsIterator.HasNext() {
-		fmt.Println("Inside iterator")
-		result, err := resultsIterator.Next()
-		if err != nil {
-			return 0, fmt.Errorf("failed to retrieve query result: %v", err)
-		}
-		fmt.Println("no err in balance")
-
-		type AmountStruct struct{ Amount uint64 }
-		var amountJSON AmountStruct
-		err = json.Unmarshal(result.Value, &amountJSON)
-		if err != nil {
-			return 0, fmt.Errorf("failed to unmarshal token: %v", err)
-		}
-		fmt.Println("balance", amountJSON.Amount)
-
-		return amountJSON.Amount, nil
-	}
-
-	return 0, nil
-}
-
-// // Internal chaincode function to check if the Asset already exists or Token is already minted.
-func (s *SmartContract) IsMinted(ctx kalpsdk.TransactionContextInterface, id string, docType string) (bool, error) {
-	queryString := `{"selector": {"_id":"` + id + `"}}`
-
-	resultsIterator, err := ctx.GetQueryResult(queryString)
-	if err != nil {
-		return false, fmt.Errorf("failed to read from world state: %v", err)
-	}
-	if resultsIterator.HasNext() {
-		return true, nil
-	}
-
-	return false, nil
 }
 
 // GetHistoryForAsset is a smart contract function which list the complete history of particular R2CI asset from blockchain ledger.
