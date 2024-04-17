@@ -22,10 +22,6 @@ const attrRole = "hf.Type"
 // const admintype = "client"
 const nameKey = "name"
 const symbolKey = "symbol"
-const SPONSOR = "SPONSOR"
-const BROKER = "BROKER"
-const INVESTOR = "INVESTOR"
-const TRUSTEE = "TRUSTEE"
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
 const GatewayRoleValue = "GatewayAdmin"
@@ -44,19 +40,7 @@ type SmartContract struct {
 	kalpsdk.Contract
 }
 
-type NIU struct {
-	Id       string      `json:"Id"`
-	DocType  string      `json:"DocType"`
-	Name     string      `json:"Name"`
-	Type     string      `json:"Type"`
-	Desc     string      `json:"Desc"`
-	Status   string      `json:"Status"`
-	Account  string      `json:"Account"`
-	MetaData interface{} `json:"Metadata"`
-	Amount   float64     `json:"Amount"`
-}
-
-type Account struct {
+type GiniTransaction struct {
 	OffchainTxnId string  `json:"OffchainTxnId"`
 	Id            string  `json:"Id"`
 	Account       string  `json:"Account"`
@@ -105,68 +89,16 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	return true, nil
 }
 
-func (s *SmartContract) DefineToken(ctx kalpsdk.TransactionContextInterface, data string) error {
-	//check if contract has been intilized first
-	fmt.Println("AddFunds---->")
-	initialized, err := kaps.CheckInitialized(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
-	}
-	if !initialized {
-		return fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
-	}
+// 	fmt.Println("MintToken Amount---->", niuData.Amount)
 
-	fmt.Println("AddFunds CheckInitialized---->")
+// 	if err := ctx.PutStateWithKYC(niuData.Id, niuJSON); err != nil {
+// 		return fmt.Errorf("unable to put Asset struct in statedb: %v", err)
+// 	}
 
-	// Parse input data into NIU struct.
-	var niuData NIU
-	errs := json.Unmarshal([]byte(data), &niuData)
-	if errs != nil {
-		return fmt.Errorf("failed to parse data: %v", errs)
-	}
+// 	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: niuData.Account, ID: niuData.Id, Value: niuData.Amount}
+// 	return kaps.EmitTransferSingle(ctx, transferSingleEvent)
 
-	niu, err := ctx.GetState(niuData.Id)
-	if err != nil {
-		return fmt.Errorf("failed to read from world state: %v", err)
-	}
-	if niu != nil {
-		return fmt.Errorf("token %v already defined", niuData.Id)
-	}
-
-	if niuData.Amount <= 0 {
-		return fmt.Errorf("amount can't be less then 0")
-	}
-
-	niuData.DocType = kaps.DocTypeNIU
-
-	niuJSON, err := json.Marshal(niu)
-	if err != nil {
-		return fmt.Errorf("unable to Marshal Token struct : %v", err)
-	}
-
-	operator, err := kaps.GetUserId(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
-	}
-
-	fmt.Println("MintToken operator---->", operator)
-
-	// Mint tokens
-	err = kaps.MintHelper(ctx, operator, []string{niuData.Account}, niuData.Id, niuData.Amount, niuData.DocType)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("MintToken Amount---->", niuData.Amount)
-
-	if err := ctx.PutStateWithKYC(niuData.Id, niuJSON); err != nil {
-		return fmt.Errorf("unable to put Asset struct in statedb: %v", err)
-	}
-
-	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: niuData.Account, ID: niuData.Id, Value: niuData.Amount}
-	return kaps.EmitTransferSingle(ctx, transferSingleEvent)
-
-}
+// }
 
 func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) error {
 	//check if contract has been intilized first
@@ -187,7 +119,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	// Parse input data into NIU struct.
-	var acc Account
+	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
 	if errs != nil {
 		return fmt.Errorf("failed to parse data: %v", errs)
@@ -206,7 +138,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	acc.Id = GINI
-	acc.DocType = kaps.DocTypeNIU
+	acc.DocType = "GINI_PAYMENT_TXN"
 
 	fmt.Println("GINI amount", acc.Amount)
 	accJSON, err := json.Marshal(acc)
@@ -222,7 +154,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	fmt.Println("MintToken operator---->", operator)
 
 	// Mint tokens
-	err = kaps.MintHelper(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, acc.DocType)
+	err = kaps.MintHelper(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
 	if err != nil {
 		return err
 	}
@@ -256,7 +188,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	// Parse input data into NIU struct.
-	var acc Account
+	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
 	if errs != nil {
 		return fmt.Errorf("failed to parse data: %v", errs)
@@ -273,7 +205,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	acc.Id = GINI
-	acc.DocType = kaps.DocTypeNIU
+	acc.DocType = "GINI_PAYMENT_TXN"
 
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
@@ -351,7 +283,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	}
 
 	transferNIU.Id = GINI
-	transferNIU.DocType = kaps.DocTypeNIU
+	transferNIU.DocType = "GINI_PAYMENT_TXN"
 
 	// Withdraw the funds from the sender address
 	err = kaps.RemoveBalance(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Amount)
