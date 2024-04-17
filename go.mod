@@ -6,7 +6,7 @@ require (
 	github.com/hyperledger/fabric-chaincode-go v0.0.0-20230228194215-b84622ba6a7a
 	github.com/hyperledger/fabric-contract-api-go v1.2.1
 	github.com/hyperledger/fabric-protos-go v0.3.0
-	github.com/p2eengineering/kalp-sdk v0.0.0-20240321055635-a3d4dcd6a9bc
+	github.com/p2eengineering/kalp-sdk v0.0.0-20240327073800-2bae1969510c
 	github.com/stretchr/testify v1.8.2
 	google.golang.org/protobuf v1.28.1
 )
