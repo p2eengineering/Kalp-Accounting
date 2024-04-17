@@ -47,7 +47,6 @@ type GiniTransaction struct {
 	DocType       string  `json:"DocType"`
 	Amount        float64 `json:"Amount"`
 	Desc          string  `json:"Desc"`
-	IsLocked      string  `json:"IsLocked"`
 }
 
 type TransferNIU struct {
