@@ -27,15 +27,9 @@ const MailabRoleAttrName = "MailabUserRole"
 const GatewayRoleValue = "GatewayAdmin"
 const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
+const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 
 // const legalPrefix = "legal~tokenId"
-
-const IPO = "IPO"
-const PRESALES = "PRESALES"
-const MARKET = "MARKET"
-
-// const statusBlackListed = "BLACKLISTED"
-
 type SmartContract struct {
 	kalpsdk.Contract
 }
@@ -137,7 +131,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	acc.Id = GINI
-	acc.DocType = "GINI_PAYMENT_TXN"
+	acc.DocType = GINI_PAYMENT_TXN
 
 	fmt.Println("GINI amount", acc.Amount)
 	accJSON, err := json.Marshal(acc)
@@ -204,7 +198,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	acc.Id = GINI
-	acc.DocType = "GINI_PAYMENT_TXN"
+	acc.DocType = GINI_PAYMENT_TXN
 
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
@@ -282,7 +276,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	}
 
 	transferNIU.Id = GINI
-	transferNIU.DocType = "GINI_PAYMENT_TXN"
+	transferNIU.DocType = GINI_PAYMENT_TXN
 
 	// Withdraw the funds from the sender address
 	err = kaps.RemoveBalance(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Amount)
