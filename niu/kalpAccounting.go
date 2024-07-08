@@ -58,6 +58,7 @@ type TransferNIU struct {
 type Response struct {
 	Status     string      `json:"status"`
 	StatusCode uint        `json:"statusCode"`
+	Success    bool        `json:"success"`
 	Message    string      `json:"message"`
 	Response   interface{} `json:"response" `
 }
@@ -109,6 +110,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -116,6 +118,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if !initialized {
 		return Response{
 			Message:    "contract options need to be set before calling any function, call Initialize() to initialize contract",
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -126,6 +129,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("payment admin role check failed: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -137,6 +141,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if errs != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to parse data: %v", errs),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -149,6 +154,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		for _, e := range err.(validator.ValidationErrors) {
 			return Response{
 				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
 			}
@@ -158,6 +164,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to read from world state: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -165,6 +172,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if txnJSON != nil {
 		return Response{
 			Message:    fmt.Sprintf("transaction %v already accounted", acc.OffchainTxnId),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusConflict,
 		}
@@ -173,6 +181,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if acc.Amount <= 0 {
 		return Response{
 			Message:    "amount can't be less then 0",
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -186,6 +195,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -195,6 +205,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to get client id: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -205,8 +216,10 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	// Mint tokens
 	err = kaps.MintHelper(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
 	if err != nil {
+		fmt.Printf("error: %v\n", err)
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -215,17 +228,21 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	fmt.Println("MintToken Amount---->", acc.Amount)
 
 	if err := ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
+		fmt.Printf("error: %v\n", err)
 		return Response{
 			Message:    fmt.Sprintf("unable to put Asset struct in statedb: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
 	}
 
+	fmt.Printf("Transfer single event: %v\n", acc.Account)
 	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, ID: acc.Id, Value: acc.Amount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to add funds: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -240,6 +257,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	return Response{
 		Message:    "Added funds successfully",
+		Success:    true,
 		Status:     "Success",
 		StatusCode: http.StatusCreated,
 		Response:   response,
@@ -255,6 +273,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -263,6 +282,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if !initialized {
 		return Response{
 			Message:    "contract options need to be set before calling any function, call Initialize() to initialize contract",
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -272,6 +292,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("gateway admin role check failed: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -283,6 +304,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if errs != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to parse data: %v", errs),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -294,6 +316,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to read from world state: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -301,6 +324,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if txnJSON != nil {
 		return Response{
 			Message:    fmt.Sprintf("transaction %v already accounted", acc.OffchainTxnId),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusConflict,
 		}
@@ -313,6 +337,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to get client id: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -322,6 +347,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -331,6 +357,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -343,6 +370,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		for _, e := range err.(validator.ValidationErrors) {
 			return Response{
 				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
 			}
@@ -354,6 +382,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if err := ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to put Asset struct in statedb: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -362,6 +391,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount}); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to remove funds: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -378,6 +408,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	//return kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount})
 	return Response{
 		Message:    "Funds removed successfully",
+		Success:    true,
 		Status:     "Success",
 		StatusCode: http.StatusCreated,
 		Response:   response,
@@ -393,6 +424,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 
 		return Response{
 			Message:    fmt.Sprintf("gateway admin role check failed: %v", errs),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusUnauthorized,
 		}
@@ -402,6 +434,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if errs != nil {
 		return Response{
 			Message:    fmt.Sprintf("error is parsing transfer request data: %v", errs),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -414,6 +447,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		for _, e := range err.(validator.ValidationErrors) {
 			return Response{
 				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
 			}
@@ -426,6 +460,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to read from world state: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -433,6 +468,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if txnJSON != nil {
 		return Response{
 			Message:    fmt.Sprintf("transaction %v already accounted", transferNIU.TxnId),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -441,6 +477,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if transferNIU.Sender == transferNIU.Receiver {
 		return Response{
 			Message:    "transfer to self is not allowed",
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -450,6 +487,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to get client id: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -460,6 +498,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("not able to do KYC check for user:%s, error:%v", transferNIU.Sender, err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -467,6 +506,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if !kycCheck {
 		return Response{
 			Message:    fmt.Sprintf("user %s is not kyced", transferNIU.Sender),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -477,6 +517,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("not able to do KYC check for user:%s, error:%v", transferNIU.Receiver, err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -484,6 +525,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if !kycCheck {
 		return Response{
 			Message:    fmt.Sprintf("user %s is not kyced", transferNIU.Receiver),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}
@@ -497,6 +539,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if err != nil {
 		return Response{
 			Message:    "error while reducing balance",
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -507,6 +550,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if err != nil {
 		return Response{
 			Message:    "error while adding balance",
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -516,6 +560,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to remove funds: %v", err),
+			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}
@@ -532,6 +577,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	//return kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount})
 	return Response{
 		Message:    "Funds transfered successfully",
+		Success:    true,
 		Status:     "Success",
 		StatusCode: http.StatusCreated,
 		Response:   response,
