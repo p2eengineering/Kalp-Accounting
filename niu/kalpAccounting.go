@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
-	"github.com/p2eengineering/kalp-sdk/kalpsdk"
-	"github.com/p2eengineering/kalp-sdk/kaps"
+	"github.com/p2eengineering/kalp-kaps/kaps"
+	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
 const attrRole = "hf.Type"
@@ -147,7 +147,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	fmt.Println("MintToken operator---->", operator)
 
 	// Mint tokens
-	err = kaps.MintHelper(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
+	err = kaps.MintHelperWithoutKYC(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
 	if err != nil {
 		return err
 	}

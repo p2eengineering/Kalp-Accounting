@@ -9,7 +9,7 @@ import (
 
 	kalpAccounting "KAPS-NIU/niu"
 
-	"github.com/p2eengineering/kalp-sdk/kalpsdk"
+	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
 func main() {
