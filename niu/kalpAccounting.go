@@ -154,7 +154,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	fmt.Println("MintToken Amount---->", acc.Amount)
 
-	if err := ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
+	if err := ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
 		return fmt.Errorf("unable to put Asset struct in statedb: %v", err)
 	}
 
@@ -257,23 +257,23 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		return fmt.Errorf("failed to get client id: %v", err)
 	}
 
-	fmt.Println("operator-->", operator, transferNIU.Sender)
-	kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
-	if err != nil {
-		return fmt.Errorf("not able to do KYC check for user:%s, error:%v", transferNIU.Sender, err)
-	}
-	if !kycCheck {
-		return fmt.Errorf("user %s is not kyced", transferNIU.Sender)
-	}
+	// fmt.Println("operator-->", operator, transferNIU.Sender)
+	// kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
+	// if err != nil {
+	// 	return fmt.Errorf("not able to do KYC check for user:%s, error:%v", transferNIU.Sender, err)
+	// }
+	// if !kycCheck {
+	// 	return fmt.Errorf("user %s is not kyced", transferNIU.Sender)
+	// }
 
-	// Check KYC status for each recipient
-	kycCheck, err = kaps.IsKyced(ctx, transferNIU.Receiver)
-	if err != nil {
-		return fmt.Errorf("not able to do KYC check for user:%s, error:%v", transferNIU.Receiver, err)
-	}
-	if !kycCheck {
-		return fmt.Errorf("user %s is not kyced", transferNIU.Receiver)
-	}
+	// // Check KYC status for each recipient
+	// kycCheck, err = kaps.IsKyced(ctx, transferNIU.Receiver)
+	// if err != nil {
+	// 	return fmt.Errorf("not able to do KYC check for user:%s, error:%v", transferNIU.Receiver, err)
+	// }
+	// if !kycCheck {
+	// 	return fmt.Errorf("user %s is not kyced", transferNIU.Receiver)
+	// }
 
 	transferNIU.Id = GINI
 	transferNIU.DocType = GINI_PAYMENT_TXN
