@@ -213,7 +213,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	fmt.Println("MintToken operator---->", operator)
 
 	// Mint tokens
-	err = kaps.MintHelper(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
+	err = kaps.MintHelperWithoutKYC(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return Response{
@@ -226,7 +226,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	fmt.Println("MintToken Amount---->", acc.Amount)
 
-	if err := ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
+	if err := ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
 		fmt.Printf("error: %v\n", err)
 		return Response{
 			Message:    fmt.Sprintf("unable to put Asset struct in statedb: %v", err),
