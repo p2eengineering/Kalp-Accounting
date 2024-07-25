@@ -37,10 +37,10 @@ type SmartContract struct {
 }
 
 type GiniTransaction struct {
-	OffchainTxnId string  `json:"OffchainTxnId" validate:"required"`
-	Id            string  `json:"Id" `
-	Account       string  `json:"Account" validate:"required"`
-	DocType       string  `json:"DocType" `
+	OffchainTxnId string `json:"OffchainTxnId" validate:"required"`
+	Id            string
+	Account       string `json:"Account" validate:"required"`
+	DocType       string
 	Amount        float64 `json:"Amount" validate:"required,gt=0"`
 	Desc          string  `json:"Desc" validate:"required"`
 }
@@ -229,7 +229,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if err := ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
 		fmt.Printf("error: %v\n", err)
 		return Response{
-			Message:    fmt.Sprintf("unable to put Asset struct in statedb: %v", err),
+			Message:    fmt.Sprintf("Mint: unable to store GINI transaction data in blockchain: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
@@ -380,7 +380,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 
 	if err := ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
 		return Response{
-			Message:    fmt.Sprintf("unable to put Asset struct in statedb: %v", err),
+			Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
@@ -432,7 +432,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	errs = json.Unmarshal([]byte(data), &transferNIU)
 	if errs != nil {
 		return Response{
-			Message:    fmt.Sprintf("error is parsing transfer request data: %v", errs),
+			Message:    fmt.Sprintf("error in parsing transfer request data: %v", errs),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
@@ -573,7 +573,6 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		"transactionData": transferNIU,
 	}
 
-	//return kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount})
 	return Response{
 		Message:    "Funds transfered successfully",
 		Success:    true,
