@@ -9,12 +9,9 @@ require (
 	github.com/hyperledger/fabric-protos-go v0.3.0
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/protobuf v1.28.1
-
-)
-
-require (
 	github.com/p2eengineering/kalp-kaps v0.0.0-20240530125903-613c9f6c9bf5
 	github.com/p2eengineering/kalp-sdk-public v0.0.0-20240709111532-b1e8d8fef366
+
 )
 
 require (
