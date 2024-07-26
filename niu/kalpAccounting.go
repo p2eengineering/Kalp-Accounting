@@ -51,7 +51,7 @@ type TransferNIU struct {
 	Sender    string  `json:"Sender" validate:"required"`
 	Receiver  string  `json:"Receiver" validate:"required"`
 	Id        string  `json:"Id" `
-	DocType   string  `json:"DocType" validate:"required"`
+	DocType   string  `json:"DocType"`
 	Amount    float64 `json:"Amount" validate:"required,gt=0"`
 	TimeStamp string  `json:"TimeStamp" `
 }
