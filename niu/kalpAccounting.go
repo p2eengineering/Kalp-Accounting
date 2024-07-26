@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -100,7 +101,47 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 // 	return kaps.EmitTransferSingle(ctx, transferSingleEvent)
 
 // }
+func (g *GiniTransaction) Validation() error {
+	offchainTxnId := strings.Trim(g.OffchainTxnId, " ")
+	if offchainTxnId == "" {
+		return fmt.Errorf("invalid OffchainTxnId")
+	}
 
+	account := strings.Trim(g.Account, " ")
+	if account == "" {
+		return fmt.Errorf("invalid Account")
+	}
+
+	desc := strings.Trim(g.Desc, " ")
+	if desc == "" {
+		return fmt.Errorf("invalid desc")
+	}
+
+	return nil
+}
+func (t *TransferNIU) TransferNIUValidation() error {
+	txnId := strings.Trim(t.TxnId, " ")
+	if txnId == "" {
+		return fmt.Errorf("invalid TxnId")
+	}
+
+	sender := strings.Trim(t.Sender, " ")
+	if sender == "" {
+		return fmt.Errorf("invalid Sender")
+	}
+
+	receiver := strings.Trim(t.Receiver, " ")
+	if receiver == "" {
+		return fmt.Errorf("invalid Receiver")
+	}
+
+	docType := strings.Trim(t.DocType, " ")
+	if docType == "" {
+		return fmt.Errorf("invalid DocType")
+	}
+
+	return nil
+}
 func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	//check if contract has been intilized first
 	fmt.Println("AddFunds---->")
@@ -158,6 +199,16 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 				StatusCode: http.StatusBadRequest,
 			}, fmt.Errorf("error with  status code %v, error:field: %s, Error: %s", http.StatusBadRequest, e.Field(), e.Tag())
 		}
+	}
+	err = acc.Validation()
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("%v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with  status code %v, error:%v", http.StatusBadRequest, err)
+
 	}
 	txnJSON, err := ctx.GetState(acc.OffchainTxnId)
 	if err != nil {
@@ -310,7 +361,16 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	fmt.Println("acc---->", acc)
+	err = acc.Validation()
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("%v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with  status code %v, error:%v", http.StatusBadRequest, err)
 
+	}
 	txnJSON, err := ctx.GetState(acc.OffchainTxnId)
 	if err != nil {
 		return Response{
@@ -454,7 +514,16 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	}
 
 	fmt.Println("transferNIU", transferNIU)
+	err = transferNIU.TransferNIUValidation()
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("%v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with  status code %v, error:%v", http.StatusBadRequest, err)
 
+	}
 	txnJSON, err := ctx.GetState(transferNIU.TxnId)
 	if err != nil {
 		return Response{
