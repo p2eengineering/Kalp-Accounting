@@ -9,9 +9,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/p2eengineering/kalp-kaps/kaps"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
@@ -35,22 +37,29 @@ type SmartContract struct {
 }
 
 type GiniTransaction struct {
-	OffchainTxnId string  `json:"OffchainTxnId"`
-	Id            string  `json:"Id"`
-	Account       string  `json:"Account"`
-	DocType       string  `json:"DocType"`
-	Amount        float64 `json:"Amount"`
-	Desc          string  `json:"Desc"`
+	OffchainTxnId string `json:"OffchainTxnId" validate:"required"`
+	Id            string
+	Account       string `json:"Account" validate:"required"`
+	DocType       string
+	Amount        float64 `json:"Amount" validate:"required,gt=0"`
+	Desc          string  `json:"Desc" validate:"required"`
 }
 
 type TransferNIU struct {
-	TxnId     string  `json:"TxnId"`
-	Sender    string  `json:"Sender"`
-	Receiver  string  `json:"Receiver"`
-	Id        string  `json:"Id"`
-	DocType   string  `json:"DocType"`
-	Amount    float64 `json:"Amount"`
-	TimeStamp string  `json:"TimeStamp"`
+	TxnId     string  `json:"TxnId" validate:"required"`
+	Sender    string  `json:"Sender" validate:"required"`
+	Receiver  string  `json:"Receiver" validate:"required"`
+	Id        string  `json:"Id" `
+	DocType   string  `json:"DocType" validate:"required"`
+	Amount    float64 `json:"Amount" validate:"required,gt=0"`
+	TimeStamp string  `json:"TimeStamp" `
+}
+type Response struct {
+	Status     string      `json:"status"`
+	StatusCode uint        `json:"statusCode"`
+	Success    bool        `json:"success"`
+	Message    string      `json:"message"`
+	Response   interface{} `json:"response" `
 }
 
 func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) error {
@@ -78,7 +87,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
-
 	return true, nil
 }
 
@@ -93,41 +101,89 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 
 // }
 
-func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) error {
+func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) Response {
 	//check if contract has been intilized first
 	fmt.Println("AddFunds---->")
 
 	initialized, err := kaps.CheckInitialized(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 	if !initialized {
-		return fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
+		return Response{
+			Message:    "contract options need to be set before calling any function, call Initialize() to initialize contract",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 
 	fmt.Println("AddFunds CheckInitialized---->")
 	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
 	if err != nil {
-		return fmt.Errorf("payment admin role check failed: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("payment admin role check failed: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 
 	// Parse input data into NIU struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
 	if errs != nil {
-		return fmt.Errorf("failed to parse data: %v", errs)
+		return Response{
+			Message:    fmt.Sprintf("failed to parse data: %v", errs),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
+	validate := validator.New()
 
+	err = validate.Struct(acc)
+	if err != nil {
+		fmt.Println("Validation failed:")
+		for _, e := range err.(validator.ValidationErrors) {
+			return Response{
+				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}
+		}
+	}
 	txnJSON, err := ctx.GetState(acc.OffchainTxnId)
 	if err != nil {
-		return fmt.Errorf("failed to read from world state: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to read from world state: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 	if txnJSON != nil {
-		return fmt.Errorf("transaction %v already accounted", acc.OffchainTxnId)
+		return Response{
+			Message:    fmt.Sprintf("transaction %v already accounted", acc.OffchainTxnId),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusConflict,
+		}
 	}
 
 	if acc.Amount <= 0 {
-		return fmt.Errorf("amount can't be less then 0")
+		return Response{
+			Message:    "amount can't be less then 0",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	acc.Id = GINI
@@ -136,12 +192,22 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	fmt.Println("GINI amount", acc.Amount)
 	accJSON, err := json.Marshal(acc)
 	if err != nil {
-		return fmt.Errorf("unable to Marshal Token struct : %v", err)
+		return Response{
+			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to get client id: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	fmt.Println("MintToken operator---->", operator)
@@ -149,52 +215,118 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	// Mint tokens
 	err = kaps.MintHelperWithoutKYC(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
 	if err != nil {
-		return err
+		fmt.Printf("error: %v\n", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	fmt.Println("MintToken Amount---->", acc.Amount)
 
 	if err := ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
-		return fmt.Errorf("unable to put Asset struct in statedb: %v", err)
+		fmt.Printf("error: %v\n", err)
+		return Response{
+			Message:    fmt.Sprintf("Mint: unable to store GINI transaction data in blockchain: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 
+	fmt.Printf("Transfer single event: %v\n", acc.Account)
 	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, ID: acc.Id, Value: acc.Amount}
-	return kaps.EmitTransferSingle(ctx, transferSingleEvent)
+	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to add funds: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
+	}
+	funcName, _ := ctx.GetFunctionAndParameters()
+	response := map[string]interface{}{
+		"txId":            ctx.GetTxID(),
+		"txFcn":           funcName,
+		"txType":          "Invoke",
+		"transactionData": acc,
+	}
+
+	return Response{
+		Message:    "Added funds successfully",
+		Success:    true,
+		Status:     "Success",
+		StatusCode: http.StatusCreated,
+		Response:   response,
+	}
 
 }
 
-func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data string) error {
+func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data string) Response {
 	//check if contract has been intilized first
 
 	fmt.Println("RemoveFunds---->")
 	initialized, err := kaps.CheckInitialized(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
+
 	}
 	if !initialized {
-		return fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
+		return Response{
+			Message:    "contract options need to be set before calling any function, call Initialize() to initialize contract",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 
 	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
 	if err != nil {
-		return fmt.Errorf("gateway admin role check failed: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("gateway admin role check failed: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 
 	// Parse input data into NIU struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
 	if errs != nil {
-		return fmt.Errorf("failed to parse data: %v", errs)
+		return Response{
+			Message:    fmt.Sprintf("failed to parse data: %v", errs),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	fmt.Println("acc---->", acc)
 
 	txnJSON, err := ctx.GetState(acc.OffchainTxnId)
 	if err != nil {
-		return fmt.Errorf("failed to read from world state: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to read from world state: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 	if txnJSON != nil {
-		return fmt.Errorf("transaction %v already accounted", acc.OffchainTxnId)
+		return Response{
+			Message:    fmt.Sprintf("transaction %v already accounted", acc.OffchainTxnId),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusConflict,
+		}
 	}
 
 	acc.Id = GINI
@@ -202,78 +334,201 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to get client id: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	err = kaps.RemoveBalance(ctx, acc.Id, []string{acc.Account}, acc.Amount)
 	if err != nil {
-		return fmt.Errorf("RemoveBalance in burn has error: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 
 	accJSON, err := json.Marshal(acc)
 	if err != nil {
-		return fmt.Errorf("unable to Marshal Token struct : %v", err)
+		return Response{
+			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	validate := validator.New()
+	err = validate.Struct(acc)
+	if err != nil {
+		fmt.Println("Validation failed:")
+		for _, e := range err.(validator.ValidationErrors) {
+			return Response{
+				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}
+		}
 	}
 
 	fmt.Println("MintToken Amount---->", acc.Amount)
 
 	if err := ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
-		return fmt.Errorf("unable to put Asset struct in statedb: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
-	return kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount})
+	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount}); err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to remove funds: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	funcName, _ := ctx.GetFunctionAndParameters()
+	response := map[string]interface{}{
+		"txId":            ctx.GetTxID(),
+		"txFcn":           funcName,
+		"txType":          "Invoke",
+		"transactionData": acc,
+	}
+
+	//return kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount})
+	return Response{
+		Message:    "Funds removed successfully",
+		Success:    true,
+		Status:     "Success",
+		StatusCode: http.StatusCreated,
+		Response:   response,
+	}
 }
 
-func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, data string) error {
+func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, data string) Response {
 
 	var transferNIU TransferNIU
 
 	errs := kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
 	if errs != nil {
-		return fmt.Errorf("gateway admin role check failed: %v", errs)
+
+		return Response{
+			Message:    fmt.Sprintf("gateway admin role check failed: %v", errs),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusUnauthorized,
+		}
 	}
 
 	errs = json.Unmarshal([]byte(data), &transferNIU)
 	if errs != nil {
-		return fmt.Errorf("error is parsing transfer request data: %v", errs)
+		return Response{
+			Message:    fmt.Sprintf("error in parsing transfer request data: %v", errs),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+
+	validate := validator.New()
+	err := validate.Struct(transferNIU)
+	if err != nil {
+		fmt.Println("Validation failed:")
+		for _, e := range err.(validator.ValidationErrors) {
+			return Response{
+				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}
+		}
 	}
 
 	fmt.Println("transferNIU", transferNIU)
 
 	txnJSON, err := ctx.GetState(transferNIU.TxnId)
 	if err != nil {
-		return fmt.Errorf("failed to read from world state: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to read from world state: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 	if txnJSON != nil {
-		return fmt.Errorf("transaction %v already accounted", transferNIU.TxnId)
+		return Response{
+			Message:    fmt.Sprintf("transaction %v already accounted", transferNIU.TxnId),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	if transferNIU.Sender == transferNIU.Receiver {
-		return fmt.Errorf("transfer to self is not allowed")
+		return Response{
+			Message:    "transfer to self is not allowed",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
+		return Response{
+			Message:    fmt.Sprintf("failed to get client id: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
 	}
 
-	// fmt.Println("operator-->", operator, transferNIU.Sender)
-	// kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
-	// if err != nil {
-	// 	return fmt.Errorf("not able to do KYC check for user:%s, error:%v", transferNIU.Sender, err)
-	// }
-	// if !kycCheck {
-	// 	return fmt.Errorf("user %s is not kyced", transferNIU.Sender)
-	// }
+	fmt.Println("operator-->", operator, transferNIU.Sender)
+	kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("not able to do KYC check for user:%s, error:%v", transferNIU.Sender, err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+	if !kycCheck {
+		return Response{
+			Message:    fmt.Sprintf("user %s is not kyced", transferNIU.Sender),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
+	}
 
-	// // Check KYC status for each recipient
-	// kycCheck, err = kaps.IsKyced(ctx, transferNIU.Receiver)
-	// if err != nil {
-	// 	return fmt.Errorf("not able to do KYC check for user:%s, error:%v", transferNIU.Receiver, err)
-	// }
-	// if !kycCheck {
-	// 	return fmt.Errorf("user %s is not kyced", transferNIU.Receiver)
-	// }
+	// Check KYC status for each recipient
+	kycCheck, err = kaps.IsKyced(ctx, transferNIU.Receiver)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("not able to do KYC check for user:%s, error:%v", transferNIU.Receiver, err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
+	}
+	if !kycCheck {
+		return Response{
+			Message:    fmt.Sprintf("user %s is not kyced", transferNIU.Receiver),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}
+	}
 
 	transferNIU.Id = GINI
 	transferNIU.DocType = GINI_PAYMENT_TXN
@@ -281,17 +536,50 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	// Withdraw the funds from the sender address
 	err = kaps.RemoveBalance(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Amount)
 	if err != nil {
-		return fmt.Errorf("error while reducing balance")
+		return Response{
+			Message:    "error while reducing balance",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 
 	// Deposit the fund to the recipient address
 	err = kaps.AddBalance(ctx, transferNIU.Id, []string{transferNIU.Receiver}, transferNIU.Amount)
 	if err != nil {
-		return fmt.Errorf("error while adding balance")
+		return Response{
+			Message:    "error while adding balance",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
 	}
 
 	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
-	return kaps.EmitTransferSingle(ctx, transferSingleEvent)
+	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to remove funds: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}
+	}
+
+	funcName, _ := ctx.GetFunctionAndParameters()
+	response := map[string]interface{}{
+		"txId":            ctx.GetTxID(),
+		"txFcn":           funcName,
+		"txType":          "Invoke",
+		"transactionData": transferNIU,
+	}
+
+	return Response{
+		Message:    "Funds transfered successfully",
+		Success:    true,
+		Status:     "Success",
+		StatusCode: http.StatusCreated,
+		Response:   response,
+	}
 
 }
 
