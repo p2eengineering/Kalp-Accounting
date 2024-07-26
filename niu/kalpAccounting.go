@@ -43,7 +43,7 @@ type GiniTransaction struct {
 	Account       string `json:"Account" validate:"required"`
 	DocType       string
 	Amount        float64 `json:"Amount" validate:"required,gt=0"`
-	Desc          string  `json:"Desc" validate:"required"`
+	Desc          string  `json:"Desc"`
 }
 
 type TransferNIU struct {
