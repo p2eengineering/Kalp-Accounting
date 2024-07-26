@@ -174,7 +174,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with  status code %v,transaction %v already accounted", http.StatusBadRequest, acc.OffchainTxnId)
+		}, fmt.Errorf("error with  status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
 	}
 
 	if acc.Amount <= 0 {
@@ -326,7 +326,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with  status code %v,error: transaction %v already accounted", http.StatusBadRequest, err)
+		}, fmt.Errorf("error with  status code %v,error: transaction %v already accounted", http.StatusConflict, err)
 	}
 
 	acc.Id = GINI
