@@ -104,17 +104,17 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 func (g *GiniTransaction) Validation() error {
 	offchainTxnId := strings.Trim(g.OffchainTxnId, " ")
 	if offchainTxnId == "" {
-		return fmt.Errorf("invalid OffchainTxnId")
+		return fmt.Errorf("invalid input OffchainTxnId")
 	}
 
 	account := strings.Trim(g.Account, " ")
 	if account == "" {
-		return fmt.Errorf("invalid Account")
+		return fmt.Errorf("invalid input Account")
 	}
 
 	desc := strings.Trim(g.Desc, " ")
 	if desc == "" {
-		return fmt.Errorf("invalid desc")
+		return fmt.Errorf("invalid input desc")
 	}
 
 	return nil
@@ -122,22 +122,22 @@ func (g *GiniTransaction) Validation() error {
 func (t *TransferNIU) TransferNIUValidation() error {
 	txnId := strings.Trim(t.TxnId, " ")
 	if txnId == "" {
-		return fmt.Errorf("invalid TxnId")
+		return fmt.Errorf("invalid input TxnId")
 	}
 
 	sender := strings.Trim(t.Sender, " ")
 	if sender == "" {
-		return fmt.Errorf("invalid Sender")
+		return fmt.Errorf("invalid input Sender")
 	}
 
 	receiver := strings.Trim(t.Receiver, " ")
 	if receiver == "" {
-		return fmt.Errorf("invalid Receiver")
+		return fmt.Errorf("invalid input Receiver")
 	}
 
 	docType := strings.Trim(t.DocType, " ")
 	if docType == "" {
-		return fmt.Errorf("invalid DocType")
+		return fmt.Errorf("invalid input DocType")
 	}
 
 	return nil
