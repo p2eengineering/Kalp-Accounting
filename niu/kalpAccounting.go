@@ -363,7 +363,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	validate := validator.New()
-	err = validate.Struct(accJSON)
+	err = validate.Struct(acc)
 	if err != nil {
 		fmt.Println("Validation failed:")
 		for _, e := range err.(validator.ValidationErrors) {
