@@ -135,10 +135,10 @@ func (t *TransferNIU) TransferNIUValidation() error {
 		return fmt.Errorf("invalid input Receiver")
 	}
 
-	docType := strings.Trim(t.DocType, " ")
-	if docType == "" {
-		return fmt.Errorf("invalid input DocType")
-	}
+	// docType := strings.Trim(t.DocType, " ")
+	// if docType == "" {
+	// 	return fmt.Errorf("invalid input DocType")
+	// }
 
 	return nil
 }
