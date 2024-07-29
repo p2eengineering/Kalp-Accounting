@@ -653,6 +653,10 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 }
 
 func (s *SmartContract) GetBalanceForAccount(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
+	account = strings.Trim(account, " ")
+	if account == "" {
+		return 0, fmt.Errorf("invalid input account is required")
+	}
 	var owner kaps.Owner
 	id := GINI
 	ownerKey, err := ctx.CreateCompositeKey(OwnerPrefix, []string{account, id})
