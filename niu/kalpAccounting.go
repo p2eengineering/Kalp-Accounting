@@ -112,10 +112,10 @@ func (g *GiniTransaction) Validation() error {
 		return fmt.Errorf("invalid input Account")
 	}
 
-	desc := strings.Trim(g.Desc, " ")
-	if desc == "" {
-		return fmt.Errorf("invalid input desc")
-	}
+	// desc := strings.Trim(g.Desc, " ")
+	// if desc == "" {
+	// 	return fmt.Errorf("invalid input desc")
+	// }
 
 	return nil
 }
