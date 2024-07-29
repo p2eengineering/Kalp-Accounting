@@ -386,7 +386,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,error: transaction %v already accounted", http.StatusConflict, err)
+		}, fmt.Errorf("error with status code %v,error: transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
 	}
 
 	acc.Id = GINI
@@ -539,7 +539,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
+		}, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferNIU.TxnId)
 	}
 
 	if transferNIU.Sender == transferNIU.Receiver {
@@ -548,7 +548,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:transfer to self is not allowed: %v", http.StatusBadRequest, err)
+		}, fmt.Errorf("error with status code %v, error:transfer to self is not allowed", http.StatusBadRequest)
 	}
 
 	operator, err := kaps.GetUserId(ctx)
@@ -588,7 +588,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:not able to do KYC check for user:%s, error:%v", http.StatusBadRequest, transferNIU.Sender, err)
+		}, fmt.Errorf("error with status code %v, error:not able to do KYC check for user:%s, error:%v", http.StatusBadRequest, transferNIU.Receiver, err)
 	}
 	if !kycCheck {
 		return Response{
@@ -596,7 +596,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:user %s is not kyced", http.StatusBadRequest, transferNIU.Sender)
+		}, fmt.Errorf("error with status code %v, error:user %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
 	}
 
 	transferNIU.Id = GINI
