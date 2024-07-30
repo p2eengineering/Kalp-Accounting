@@ -313,8 +313,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	//check if contract has been intilized first
 	logger := kalpsdk.NewLogger()
-	logger.Infof("Environment---->", env)
-	logger.Infof("RemoveFunds---->")
+	logger.Infof("RemoveFunds---->%s",env)
 	initialized, err := kaps.CheckInitialized(ctx)
 	if err != nil {
 		return Response{
@@ -481,7 +480,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 
 func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	logger := kalpsdk.NewLogger()
-	logger.Infof("Environment---->", env)
+	logger.Infof("TransferToken---->", env)
 	var transferNIU TransferNIU
 	errs := kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
 	if errs != nil {
@@ -565,7 +564,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
 	logger.Infof("operator-->", operator, transferNIU.Sender)
-	if strings.ToLower(env) == "prod" || strings.ToLower(env) == "poduction" || strings.Trim(strings.ToLower(env), " ") == "" {
+	if strings.ToLower(env) == "prod" || strings.ToLower(env) == "production" || strings.Trim(strings.ToLower(env), " ") == "" {
 		kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
 		if err != nil {
 			return Response{
