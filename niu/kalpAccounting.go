@@ -31,7 +31,7 @@ const GatewayRoleValue = "GatewayAdmin"
 const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
-const env = "dev"
+const env = ""
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
@@ -431,24 +431,22 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	logger.Infof("MintToken Amount---->", acc.Amount)
-
-	if strings.ToLower(env) == "prod" || strings.ToLower(env) == "production" || strings.Trim(strings.ToLower(env), " ") == "" {
-		err = ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON)
-		if err != nil {
+	if env == "dev" {
+		if err = ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
 			return Response{
 				Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
+			}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
 		}
-	} else if err = ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
+	} else if err = ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
+		}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
 	}
 
 	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount}); err != nil {
@@ -564,42 +562,42 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
 	logger.Infof("operator-->", operator, transferNIU.Sender)
-	if strings.ToLower(env) == "prod" || strings.ToLower(env) == "production" || strings.Trim(strings.ToLower(env), " ") == "" {
+	if env != "dev" {
 		kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
 		if err != nil {
 			return Response{
-				Message:    fmt.Sprintf("not able to do KYC check for user:%s, error:%v", transferNIU.Sender, err),
+				Message:    fmt.Sprintf("not able to do KYC check for sender:%s, error:%v", transferNIU.Sender, err),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error:not able to do KYC check for user:%s, error:%v", http.StatusBadRequest, transferNIU.Sender, err)
+			}, fmt.Errorf("error with status code %v, error:not able to do KYC check for sender:%s, error:%v", http.StatusBadRequest, transferNIU.Sender, err)
 		}
 		if !kycCheck {
 			return Response{
-				Message:    fmt.Sprintf("user %s is not kyced", transferNIU.Sender),
+				Message:    fmt.Sprintf("sender %s is not kyced", transferNIU.Sender),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error:user %s is not kyced", http.StatusBadRequest, transferNIU.Sender)
+			}, fmt.Errorf("error with status code %v, error:sender %s is not kyced", http.StatusBadRequest, transferNIU.Sender)
 		}
 
 		// Check KYC status for each recipient
 		kycCheck, err = kaps.IsKyced(ctx, transferNIU.Receiver)
 		if err != nil {
 			return Response{
-				Message:    fmt.Sprintf("not able to do KYC check for user:%s, error:%v", transferNIU.Receiver, err),
+				Message:    fmt.Sprintf("not able to do KYC check for receiver:%s, error:%v", transferNIU.Receiver, err),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error:not able to do KYC check for user:%s, error:%v", http.StatusBadRequest, transferNIU.Receiver, err)
+			}, fmt.Errorf("error with status code %v, error:not able to do KYC check for receiver:%s, error:%v", http.StatusBadRequest, transferNIU.Receiver, err)
 		}
 		if !kycCheck {
 			return Response{
-				Message:    fmt.Sprintf("user %s is not kyced", transferNIU.Receiver),
+				Message:    fmt.Sprintf("receiver %s is not kyced", transferNIU.Receiver),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error:user %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
+			}, fmt.Errorf("error with status code %v, error:receiver %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
 		}
 	}
 	transferNIU.Id = GINI
