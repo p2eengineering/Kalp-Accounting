@@ -313,7 +313,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	//check if contract has been intilized first
 	logger := kalpsdk.NewLogger()
-	logger.Infof("RemoveFunds---->%s",env)
+	logger.Infof("RemoveFunds---->%s", env)
 	initialized, err := kaps.CheckInitialized(ctx)
 	if err != nil {
 		return Response{
@@ -480,7 +480,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 
 func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	logger := kalpsdk.NewLogger()
-	logger.Infof("TransferToken---->", env)
+	logger.Infof("TransferToken---->%s", env)
 	var transferNIU TransferNIU
 	errs := kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
 	if errs != nil {
