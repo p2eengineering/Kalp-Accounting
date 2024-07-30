@@ -31,7 +31,7 @@ const GatewayRoleValue = "GatewayAdmin"
 const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
-const env = ""
+const env = "dev"
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
