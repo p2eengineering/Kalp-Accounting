@@ -575,7 +575,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	if env != "dev" {
 		if err = ctx.PutStateWithKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
 			return Response{
-				Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
+				Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
