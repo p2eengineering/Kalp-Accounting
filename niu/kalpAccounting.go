@@ -562,7 +562,25 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
 	logger.Infof("operator-->", operator, transferNIU.Sender)
+	transferNIUJSON, err := json.Marshal(transferNIU)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
+	}
+
 	if env != "dev" {
+		if err = ctx.PutStateWithKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
+			return Response{
+				Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
+		}
 		kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
 		if err != nil {
 			return Response{
@@ -579,6 +597,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
 			}, fmt.Errorf("error with status code %v, error:sender %s is not kyced", http.StatusBadRequest, transferNIU.Sender)
+
 		}
 
 		// Check KYC status for each recipient
@@ -598,6 +617,15 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
 			}, fmt.Errorf("error with status code %v, error:receiver %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
+		}
+	} else {
+		if err = ctx.PutStateWithoutKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
+			return Response{
+				Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
 		}
 	}
 	transferNIU.Id = GINI
