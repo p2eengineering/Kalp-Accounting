@@ -618,15 +618,13 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 				StatusCode: http.StatusBadRequest,
 			}, fmt.Errorf("error with status code %v, error:receiver %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
 		}
-	} else {
-		if err = ctx.PutStateWithoutKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
-			return Response{
-				Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
-		}
+	} else if err = ctx.PutStateWithoutKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
+		return Response{
+			Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
 	}
 	transferNIU.Id = GINI
 	transferNIU.DocType = GINI_PAYMENT_TXN
