@@ -573,14 +573,6 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	}
 
 	if env != "dev" {
-		if err = ctx.PutStateWithKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
-			return Response{
-				Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
-		}
 		kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
 		if err != nil {
 			return Response{
@@ -617,6 +609,14 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
 			}, fmt.Errorf("error with status code %v, error:receiver %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
+		}
+		if err = ctx.PutStateWithKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
+			return Response{
+				Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
 		}
 	} else if err = ctx.PutStateWithoutKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
 		return Response{
