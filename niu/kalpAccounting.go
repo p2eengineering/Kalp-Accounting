@@ -27,7 +27,6 @@ const nameKey = "name"
 const symbolKey = "symbol"
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
-const GatewayRoleValue = "GatewayAdmin"
 const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
@@ -352,16 +351,6 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v,error: contract options need to be set before calling any function, call Initialize() to initialize contract", http.StatusInternalServerError)
 	}
 
-	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("gateway admin role check failed: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v,error: gateway admin role check failed: %v", http.StatusInternalServerError, err)
-	}
-
 	// Parse input data into NIU struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
@@ -499,18 +488,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	logger := kalpsdk.NewLogger()
 	logger.Infof("TransferToken---->%s", env)
 	var transferNIU TransferNIU
-	errs := kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
-	if errs != nil {
-
-		return Response{
-			Message:    fmt.Sprintf("gateway admin role check failed: %v", errs),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusUnauthorized,
-		}, fmt.Errorf("error with status code %v, error:gateway admin role check failed: %v", http.StatusBadRequest, errs)
-	}
-
-	errs = json.Unmarshal([]byte(data), &transferNIU)
+	errs := json.Unmarshal([]byte(data), &transferNIU)
 	if errs != nil {
 		return Response{
 			Message:    fmt.Sprintf("error in parsing transfer request data: %v", errs),
