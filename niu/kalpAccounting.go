@@ -27,7 +27,6 @@ const nameKey = "name"
 const symbolKey = "symbol"
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
-const GatewayRoleValue = "GatewayAdmin"
 const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
@@ -117,6 +116,13 @@ func (g *GiniTransaction) Validation() error {
 	// 	return fmt.Errorf("invalid input desc")
 	// }
 
+	if len(account) < 8 || len(account) > 60 {
+		return fmt.Errorf("account must be at least 8 characters long and shorter than 60 characters")
+	}
+	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
+	if strings.ContainsAny(account, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+		return fmt.Errorf("invalid Account")
+	}
 	return nil
 }
 func (t *TransferNIU) TransferNIUValidation() error {
@@ -129,7 +135,13 @@ func (t *TransferNIU) TransferNIUValidation() error {
 	if sender == "" {
 		return fmt.Errorf("invalid input Sender")
 	}
-
+	if len(sender) < 8 || len(sender) > 60 {
+		return fmt.Errorf("sender must be at least 8 characters long and shorter than 60 characters")
+	}
+	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
+	if strings.ContainsAny(sender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+		return fmt.Errorf("invalid sender")
+	}
 	receiver := strings.Trim(t.Receiver, " ")
 	if receiver == "" {
 		return fmt.Errorf("invalid input Receiver")
@@ -139,7 +151,13 @@ func (t *TransferNIU) TransferNIUValidation() error {
 	// if docType == "" {
 	// 	return fmt.Errorf("invalid input DocType")
 	// }
-
+	if len(receiver) < 8 || len(receiver) > 60 {
+		return fmt.Errorf("receiver must be at least 8 characters long and shorter than 60 characters")
+	}
+	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
+	if strings.ContainsAny(receiver, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+		return fmt.Errorf("invalid receiver")
+	}
 	return nil
 }
 func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
@@ -333,14 +351,14 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v,error: contract options need to be set before calling any function, call Initialize() to initialize contract", http.StatusInternalServerError)
 	}
 
-	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
+	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
 	if err != nil {
 		return Response{
-			Message:    fmt.Sprintf("gateway admin role check failed: %v", err),
+			Message:    fmt.Sprintf("payment admin role check failed in Brun request: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v,error: gateway admin role check failed: %v", http.StatusInternalServerError, err)
+		}, fmt.Errorf("error with status code %v, error: payment admin role check failed in Brun request: %v", http.StatusInternalServerError, err)
 	}
 
 	// Parse input data into NIU struct.
@@ -480,18 +498,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	logger := kalpsdk.NewLogger()
 	logger.Infof("TransferToken---->%s", env)
 	var transferNIU TransferNIU
-	errs := kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, GatewayRoleValue)
-	if errs != nil {
-
-		return Response{
-			Message:    fmt.Sprintf("gateway admin role check failed: %v", errs),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusUnauthorized,
-		}, fmt.Errorf("error with status code %v, error:gateway admin role check failed: %v", http.StatusBadRequest, errs)
-	}
-
-	errs = json.Unmarshal([]byte(data), &transferNIU)
+	errs := json.Unmarshal([]byte(data), &transferNIU)
 	if errs != nil {
 		return Response{
 			Message:    fmt.Sprintf("error in parsing transfer request data: %v", errs),
