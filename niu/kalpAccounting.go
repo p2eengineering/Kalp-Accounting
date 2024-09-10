@@ -116,9 +116,9 @@ func (g *GiniTransaction) Validation() error {
 	// 	return fmt.Errorf("invalid input desc")
 	// }
 
-	if len(account) < 8 || len(account) > 60 {
-		return fmt.Errorf("account must be at least 8 characters long and shorter than 60 characters")
-	}
+	// if len(account) < 8 || len(account) > 60 {
+	// 	return fmt.Errorf("account must be at least 8 characters long and shorter than 60 characters")
+	// }
 	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
 	if strings.ContainsAny(account, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
 		return fmt.Errorf("invalid Account")
@@ -135,9 +135,9 @@ func (t *TransferNIU) TransferNIUValidation() error {
 	if sender == "" {
 		return fmt.Errorf("invalid input Sender")
 	}
-	if len(sender) < 8 || len(sender) > 60 {
-		return fmt.Errorf("sender must be at least 8 characters long and shorter than 60 characters")
-	}
+	// if len(sender) < 8 || len(sender) > 60 {
+	// 	return fmt.Errorf("sender must be at least 8 characters long and shorter than 60 characters")
+	// }
 	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
 	if strings.ContainsAny(sender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
 		return fmt.Errorf("invalid sender")
@@ -151,9 +151,9 @@ func (t *TransferNIU) TransferNIUValidation() error {
 	// if docType == "" {
 	// 	return fmt.Errorf("invalid input DocType")
 	// }
-	if len(receiver) < 8 || len(receiver) > 60 {
-		return fmt.Errorf("receiver must be at least 8 characters long and shorter than 60 characters")
-	}
+	// if len(receiver) < 8 || len(receiver) > 60 {
+	// 	return fmt.Errorf("receiver must be at least 8 characters long and shorter than 60 characters")
+	// }
 	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
 	if strings.ContainsAny(receiver, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
 		return fmt.Errorf("invalid receiver")
@@ -258,15 +258,15 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	acc.DocType = GINI_PAYMENT_TXN
 
 	logger.Infof("GINI amount %v\n", acc.Amount)
-	accJSON, err := json.Marshal(acc)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with tatus code %v, unable to Marshal Token struct : %v", http.StatusBadRequest, err)
-	}
+	// accJSON, err := json.Marshal(acc)
+	// if err != nil {
+	// 	return Response{
+	// 		Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+	// 		Success:    false,
+	// 		Status:     "Failure",
+	// 		StatusCode: http.StatusBadRequest,
+	// 	}, fmt.Errorf("error with tatus code %v, unable to Marshal Token struct : %v", http.StatusBadRequest, err)
+	// }
 
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
@@ -280,7 +280,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
-	err = kaps.MintHelperWithoutKYC(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
+	err = kaps.AddBalanceCredit(ctx, operator, []string{acc.Account}, acc.Amount, acc.OffchainTxnId)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
@@ -291,15 +291,15 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	logger.Infof("MintToken Amount---->%v\n", acc.Amount)
-	if err := ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
-		logger.Errorf("error: %v\n", err)
-		return Response{
-			Message:    fmt.Sprintf("Mint: unable to store GINI transaction data in blockchain: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, Mint: unable to store GINI transaction data in blockchain: %v", http.StatusInternalServerError, err)
-	}
+	// if err := ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
+	// 	logger.Errorf("error: %v\n", err)
+	// 	return Response{
+	// 		Message:    fmt.Sprintf("Mint: unable to store GINI transaction data in blockchain: %v", err),
+	// 		Success:    false,
+	// 		Status:     "Failure",
+	// 		StatusCode: http.StatusInternalServerError,
+	// 	}, fmt.Errorf("error with status code %v, Mint: unable to store GINI transaction data in blockchain: %v", http.StatusInternalServerError, err)
+	// }
 	logger.Infof("Transfer single event: %v\n", acc.Amount)
 	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, ID: acc.Id, Value: acc.Amount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
@@ -636,28 +636,62 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	transferNIU.Id = GINI
 	transferNIU.DocType = GINI_PAYMENT_TXN
 
+	b, err := s.GetTransactionBalance(ctx, transferNIU.Sender, transferNIU.Amount)
+	if err != nil || !b {
+		return Response{
+			Message:    "error while GetTransactionBalance",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("error with status code %v, error:error GetTransactionBalance", http.StatusBadRequest)
+	}
 	// Withdraw the funds from the sender address
-	err = kaps.RemoveBalance(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Amount)
+	// err = kaps.RemoveBalanceCredit(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Receiver, transferNIU.Amount, transferNIU.TxnId)
+	// if err != nil {
+	// 	return Response{
+	// 		Message:    "error while reducing balance",
+	// 		Success:    false,
+	// 		Status:     "Failure",
+	// 		StatusCode: http.StatusInternalServerError,
+	// 	}, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
+	// }
+	reciver, _ := s.GetOwnerInfo(ctx, transferNIU.Receiver)
+	reciver.Id = GINI
+	reciver.DebitAccount = transferNIU.Sender
+	reciver.Account = transferNIU.Receiver
+	reciver.CreditAccount = transferNIU.Receiver
+	reciver.Amount = transferNIU.Amount
+	reciver.DocType = "Owner"
+	reciverJSON, err := json.Marshal(reciver)
+	fmt.Printf("recieverJSON: %s\n", reciverJSON)
 	if err != nil {
 		return Response{
-			Message:    "error while reducing balance",
+			Message:    "error while marshalling reciever json",
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:error while reducing balance", http.StatusBadRequest)
+		}, fmt.Errorf("error with status code %v, error:error while marshalling reciever json %v", http.StatusBadRequest, err)
 	}
-
+	err = ctx.PutStateWithoutKYC(transferNIU.TxnId, reciverJSON)
+	if err != nil {
+		return Response{
+			Message:    "error while putting reciever value in ledger",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("error with status code %v, error:error while putting reciever value in ledger %v", http.StatusBadRequest, err)
+	}
 	// Deposit the fund to the recipient address
-	err = kaps.AddBalance(ctx, transferNIU.Id, []string{transferNIU.Receiver}, transferNIU.Amount)
-	if err != nil {
-		return Response{
-			Message:    "error while adding balance",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:error while adding balance", http.StatusBadRequest)
-	}
-
+	// err = kaps.AddBalanceCredit(ctx, transferNIU.Id, []string{transferNIU.Receiver}, transferNIU.Amount, transferNIU.TxnId)
+	// if err != nil {
+	// 	return Response{
+	// 		Message:    "error while adding balance",
+	// 		Success:    false,
+	// 		Status:     "Failure",
+	// 		StatusCode: http.StatusInternalServerError,
+	// 	}, fmt.Errorf("error with status code %v, error:error while adding balance", http.StatusBadRequest)
+	// }
+	fmt.Println("#693 PutStateWithoutKYC")
 	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		return Response{
@@ -675,7 +709,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 		"txType":          "Invoke",
 		"transactionData": transferNIU,
 	}
-
+	fmt.Println("#711 response")
 	return Response{
 		Message:    "Funds transfered successfully",
 		Success:    true,
@@ -685,7 +719,168 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	}, nil
 
 }
+func (s *SmartContract) GetBalance(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
+	logger := kalpsdk.NewLogger()
+	logger.Info("Get Balance---->")
+	account = strings.Trim(account, " ")
+	if account == "" {
+		return 0, fmt.Errorf("invalid input account is required")
+	}
+	creditBalance, err := s.GetCreditBalance(ctx, account)
+	if err != nil {
+		return 0, err
+	}
+	logger.Infof("creditBalance: %f\n", creditBalance)
+	debitBalance, err := s.GetDebitBalance(ctx, account)
+	if err != nil {
+		return 0, err
+	}
+	logger.Infof("debitBalance: %f\n", debitBalance)
+	return (creditBalance - debitBalance), err
+}
+func (s *SmartContract) TransferMultipleToken(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
+	logger := kalpsdk.NewLogger()
+	logger.Infof("TransferMutipleToken---->%s", env)
+	var res Response
+	var transferNIU []TransferNIU
+	errs := json.Unmarshal([]byte(data), &transferNIU)
+	if errs != nil {
+		return Response{
+			Message:    fmt.Sprintf("error in parsing transfer request data: %v", errs),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:error in parsing transfer request data: %v", http.StatusBadRequest, errs)
+	}
+	for i := 0; i < len(transferNIU); i++ {
+		jsonStr, _ := json.Marshal(transferNIU[i])
+		fmt.Println(string(jsonStr))
+		res, err := s.TransferToken(ctx, string(jsonStr))
+		if err != nil {
+			return res, err
+		}
+	}
+	return res, nil
+}
+func (s *SmartContract) GetTransactionBalance(ctx kalpsdk.TransactionContextInterface, account string, amount float64) (bool, error) {
+	c, err := s.GetCreditBalance(ctx, account)
+	if err != nil {
+		return false, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	d, err := s.GetDebitBalance(ctx, account)
+	if err != nil {
+		return false, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	fmt.Printf("c %v\n", c)
+	fmt.Printf("d %v\n", d)
+	if c-d >= amount {
+		return true, nil
+	}
+	return false, nil
+}
+func (s *SmartContract) GetOwnerInfo(ctx kalpsdk.TransactionContextInterface, account string) (kaps.Owner, error) {
+	logger := kalpsdk.NewLogger()
+	var owner kaps.Owner
+	id := GINI
+	ownerKey, err := ctx.CreateCompositeKey(OwnerPrefix, []string{account, id})
+	logger.Infof("ownerKey %v\n", ownerKey)
+	if err != nil {
+		return kaps.Owner{}, fmt.Errorf("failed to create composite key for account %v and token %v: %v", account, id, err)
+	}
 
+	// Retrieve the current balance for the account and token ID
+	ownerBytes, err := ctx.GetState(ownerKey)
+	if err != nil {
+		return kaps.Owner{}, fmt.Errorf("failed to read balance for account %v and token %v: %v", account, id, err)
+	}
+	if ownerBytes != nil {
+		logger.Infof("unmarshelling balance bytes")
+		// Unmarshal the current balance into an Owner struct
+		err = json.Unmarshal(ownerBytes, &owner)
+		if err != nil {
+			return kaps.Owner{}, fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", account, id, err)
+		}
+		logger.Infof("owner %v\n", owner)
+		return owner, nil
+	}
+	return kaps.Owner{}, fmt.Errorf("owner not found")
+}
+func (s *SmartContract) GetCreditBalance(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
+	logger := kalpsdk.NewLogger()
+	queryString := `{"selector": {"creditAccount": "` + account + `", "docType": "Owner"}	 }`
+	fmt.Printf("query: %v\n", queryString)
+	creditBalance := 0.0
+	queryResults, err := ctx.GetQueryResult(queryString)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	defer queryResults.Close()
+
+	var owners []*kaps.Owner
+	for queryResults.HasNext() {
+		result, err := queryResults.Next()
+		if err != nil {
+			return 0, fmt.Errorf("failed to retrieve query result: %v", err)
+		}
+
+		// Use ctx.GetState correctly with 2 return values
+		value, err := ctx.GetState(result.Key)
+		if err != nil {
+			return 0, fmt.Errorf("failed to retrieve owners: %v", err)
+		}
+
+		var owner kaps.Owner
+		err = json.Unmarshal(value, &owner)
+		if err != nil {
+			return 0, fmt.Errorf("failed to unmarshal owners: %v", err)
+		}
+
+		owners = append(owners, &owner)
+		logger.Infof("owner ----------->%v\n", owners)
+	}
+	for i := 0; i < len(owners); i++ {
+		creditBalance += owners[i].Amount
+	}
+	return creditBalance, nil
+}
+func (s *SmartContract) GetDebitBalance(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
+	logger := kalpsdk.NewLogger()
+	queryString := `{"selector": {"debitAccount": "` + account + `", "docType": "Owner"}	 }`
+	fmt.Printf("query: %v\n", queryString)
+	debitBalance := 0.0
+	queryResults, err := ctx.GetQueryResult(queryString)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	defer queryResults.Close()
+
+	var owners []*kaps.Owner
+	for queryResults.HasNext() {
+		result, err := queryResults.Next()
+		if err != nil {
+			return 0, fmt.Errorf("failed to retrieve query result: %v", err)
+		}
+
+		// Use ctx.GetState correctly with 2 return values
+		value, err := ctx.GetState(result.Key)
+		if err != nil {
+			return 0, fmt.Errorf("failed to retrieve owners: %v", err)
+		}
+
+		var owner kaps.Owner
+		err = json.Unmarshal(value, &owner)
+		if err != nil {
+			return 0, fmt.Errorf("failed to unmarshal owners: %v", err)
+		}
+
+		owners = append(owners, &owner)
+		logger.Infof("owner ----------->%v\n", owners)
+	}
+	for i := 0; i < len(owners); i++ {
+		debitBalance += owners[i].Amount
+	}
+	return debitBalance, nil
+}
 func (s *SmartContract) GetBalanceForAccount(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
 	logger := kalpsdk.NewLogger()
 	account = strings.Trim(account, " ")
