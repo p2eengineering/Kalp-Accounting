@@ -46,6 +46,19 @@ type GiniTransaction struct {
 	Desc          string  `json:"Desc"`
 }
 
+type GiniNIU struct {
+	Id          string      `json:"id"`
+	DocType     string      `json:"docType"`
+	Name        string      `json:"name"`
+	Type        string      `json:"type,omitempty" metadata:",optional"`
+	Desc        string      `json:"desc,omitempty" metadata:",optional"`
+	Status      string      `json:"status,omitempty" metadata:",optional"`
+	Account     []string    `json:"account"`
+	MetaData    interface{} `json:"metadata,omitempty" metadata:",optional"`
+	TotalSupply float64     `json:"totalSupply,omitempty" metadata:",optional"`
+	Uri         string      `json:"uri,omitempty" metadata:",optional"`
+	AssetDigest string      `json:"assetDigest,omitempty" metadata:",optional"`
+}
 type TransferNIU struct {
 	TxnId     string  `json:"TxnId" validate:"required"`
 	Sender    string  `json:"Sender" validate:"required"`
@@ -300,6 +313,69 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
 
+	giniJSON, err := ctx.GetState(GINI)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("internal error: failed to read CBDC world state in Mint request: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("internal error %v: failed to read CBDC world state in Mint request: %v", http.StatusBadRequest, err)
+	}
+
+	var gini GiniNIU
+	if giniJSON == nil {
+
+		errs = json.Unmarshal([]byte(data), &gini)
+		if errs != nil {
+			return Response{
+				Message:    fmt.Sprintf("internal error: error in parsing CBDC data in Mint request %v", errs),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("internal error %v: error in parsing CBDC data in Mint request %v", http.StatusBadRequest, errs)
+		}
+		gini.Id = GINI
+		gini.Name = GINI
+		gini.DocType = kaps.DocTypeNIU
+		gini.Account = []string{operator}
+		gini.TotalSupply = acc.Amount
+
+	} else {
+		errs = json.Unmarshal([]byte(giniJSON), &gini)
+		if errs != nil {
+			return Response{
+				Message:    fmt.Sprintf("internal error: error in parsing existing GINI data in Mint request %v", errs),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request %v", http.StatusBadRequest, errs)
+		}
+
+		gini.Id = GINI
+		gini.Name = GINI
+		gini.DocType = kaps.DocTypeNIU
+		gini.TotalSupply += acc.Amount
+	}
+
+	giniiJSON, err := json.Marshal(gini)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("internal error: unable to parse CBDC data %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("internal error %v: unable to parse CBDC data %v", http.StatusBadRequest, err)
+	}
+	if err := ctx.PutStateWithoutKYC(gini.Id, giniiJSON); err != nil {
+		logger.Errorf("error: %v\n", err)
+		return Response{
+			Message:    fmt.Sprintf("internal error: unable to store CBDC NIU data in blockchain: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("internal error %v: unable to store CBDC NIU data in blockchain: %v", http.StatusInternalServerError, err)
+	}
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
 	err = kaps.MintUtxoHelperWithoutKYC(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
@@ -469,8 +545,37 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
 		}
 	}
+	var gini GiniNIU
+	giniJSON, err := ctx.GetState(GINI)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("internal error: failed to read GINI from world state in burn request: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("internal error %v: failed to read GINI from world state in burn request: %v", http.StatusBadRequest, err)
+	}
+	errs = json.Unmarshal([]byte(giniJSON), &gini)
+	if errs != nil {
+		return Response{
+			Message:    fmt.Sprintf("internal error: error in parsing GINI data in Burn request %v", errs),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("internal error %v: error in parsing GINI data in Burn request %v", http.StatusBadRequest, errs)
+	}
 
-	logger.Infof("MintToken Amount---->", acc.Amount)
+	gini.TotalSupply -= acc.Amount
+	giniiJSON, err := json.Marshal(gini)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("internal error: unable to parse GINI data in Burn request %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("internal error %v: unable to parse GINI data in Burn request %v", http.StatusBadRequest, err)
+	}
+	logger.Infof("Burn Token Amount---->", acc.Amount)
 	if env == "dev" {
 		if err = ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
 			return Response{
@@ -480,13 +585,35 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 				StatusCode: http.StatusBadRequest,
 			}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
 		}
-	} else if err = ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
-		return Response{
-			Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
+
+		if err := ctx.PutStateWithoutKYC(gini.Id, giniiJSON); err != nil {
+			logger.Errorf("error: %v\n", err)
+			return Response{
+				Message:    fmt.Sprintf("internal error: unable to store NIU data in blockchain: %v", err),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("internal error %v: unable to store NIU data in blockchain: %v", http.StatusInternalServerError, err)
+		}
+	} else {
+		if err = ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
+			return Response{
+				Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
+		}
+
+		if err = ctx.PutStateWithKYC(gini.Id, giniiJSON); err != nil {
+			logger.Errorf("error: %v\n", err)
+			return Response{
+				Message:    fmt.Sprintf("internal error: unable to store NIU data with KYC in blockchain: %v", err),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusInternalServerError,
+			}, fmt.Errorf("internal error %v: unable to store NIU data with KYC in blockchain: %v", http.StatusInternalServerError, err)
+		}
 	}
 
 	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount}); err != nil {
@@ -866,4 +993,27 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 		return 0.0, fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
 	return allowance, nil
+}
+
+func (s *SmartContract) GetTotalSupply(ctx kalpsdk.TransactionContextInterface) (float64, error) {
+	logger := kalpsdk.NewLogger()
+
+	// Retrieve the current balance for the account and token ID
+	giniBytes, err := ctx.GetState(GINI)
+	if err != nil {
+		return 0, fmt.Errorf("internal error: failed to read CBDC NIU %v", err)
+	}
+	var gini GiniNIU
+	if giniBytes != nil {
+		logger.Infof("unmarshelling CBDC  bytes")
+		// Unmarshal the current CBDC NIU details into an CBDCNIU struct
+		err = json.Unmarshal(giniBytes, &gini)
+		if err != nil {
+			return 0, fmt.Errorf("internal error: failed to parse CBDC NIU %v", err)
+		}
+		logger.Infof("cbdc %v\n", gini)
+		return gini.TotalSupply, nil
+	}
+
+	return 0, nil
 }
