@@ -92,6 +92,28 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	return true, nil
 }
 
+func (s *SmartContract) Name(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	bytes, err := ctx.GetState(nameKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to get Name: %v", err)
+	}
+	if bytes != nil {
+		return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
+	}
+	return string(bytes), nil
+}
+
+func (s *SmartContract) Symbol(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	bytes, err := ctx.GetState(symbolKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to get Name: %v", err)
+	}
+	if bytes != nil {
+		return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
+	}
+	return string(bytes), nil
+}
+
 // 	if err := ctx.PutStateWithKYC(niuData.Id, niuJSON); err != nil {
 // 		return fmt.Errorf("unable to put Asset struct in statedb: %v", err)
 // 	}
@@ -494,9 +516,9 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}, nil
 }
 
-func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
+func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	logger := kalpsdk.NewLogger()
-	logger.Infof("TransferToken---->%s", env)
+	logger.Infof("Transfer---->%s", env)
 	var transferNIU TransferNIU
 	errs := json.Unmarshal([]byte(data), &transferNIU)
 	if errs != nil {
@@ -686,38 +708,20 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 
 }
 
-func (s *SmartContract) GetBalanceForAccount(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
+func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
 	logger := kalpsdk.NewLogger()
 	account = strings.Trim(account, " ")
 	if account == "" {
 		return 0, fmt.Errorf("invalid input account is required")
 	}
-	var owner kaps.Owner
 	id := GINI
-	ownerKey, err := ctx.CreateCompositeKey(OwnerPrefix, []string{account, id})
-	logger.Infof("ownerKey %v\n", ownerKey)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create composite key for account %v and token %v: %v", account, id, err)
+	amt, err := kaps.GetTotalUTXO(ctx, id, account)
+	if account == "" {
+		return 0, fmt.Errorf("error: %v", err)
 	}
+	logger.Infof("total balance%v\n", amt)
 
-	// Retrieve the current balance for the account and token ID
-	ownerBytes, err := ctx.GetState(ownerKey)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read balance for account %v and token %v: %v", account, id, err)
-	}
-
-	if ownerBytes != nil {
-		logger.Infof("unmarshelling balance bytes")
-		// Unmarshal the current balance into an Owner struct
-		err = json.Unmarshal(ownerBytes, &owner)
-		if err != nil {
-			return 0, fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", account, id, err)
-		}
-		logger.Infof("owner %v\n", owner)
-		return owner.Amount, nil
-	}
-
-	return 0, nil
+	return amt, nil
 }
 
 // GetHistoryForAsset is a smart contract function which list the complete history of particular R2CI asset from blockchain ledger.
@@ -781,7 +785,6 @@ func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextIn
 	return timestamp.AsTime().String(), nil
 }
 
-// GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
 func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	var allow kaps.Allow
 
@@ -812,10 +815,11 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data st
 	}, nil
 }
 
-// GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
 func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
-	var allow kaps.Allow
+	logger := kalpsdk.NewLogger()
+	logger.Infof("TransferFrom---->%s", env)
 
+	var allow kaps.Allow
 	err := json.Unmarshal([]byte(data), &allow)
 	if err != nil {
 		return Response{
@@ -850,4 +854,16 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 		StatusCode: http.StatusCreated,
 		Response:   response,
 	}, nil
+}
+
+func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string) (float64, error) {
+	operator, err := kaps.GetUserId(ctx)
+	if err != nil {
+		return 0.0, fmt.Errorf("internal error %v: failed to get client id: %v", http.StatusBadRequest, err)
+	}
+	allowance, err := kaps.Allowance(ctx, owner, operator)
+	if err != nil {
+		return 0.0, fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
+	}
+	return allowance, nil
 }
