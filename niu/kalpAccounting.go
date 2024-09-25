@@ -995,23 +995,23 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 	return allowance, nil
 }
 
-func (s *SmartContract) GetTotalSupply(ctx kalpsdk.TransactionContextInterface) (float64, error) {
+func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (float64, error) {
 	logger := kalpsdk.NewLogger()
 
 	// Retrieve the current balance for the account and token ID
 	giniBytes, err := ctx.GetState(GINI)
 	if err != nil {
-		return 0, fmt.Errorf("internal error: failed to read CBDC NIU %v", err)
+		return 0, fmt.Errorf("internal error: failed to read GINI NIU %v", err)
 	}
 	var gini GiniNIU
 	if giniBytes != nil {
-		logger.Infof("unmarshelling CBDC  bytes")
+		logger.Infof("unmarshelling GINI  bytes")
 		// Unmarshal the current CBDC NIU details into an CBDCNIU struct
 		err = json.Unmarshal(giniBytes, &gini)
 		if err != nil {
-			return 0, fmt.Errorf("internal error: failed to parse CBDC NIU %v", err)
+			return 0, fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
 		}
-		logger.Infof("cbdc %v\n", gini)
+		logger.Infof("gini %v\n", gini)
 		return gini.TotalSupply, nil
 	}
 
