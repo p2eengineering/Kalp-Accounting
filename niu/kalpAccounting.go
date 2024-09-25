@@ -47,13 +47,13 @@ type GiniTransaction struct {
 }
 
 type GiniNIU struct {
-	Id          string      `json:"id"`
-	DocType     string      `json:"docType"`
+	Id          string      `json:"Id"`
+	DocType     string      `json:"DocType"`
 	Name        string      `json:"name"`
 	Type        string      `json:"type,omitempty" metadata:",optional"`
-	Desc        string      `json:"desc,omitempty" metadata:",optional"`
+	Desc        string      `json:"Desc,omitempty" metadata:",optional"`
 	Status      string      `json:"status,omitempty" metadata:",optional"`
-	Account     []string    `json:"account"`
+	Account     string      `json:"Account"`
 	MetaData    interface{} `json:"metadata,omitempty" metadata:",optional"`
 	TotalSupply float64     `json:"totalSupply,omitempty" metadata:",optional"`
 	Uri         string      `json:"uri,omitempty" metadata:",optional"`
@@ -316,11 +316,11 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	giniJSON, err := ctx.GetState(GINI)
 	if err != nil {
 		return Response{
-			Message:    fmt.Sprintf("internal error: failed to read CBDC world state in Mint request: %v", err),
+			Message:    fmt.Sprintf("internal error: failed to read GINI world state in Mint request: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: failed to read CBDC world state in Mint request: %v", http.StatusBadRequest, err)
+		}, fmt.Errorf("internal error %v: failed to read GINI world state in Mint request: %v", http.StatusBadRequest, err)
 	}
 
 	var gini GiniNIU
@@ -329,16 +329,16 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		errs = json.Unmarshal([]byte(data), &gini)
 		if errs != nil {
 			return Response{
-				Message:    fmt.Sprintf("internal error: error in parsing CBDC data in Mint request %v", errs),
+				Message:    fmt.Sprintf("internal error: error in parsing GINI data in Mint request %v", errs),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("internal error %v: error in parsing CBDC data in Mint request %v", http.StatusBadRequest, errs)
+			}, fmt.Errorf("internal error %v: error in parsing GINI data in Mint request %v", http.StatusBadRequest, errs)
 		}
 		gini.Id = GINI
 		gini.Name = GINI
 		gini.DocType = kaps.DocTypeNIU
-		gini.Account = []string{operator}
+		gini.Account = operator
 		gini.TotalSupply = acc.Amount
 
 	} else {
@@ -361,20 +361,20 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	giniiJSON, err := json.Marshal(gini)
 	if err != nil {
 		return Response{
-			Message:    fmt.Sprintf("internal error: unable to parse CBDC data %v", err),
+			Message:    fmt.Sprintf("internal error: unable to parse GINI data %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: unable to parse CBDC data %v", http.StatusBadRequest, err)
+		}, fmt.Errorf("internal error %v: unable to parse GINI data %v", http.StatusBadRequest, err)
 	}
 	if err := ctx.PutStateWithoutKYC(gini.Id, giniiJSON); err != nil {
 		logger.Errorf("error: %v\n", err)
 		return Response{
-			Message:    fmt.Sprintf("internal error: unable to store CBDC NIU data in blockchain: %v", err),
+			Message:    fmt.Sprintf("internal error: unable to store GINI NIU data in blockchain: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("internal error %v: unable to store CBDC NIU data in blockchain: %v", http.StatusInternalServerError, err)
+		}, fmt.Errorf("internal error %v: unable to store GINI NIU data in blockchain: %v", http.StatusInternalServerError, err)
 	}
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
@@ -1006,7 +1006,7 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (fl
 	var gini GiniNIU
 	if giniBytes != nil {
 		logger.Infof("unmarshelling GINI  bytes")
-		// Unmarshal the current CBDC NIU details into an CBDCNIU struct
+		// Unmarshal the current GINI NIU details into an GININIU struct
 		err = json.Unmarshal(giniBytes, &gini)
 		if err != nil {
 			return 0, fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
