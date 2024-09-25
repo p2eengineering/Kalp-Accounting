@@ -280,7 +280,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
-	err = kaps.MintHelperWithoutKYC(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
+	err = kaps.MintUtxoHelperWithoutKYC(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
@@ -415,7 +415,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
 
-	err = kaps.RemoveBalance(ctx, acc.Id, []string{acc.Account}, acc.Amount)
+	err = kaps.RemoveUtxo(ctx, acc.Id, []string{acc.Account}, acc.Amount)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
@@ -637,7 +637,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	transferNIU.DocType = GINI_PAYMENT_TXN
 
 	// Withdraw the funds from the sender address
-	err = kaps.RemoveBalance(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Amount)
+	err = kaps.RemoveUtxo(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Amount)
 	if err != nil {
 		return Response{
 			Message:    "error while reducing balance",
@@ -648,7 +648,7 @@ func (s *SmartContract) TransferToken(ctx kalpsdk.TransactionContextInterface, d
 	}
 
 	// Deposit the fund to the recipient address
-	err = kaps.AddBalance(ctx, transferNIU.Id, []string{transferNIU.Receiver}, transferNIU.Amount)
+	err = kaps.AddUtxo(ctx, transferNIU.Id, []string{transferNIU.Receiver}, transferNIU.Amount)
 	if err != nil {
 		return Response{
 			Message:    "error while adding balance",
@@ -779,4 +779,75 @@ func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextIn
 	}
 
 	return timestamp.AsTime().String(), nil
+}
+
+// GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
+func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
+	var allow kaps.Allow
+
+	err := json.Unmarshal([]byte(data), &allow)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to remove funds: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("error is parsing transfer request data: %v", err)
+	}
+	kaps.Approve(ctx, allow.Id, allow.Account, allow.Amount)
+	funcName, _ := ctx.GetFunctionAndParameters()
+	response := map[string]interface{}{
+		"txId":            ctx.GetTxID(),
+		"txFcn":           funcName,
+		"txType":          "Invoke",
+		"transactionData": allow,
+	}
+
+	return Response{
+		Message:    "Funds transfered successfully",
+		Success:    true,
+		Status:     "Success",
+		StatusCode: http.StatusCreated,
+		Response:   response,
+	}, nil
+}
+
+// GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
+func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
+	var allow kaps.Allow
+
+	err := json.Unmarshal([]byte(data), &allow)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to marshall data: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("error: unable to marshall data: %v", err)
+	}
+	fmt.Printf("allow: %v\n", allow)
+	err = kaps.TransferedFrom(ctx, []string{allow.Id}, []string{allow.Account}, GINI, allow.Amount, "UTXO")
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to tramsfer funds: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("error: unable to tramsfer funds: %v", err)
+	}
+	funcName, _ := ctx.GetFunctionAndParameters()
+	response := map[string]interface{}{
+		"txId":            ctx.GetTxID(),
+		"txFcn":           funcName,
+		"txType":          "Invoke",
+		"transactionData": allow,
+	}
+
+	return Response{
+		Message:    "Funds transfered successfully",
+		Success:    true,
+		Status:     "Success",
+		StatusCode: http.StatusCreated,
+		Response:   response,
+	}, nil
 }
