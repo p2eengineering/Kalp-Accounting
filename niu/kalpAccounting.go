@@ -302,7 +302,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
-	err = kaps.MintUtxoHelperWithoutKYC(ctx, operator, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
+	err = kaps.MintUtxoHelperWithoutKYC(ctx, []string{acc.Account}, acc.Id, acc.Amount, kaps.DocTypeNIU)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
@@ -437,7 +437,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
 
-	err = kaps.RemoveUtxo(ctx, acc.Id, []string{acc.Account}, acc.Amount)
+	err = kaps.RemoveUtxo(ctx, acc.Id, acc.Account, acc.Amount)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
@@ -659,7 +659,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data s
 	transferNIU.DocType = GINI_PAYMENT_TXN
 
 	// Withdraw the funds from the sender address
-	err = kaps.RemoveUtxo(ctx, transferNIU.Id, []string{transferNIU.Sender}, transferNIU.Amount)
+	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, transferNIU.Amount)
 	if err != nil {
 		return Response{
 			Message:    "error while reducing balance",
@@ -670,7 +670,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data s
 	}
 
 	// Deposit the fund to the recipient address
-	err = kaps.AddUtxo(ctx, transferNIU.Id, []string{transferNIU.Receiver}, transferNIU.Amount)
+	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, transferNIU.Amount)
 	if err != nil {
 		return Response{
 			Message:    "error while adding balance",
