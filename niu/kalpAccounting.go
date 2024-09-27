@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -42,8 +43,8 @@ type GiniTransaction struct {
 	Id            string
 	Account       string `json:"Account" validate:"required"`
 	DocType       string
-	Amount        float64 `json:"Amount" validate:"required,gt=0"`
-	Desc          string  `json:"Desc"`
+	Amount        *big.Int `json:"Amount" validate:"required,gt=0"`
+	Desc          string   `json:"Desc"`
 }
 
 type GiniNIU struct {
@@ -55,18 +56,18 @@ type GiniNIU struct {
 	Status      string      `json:"status,omitempty" metadata:",optional"`
 	Account     string      `json:"Account"`
 	MetaData    interface{} `json:"metadata,omitempty" metadata:",optional"`
-	TotalSupply float64     `json:"totalSupply,omitempty" metadata:",optional"`
+	TotalSupply *big.Int    `json:"totalSupply,omitempty" metadata:",optional"`
 	Uri         string      `json:"uri,omitempty" metadata:",optional"`
 	AssetDigest string      `json:"assetDigest,omitempty" metadata:",optional"`
 }
 type TransferNIU struct {
-	TxnId     string  `json:"TxnId" validate:"required"`
-	Sender    string  `json:"Sender" validate:"required"`
-	Receiver  string  `json:"Receiver" validate:"required"`
-	Id        string  `json:"Id" `
-	DocType   string  `json:"DocType"`
-	Amount    float64 `json:"Amount" validate:"required,gt=0"`
-	TimeStamp string  `json:"TimeStamp" `
+	TxnId     string   `json:"TxnId" validate:"required"`
+	Sender    string   `json:"Sender" validate:"required"`
+	Receiver  string   `json:"Receiver" validate:"required"`
+	Id        string   `json:"Id" `
+	DocType   string   `json:"DocType"`
+	Amount    *big.Int `json:"Amount" validate:"required,gt=0"`
+	TimeStamp string   `json:"TimeStamp" `
 }
 type Response struct {
 	Status     string      `json:"status"`
@@ -280,7 +281,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
 	}
 
-	if acc.Amount <= 0 {
+	if acc.Amount.Cmp(big.NewInt(0)) == -1 || acc.Amount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
 		return Response{
 			Message:    "amount can't be less then 0",
 			Success:    false,
@@ -355,7 +356,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.Id = GINI
 		gini.Name = GINI
 		gini.DocType = kaps.DocTypeNIU
-		gini.TotalSupply += acc.Amount
+		gini.TotalSupply = gini.TotalSupply.Add(gini.TotalSupply, acc.Amount) // += acc.Amount
 	}
 
 	giniiJSON, err := json.Marshal(gini)
@@ -565,7 +566,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("internal error %v: error in parsing GINI data in Burn request %v", http.StatusBadRequest, errs)
 	}
 
-	gini.TotalSupply -= acc.Amount
+	gini.TotalSupply = gini.TotalSupply.Sub(gini.TotalSupply, acc.Amount) // -= acc.Amount
 	giniiJSON, err := json.Marshal(gini)
 	if err != nil {
 		return Response{
@@ -835,16 +836,16 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data s
 
 }
 
-func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, account string) (float64, error) {
+func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, account string) (*big.Int, error) {
 	logger := kalpsdk.NewLogger()
 	account = strings.Trim(account, " ")
 	if account == "" {
-		return 0, fmt.Errorf("invalid input account is required")
+		return big.NewInt(0), fmt.Errorf("invalid input account is required")
 	}
 	id := GINI
 	amt, err := kaps.GetTotalUTXO(ctx, id, account)
 	if account == "" {
-		return 0, fmt.Errorf("error: %v", err)
+		return big.NewInt(0), fmt.Errorf("error: %v", err)
 	}
 	logger.Infof("total balance%v\n", amt)
 
@@ -983,25 +984,25 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 	}, nil
 }
 
-func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string) (float64, error) {
+func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string) (*big.Int, error) {
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
-		return 0.0, fmt.Errorf("internal error %v: failed to get client id: %v", http.StatusBadRequest, err)
+		return big.NewInt(0), fmt.Errorf("internal error %v: failed to get client id: %v", http.StatusBadRequest, err)
 	}
 	allowance, err := kaps.Allowance(ctx, owner, operator)
 	if err != nil {
-		return 0.0, fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
+		return big.NewInt(0), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
 	return allowance, nil
 }
 
-func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (float64, error) {
+func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (*big.Int, error) {
 	logger := kalpsdk.NewLogger()
 
 	// Retrieve the current balance for the account and token ID
 	giniBytes, err := ctx.GetState(GINI)
 	if err != nil {
-		return 0, fmt.Errorf("internal error: failed to read GINI NIU %v", err)
+		return big.NewInt(0), fmt.Errorf("internal error: failed to read GINI NIU %v", err)
 	}
 	var gini GiniNIU
 	if giniBytes != nil {
@@ -1009,11 +1010,11 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (fl
 		// Unmarshal the current GINI NIU details into an GININIU struct
 		err = json.Unmarshal(giniBytes, &gini)
 		if err != nil {
-			return 0, fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
+			return big.NewInt(0), fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
 		}
 		logger.Infof("gini %v\n", gini)
 		return gini.TotalSupply, nil
 	}
 
-	return 0, nil
+	return big.NewInt(0), nil
 }
