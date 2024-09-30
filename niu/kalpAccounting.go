@@ -836,20 +836,20 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data s
 
 }
 
-func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, account string) (*big.Int, error) {
+func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
 	logger := kalpsdk.NewLogger()
 	account = strings.Trim(account, " ")
 	if account == "" {
-		return big.NewInt(0), fmt.Errorf("invalid input account is required")
+		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
 	}
 	id := GINI
 	amt, err := kaps.GetTotalUTXO(ctx, id, account)
 	if account == "" {
-		return big.NewInt(0), fmt.Errorf("error: %v", err)
+		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
 	}
 	logger.Infof("total balance%v\n", amt)
 
-	return amt, nil
+	return amt.String(), nil
 }
 
 // GetHistoryForAsset is a smart contract function which list the complete history of particular R2CI asset from blockchain ledger.
@@ -984,25 +984,25 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 	}, nil
 }
 
-func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string) (*big.Int, error) {
+func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
-		return big.NewInt(0), fmt.Errorf("internal error %v: failed to get client id: %v", http.StatusBadRequest, err)
+		return big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get client id: %v", http.StatusBadRequest, err)
 	}
 	allowance, err := kaps.Allowance(ctx, owner, operator)
 	if err != nil {
-		return big.NewInt(0), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
+		return big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
-	return allowance, nil
+	return allowance.String(), nil
 }
 
-func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (*big.Int, error) {
+func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	logger := kalpsdk.NewLogger()
 
 	// Retrieve the current balance for the account and token ID
 	giniBytes, err := ctx.GetState(GINI)
 	if err != nil {
-		return big.NewInt(0), fmt.Errorf("internal error: failed to read GINI NIU %v", err)
+		return big.NewInt(0).String(), fmt.Errorf("internal error: failed to read GINI NIU %v", err)
 	}
 	var gini GiniNIU
 	if giniBytes != nil {
@@ -1010,11 +1010,11 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (*b
 		// Unmarshal the current GINI NIU details into an GININIU struct
 		err = json.Unmarshal(giniBytes, &gini)
 		if err != nil {
-			return big.NewInt(0), fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
+			return big.NewInt(0).String(), fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
 		}
 		logger.Infof("gini %v\n", gini)
-		return gini.TotalSupply, nil
+		return gini.TotalSupply.String(), nil
 	}
 
-	return big.NewInt(0), nil
+	return big.NewInt(0).String(), nil
 }
