@@ -43,7 +43,7 @@ type GiniTransaction struct {
 	Id            string
 	Account       string `json:"Account" validate:"required"`
 	DocType       string
-	Amount        *big.Int `json:"Amount" validate:"required,gt=0"`
+	Amount        *big.Int `json:"Amount" validate:"required"`
 	Desc          string   `json:"Desc"`
 }
 
@@ -66,7 +66,7 @@ type TransferNIU struct {
 	Receiver  string   `json:"Receiver" validate:"required"`
 	Id        string   `json:"Id" `
 	DocType   string   `json:"DocType"`
-	Amount    *big.Int `json:"Amount" validate:"required,gt=0"`
+	Amount    *big.Int `json:"Amount" validate:"required"`
 	TimeStamp string   `json:"TimeStamp" `
 }
 type Response struct {
