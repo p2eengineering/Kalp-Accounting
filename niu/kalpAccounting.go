@@ -961,11 +961,11 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 	err = kaps.TransferedFrom(ctx, []string{allow.Id}, []string{allow.Account}, GINI, allow.Amount, "UTXO")
 	if err != nil {
 		return Response{
-			Message:    fmt.Sprintf("unable to tramsfer funds: %v", err),
+			Message:    fmt.Sprintf("unable to transfer funds: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error: unable to tramsfer funds: %v", err)
+		}, fmt.Errorf("error: unable to transfer funds: %v", err)
 	}
 	funcName, _ := ctx.GetFunctionAndParameters()
 	response := map[string]interface{}{
