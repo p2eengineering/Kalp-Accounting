@@ -716,7 +716,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, accou
 	}
 	id := GINI
 	amt, err := kaps.GetTotalUTXO(ctx, id, account)
-	if account == "" {
+	if err != nil {
 		return 0, fmt.Errorf("error: %v", err)
 	}
 	logger.Infof("total balance%v\n", amt)
@@ -807,7 +807,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data st
 	}
 
 	return Response{
-		Message:    "Funds transfered successfully",
+		Message:    "Allowance approved successfully",
 		Success:    true,
 		Status:     "Success",
 		StatusCode: http.StatusCreated,
