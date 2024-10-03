@@ -830,7 +830,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 		}, fmt.Errorf("error: unable to marshall data: %v", err)
 	}
 	fmt.Printf("allow: %v\n", allow)
-	err = kaps.TransferedFrom(ctx, []string{allow.Id}, []string{allow.Account}, GINI, allow.Amount, "UTXO")
+	err = kaps.TransferUTXOFrom(ctx, []string{allow.Id}, []string{allow.Account}, GINI, allow.Amount, "UTXO")
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to tramsfer funds: %v", err),
