@@ -513,7 +513,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
 
-	err = kaps.RemoveUtxo(ctx, acc.Id, acc.Account, acc.Amount)
+	err = kaps.RemoveUtxo(ctx, acc.Id, acc.Account, false, acc.Amount)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
@@ -786,7 +786,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data s
 	transferNIU.DocType = GINI_PAYMENT_TXN
 
 	// Withdraw the funds from the sender address
-	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, transferNIU.Amount)
+	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, false, transferNIU.Amount)
 	if err != nil {
 		return Response{
 			Message:    "error while reducing balance",
@@ -797,7 +797,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data s
 	}
 
 	// Deposit the fund to the recipient address
-	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, transferNIU.Amount)
+	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, false, transferNIU.Amount)
 	if err != nil {
 		return Response{
 			Message:    "error while adding balance",
@@ -843,7 +843,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, accou
 	}
 	id := GINI
 	amt, err := kaps.GetTotalUTXO(ctx, id, account)
-	if account == "" {
+	if err != nil {
 		return 0, fmt.Errorf("error: %v", err)
 	}
 	logger.Infof("total balance%v\n", amt)
@@ -934,7 +934,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data st
 	}
 
 	return Response{
-		Message:    "Funds transfered successfully",
+		Message:    "Allowance approved successfully",
 		Success:    true,
 		Status:     "Success",
 		StatusCode: http.StatusCreated,
@@ -957,7 +957,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 		}, fmt.Errorf("error: unable to marshall data: %v", err)
 	}
 	fmt.Printf("allow: %v\n", allow)
-	err = kaps.TransferedFrom(ctx, []string{allow.Id}, []string{allow.Account}, GINI, allow.Amount, "UTXO")
+	err = kaps.TransferUTXOFrom(ctx, []string{allow.Id}, []string{allow.Account}, GINI, allow.Amount, "UTXO")
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to tramsfer funds: %v", err),
