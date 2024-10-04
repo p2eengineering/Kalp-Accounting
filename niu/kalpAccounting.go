@@ -797,7 +797,15 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data st
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("error is parsing approve request data: %v", err)
 	}
-	kaps.Approve(ctx, allow.Id, allow.Account, allow.Amount)
+	err = kaps.Approve(ctx, allow.Id, allow.Account, allow.Amount)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to approve funds: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("error unable to approve funds: %v", err)
+	}
 	funcName, _ := ctx.GetFunctionAndParameters()
 	response := map[string]interface{}{
 		"txId":            ctx.GetTxID(),
