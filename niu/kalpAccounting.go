@@ -791,11 +791,11 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data st
 	err := json.Unmarshal([]byte(data), &allow)
 	if err != nil {
 		return Response{
-			Message:    fmt.Sprintf("unable to remove funds: %v", err),
+			Message:    fmt.Sprintf("unable to approve funds: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error is parsing transfer request data: %v", err)
+		}, fmt.Errorf("error is parsing approve request data: %v", err)
 	}
 	kaps.Approve(ctx, allow.Id, allow.Account, allow.Amount)
 	funcName, _ := ctx.GetFunctionAndParameters()
