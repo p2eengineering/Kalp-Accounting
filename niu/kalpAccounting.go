@@ -43,31 +43,31 @@ type GiniTransaction struct {
 	Id            string
 	Account       string `json:"Account" validate:"required"`
 	DocType       string
-	Amount        kaps.BigIntWrapper `json:"Amount" validate:"required"`
-	Desc          string             `json:"Desc"`
+	Amount        string `json:"Amount" validate:"required"`
+	Desc          string `json:"Desc"`
 }
 
 type GiniNIU struct {
-	Id          string             `json:"Id"`
-	DocType     string             `json:"DocType"`
-	Name        string             `json:"name"`
-	Type        string             `json:"type,omitempty" metadata:",optional"`
-	Desc        string             `json:"Desc,omitempty" metadata:",optional"`
-	Status      string             `json:"status,omitempty" metadata:",optional"`
-	Account     string             `json:"Account"`
-	MetaData    interface{}        `json:"metadata,omitempty" metadata:",optional"`
-	TotalSupply kaps.BigIntWrapper `json:"totalSupply,omitempty" metadata:",optional"`
-	Uri         string             `json:"uri,omitempty" metadata:",optional"`
-	AssetDigest string             `json:"assetDigest,omitempty" metadata:",optional"`
+	Id          string      `json:"Id"`
+	DocType     string      `json:"DocType"`
+	Name        string      `json:"name"`
+	Type        string      `json:"type,omitempty" metadata:",optional"`
+	Desc        string      `json:"Desc,omitempty" metadata:",optional"`
+	Status      string      `json:"status,omitempty" metadata:",optional"`
+	Account     string      `json:"Account"`
+	MetaData    interface{} `json:"metadata,omitempty" metadata:",optional"`
+	TotalSupply string      `json:"totalSupply,omitempty" metadata:",optional"`
+	Uri         string      `json:"uri,omitempty" metadata:",optional"`
+	AssetDigest string      `json:"assetDigest,omitempty" metadata:",optional"`
 }
 type TransferNIU struct {
-	TxnId     string             `json:"TxnId" validate:"required"`
-	Sender    string             `json:"Sender" validate:"required"`
-	Receiver  string             `json:"Receiver" validate:"required"`
-	Id        string             `json:"Id" `
-	DocType   string             `json:"DocType"`
-	Amount    kaps.BigIntWrapper `json:"Amount" validate:"required"`
-	TimeStamp string             `json:"TimeStamp" `
+	TxnId     string `json:"TxnId" validate:"required"`
+	Sender    string `json:"Sender" validate:"required"`
+	Receiver  string `json:"Receiver" validate:"required"`
+	Id        string `json:"Id" `
+	DocType   string `json:"DocType"`
+	Amount    string `json:"Amount" validate:"required"`
+	TimeStamp string `json:"TimeStamp" `
 }
 type Response struct {
 	Status     string      `json:"status"`
@@ -281,8 +281,16 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusConflict,
 		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
 	}
-
-	if acc.Amount.Int.Cmp(big.NewInt(0)) == -1 || acc.Amount.Int.Cmp(big.NewInt(0)) == 0 { // <= 0 {
+	accAmount, su := big.NewInt(0).SetString(acc.Amount, 10)
+	if !su {
+		return Response{
+			Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusConflict,
+		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
+	}
+	if accAmount.Cmp(big.NewInt(0)) == -1 || accAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
 		return Response{
 			Message:    "amount can't be less then 0",
 			Success:    false,
@@ -294,7 +302,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	acc.Id = GINI
 	acc.DocType = GINI_PAYMENT_TXN
 
-	logger.Infof("GINI amount %v\n", acc.Amount.Int)
+	logger.Infof("GINI amount %v\n", accAmount)
 	accJSON, err := json.Marshal(acc)
 	if err != nil {
 		return Response{
@@ -357,7 +365,16 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.Id = GINI
 		gini.Name = GINI
 		gini.DocType = kaps.DocTypeNIU
-		gini.TotalSupply = kaps.BigIntWrapper{Int: gini.TotalSupply.Int.Add(gini.TotalSupply.Int, acc.Amount.Int)} // += acc.Amount
+		gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
+		if !su {
+			return Response{
+				Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusConflict,
+			}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
+		}
+		gini.TotalSupply = gigiTotalSupply.Add(gigiTotalSupply, accAmount).String() // += acc.Amount
 	}
 
 	giniiJSON, err := json.Marshal(gini)
@@ -380,7 +397,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
-	err = kaps.MintUtxoHelperWithoutKYC(ctx, []string{acc.Account}, acc.Id, acc.Amount.Int, kaps.DocTypeNIU)
+	err = kaps.MintUtxoHelperWithoutKYC(ctx, []string{acc.Account}, acc.Id, accAmount, kaps.DocTypeNIU)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
@@ -400,8 +417,8 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("error with status code %v, Mint: unable to store GINI transaction data in blockchain: %v", http.StatusInternalServerError, err)
 	}
-	logger.Infof("Transfer single event: %v\n", acc.Amount.Int)
-	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, ID: acc.Id, Value: acc.Amount.Int}
+	logger.Infof("Transfer single event: %v\n", accAmount)
+	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, ID: acc.Id, Value: accAmount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to add funds: %v", err),
@@ -514,8 +531,16 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
-
-	err = kaps.RemoveUtxo(ctx, acc.Id, acc.Account, false, acc.Amount.Int)
+	accAmount, su := big.NewInt(0).SetString(acc.Amount, 10)
+	if !su {
+		return Response{
+			Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusConflict,
+		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
+	}
+	err = kaps.RemoveUtxo(ctx, acc.Id, acc.Account, false, accAmount)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
@@ -566,8 +591,16 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("internal error %v: error in parsing GINI data in Burn request %v", http.StatusBadRequest, errs)
 	}
-
-	gini.TotalSupply = kaps.BigIntWrapper{Int: gini.TotalSupply.Int.Sub(gini.TotalSupply.Int, acc.Amount.Int)} // -= acc.Amount
+	gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
+	if !su {
+		return Response{
+			Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusConflict,
+		}, fmt.Errorf("error with status code %v,can't convert amount to big int", http.StatusConflict, acc.Amount)
+	}
+	gini.TotalSupply = gigiTotalSupply.Sub(gigiTotalSupply, accAmount).String() // -= acc.Amount
 	giniiJSON, err := json.Marshal(gini)
 	if err != nil {
 		return Response{
@@ -577,7 +610,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("internal error %v: unable to parse GINI data in Burn request %v", http.StatusBadRequest, err)
 	}
-	logger.Infof("Burn Token Amount---->", acc.Amount.Int)
+	logger.Infof("Burn Token Amount---->", accAmount)
 	if env == "dev" {
 		if err = ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
 			return Response{
@@ -618,7 +651,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}
 	}
 
-	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: acc.Amount.Int}); err != nil {
+	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: accAmount}); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to remove funds: %v", err),
 			Success:    false,
@@ -787,26 +820,36 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data s
 	transferNIU.Id = GINI
 	transferNIU.DocType = GINI_PAYMENT_TXN
 
+	transferNIUAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
+	if !su {
+		return Response{
+			Message:    fmt.Sprintf("can't convert amount to big int %s", transferNIU.Amount),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusConflict,
+		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
+	}
 	// Withdraw the funds from the sender address
-	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, false, transferNIU.Amount)
+	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, false, transferNIUAmount)
 	if err != nil {
+		fmt.Printf("transfer remove err: %v", err)
 		return Response{
 			Message:    "error while reducing balance",
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:error while reducing balance", http.StatusBadRequest)
+		}, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
 	}
 
 	// Deposit the fund to the recipient address
-	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, false, transferNIU.Amount)
+	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, false, transferNIUAmount)
 	if err != nil {
 		return Response{
 			Message:    "error while adding balance",
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:error while adding balance", http.StatusBadRequest)
+		}, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 	}
 
 	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
@@ -848,9 +891,10 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, accou
 	if err != nil {
 		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
 	}
+
 	logger.Infof("total balance%v\n", amt)
 
-	return amt.String(), nil
+	return amt, nil
 }
 
 // GetHistoryForAsset is a smart contract function which list the complete history of particular R2CI asset from blockchain ledger.
@@ -994,7 +1038,7 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 	if err != nil {
 		return big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
-	return allowance.String(), nil
+	return allowance, nil
 }
 
 func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
@@ -1007,6 +1051,7 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (st
 	}
 	var gini GiniNIU
 	if giniBytes != nil {
+		logger.Infof("%s\n", string(giniBytes))
 		logger.Infof("unmarshelling GINI  bytes")
 		// Unmarshal the current GINI NIU details into an GININIU struct
 		err = json.Unmarshal(giniBytes, &gini)
@@ -1014,7 +1059,7 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (st
 			return big.NewInt(0).String(), fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
 		}
 		logger.Infof("gini %v\n", gini)
-		return gini.TotalSupply.String(), nil
+		return gini.TotalSupply, nil
 	}
 
 	return big.NewInt(0).String(), nil
