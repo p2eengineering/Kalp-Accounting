@@ -964,13 +964,21 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data st
 	err := json.Unmarshal([]byte(data), &allow)
 	if err != nil {
 		return Response{
-			Message:    fmt.Sprintf("unable to remove funds: %v", err),
+			Message:    fmt.Sprintf("unable to approve funds: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error is parsing transfer request data: %v", err)
+		}, fmt.Errorf("error is parsing approve request data: %v", err)
 	}
-	kaps.Approve(ctx, allow.Id, allow.Account, allow.Amount)
+	err = kaps.Approve(ctx, allow.Id, allow.Account, allow.Amount)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to approve funds: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusInternalServerError,
+		}, fmt.Errorf("error unable to approve funds:: %v", err)
+	}
 	funcName, _ := ctx.GetFunctionAndParameters()
 	response := map[string]interface{}{
 		"txId":            ctx.GetTxID(),
@@ -1002,7 +1010,6 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("error: unable to marshall data: %v", err)
 	}
-	fmt.Printf("allow: %v\n", allow)
 	err = kaps.TransferUTXOFrom(ctx, []string{allow.Id}, []string{allow.Account}, GINI, allow.Amount, "UTXO")
 	if err != nil {
 		return Response{
