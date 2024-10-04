@@ -977,7 +977,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data st
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error unable to approve funds:: %v", err)
+		}, fmt.Errorf("error unable to approve funds: %v", err)
 	}
 	funcName, _ := ctx.GetFunctionAndParameters()
 	response := map[string]interface{}{
