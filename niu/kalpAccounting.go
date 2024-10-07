@@ -55,6 +55,12 @@ type TransferNIU struct {
 	Amount    float64 `json:"Amount" validate:"required,gt=0"`
 	TimeStamp string  `json:"TimeStamp" `
 }
+type Transfrom struct {
+	Owner    string `json:"owner" validate:"required"`
+	Spender  string `json:"spender" validate:"required"`
+	Receiver string `json:"receiver" validate:"required"`
+	Amount   string `json:"amount" validate:"required"`
+}
 type Response struct {
 	Status     string      `json:"status"`
 	StatusCode uint        `json:"statusCode"`
@@ -797,7 +803,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data st
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("error is parsing approve request data: %v", err)
 	}
-	err = kaps.Approve(ctx, allow.Id, allow.Account, allow.Amount)
+	err = kaps.Approve(ctx, allow.Owner, allow.Spender, allow.Amount)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to approve funds: %v", err),
@@ -827,8 +833,8 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 	logger := kalpsdk.NewLogger()
 	logger.Infof("TransferFrom---->%s", env)
 
-	var allow kaps.Allow
-	err := json.Unmarshal([]byte(data), &allow)
+	var transferFrom Transfrom
+	err := json.Unmarshal([]byte(data), &transferFrom)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to marshall data: %v", err),
@@ -837,8 +843,8 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("error: unable to marshall data: %v", err)
 	}
-	fmt.Printf("allow: %v\n", allow)
-	err = kaps.TransferUTXOFrom(ctx, []string{allow.Id}, []string{allow.Account}, GINI, allow.Amount, "UTXO")
+	fmt.Printf("allow: %v\n", transferFrom)
+	err = kaps.TransferUTXOFrom(ctx, []string{transferFrom.Owner}, []string{transferFrom.Spender}, transferFrom.Receiver, GINI, transferFrom.Amount, "UTXO")
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to tramsfer funds: %v", err),
@@ -852,7 +858,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 		"txId":            ctx.GetTxID(),
 		"txFcn":           funcName,
 		"txType":          "Invoke",
-		"transactionData": allow,
+		"transactionData": transferFrom,
 	}
 
 	return Response{
@@ -864,14 +870,14 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 	}, nil
 }
 
-func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string) (float64, error) {
+func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
-		return 0.0, fmt.Errorf("internal error %v: failed to get client id: %v", http.StatusBadRequest, err)
+		return "", fmt.Errorf("internal error %v: failed to get client id: %v", http.StatusBadRequest, err)
 	}
 	allowance, err := kaps.Allowance(ctx, owner, operator)
 	if err != nil {
-		return 0.0, fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
+		return "", fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
 	return allowance, nil
 }
