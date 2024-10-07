@@ -192,7 +192,7 @@ func (t *TransferNIU) TransferNIUValidation() error {
 	}
 	return nil
 }
-func (t *TransferfromNIU) TransferNIUValidation() error {
+func (t *TransferfromNIU) TransferFromNIUValidation() error {
 	txnId := strings.Trim(t.TxnId, " ")
 	if txnId == "" {
 		return fmt.Errorf("invalid input TxnId")
@@ -893,6 +893,16 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 				StatusCode: http.StatusBadRequest,
 			}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
 		}
+	}
+	err = transferFrom.TransferFromNIUValidation()
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("%v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
+
 	}
 	txnJSON, err := ctx.GetState(transferFrom.TxnId)
 	if err != nil {
