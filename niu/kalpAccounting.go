@@ -55,11 +55,15 @@ type TransferNIU struct {
 	Amount    float64 `json:"Amount" validate:"required,gt=0"`
 	TimeStamp string  `json:"TimeStamp" `
 }
-type Transfrom struct {
-	Owner    string `json:"owner" validate:"required"`
-	Spender  string `json:"spender" validate:"required"`
-	Receiver string `json:"receiver" validate:"required"`
-	Amount   string `json:"amount" validate:"required"`
+type TransferfromNIU struct {
+	Id        string `json:"Id" `
+	TxnId     string `json:"TxnId" validate:"required"`
+	Owner     string `json:"owner" validate:"required"`
+	Spender   string `json:"spender" validate:"required"`
+	Receiver  string `json:"receiver" validate:"required"`
+	Amount    string `json:"amount" validate:"required"`
+	TimeStamp string `json:"TimeStamp"`
+	DocType   string `json:"DocType"`
 }
 type Response struct {
 	Status     string      `json:"status"`
@@ -168,6 +172,41 @@ func (t *TransferNIU) TransferNIUValidation() error {
 	}
 	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
 	if strings.ContainsAny(sender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+		return fmt.Errorf("invalid sender")
+	}
+	receiver := strings.Trim(t.Receiver, " ")
+	if receiver == "" {
+		return fmt.Errorf("invalid input Receiver")
+	}
+
+	// docType := strings.Trim(t.DocType, " ")
+	// if docType == "" {
+	// 	return fmt.Errorf("invalid input DocType")
+	// }
+	if len(receiver) < 8 || len(receiver) > 60 {
+		return fmt.Errorf("receiver must be at least 8 characters long and shorter than 60 characters")
+	}
+	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
+	if strings.ContainsAny(receiver, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+		return fmt.Errorf("invalid receiver")
+	}
+	return nil
+}
+func (t *TransferfromNIU) TransferNIUValidation() error {
+	txnId := strings.Trim(t.TxnId, " ")
+	if txnId == "" {
+		return fmt.Errorf("invalid input TxnId")
+	}
+
+	spender := strings.Trim(t.Spender, " ")
+	if spender == "" {
+		return fmt.Errorf("invalid input Sender")
+	}
+	if len(spender) < 8 || len(spender) > 60 {
+		return fmt.Errorf("sender must be at least 8 characters long and shorter than 60 characters")
+	}
+	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
+	if strings.ContainsAny(spender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
 		return fmt.Errorf("invalid sender")
 	}
 	receiver := strings.Trim(t.Receiver, " ")
@@ -833,7 +872,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 	logger := kalpsdk.NewLogger()
 	logger.Infof("TransferFrom---->%s", env)
 
-	var transferFrom Transfrom
+	var transferFrom TransferfromNIU
 	err := json.Unmarshal([]byte(data), &transferFrom)
 	if err != nil {
 		return Response{
@@ -842,6 +881,54 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("error: unable to marshall data: %v", err)
+	}
+	validate := validator.New()
+	err = validate.Struct(transferFrom)
+	if err != nil {
+		for _, e := range err.(validator.ValidationErrors) {
+			return Response{
+				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
+		}
+	}
+	txnJSON, err := ctx.GetState(transferFrom.TxnId)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("failed to read from world state: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
+	}
+	if txnJSON != nil {
+		return Response{
+			Message:    fmt.Sprintf("transaction %v already accounted", transferFrom.TxnId),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferFrom.TxnId)
+	}
+	transferFrom.Id = GINI
+	transferFrom.DocType = GINI_PAYMENT_TXN
+	transferNIUJSON, err := json.Marshal(transferFrom)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
+	}
+	if err = ctx.PutStateWithoutKYC(transferFrom.TxnId, transferNIUJSON); err != nil {
+		return Response{
+			Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
 	}
 	fmt.Printf("allow: %v\n", transferFrom)
 	err = kaps.TransferUTXOFrom(ctx, []string{transferFrom.Owner}, []string{transferFrom.Spender}, transferFrom.Receiver, GINI, transferFrom.Amount, "UTXO")
