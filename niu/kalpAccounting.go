@@ -29,6 +29,7 @@ const symbolKey = "symbol"
 const decimalKey = "decimal"
 const gasFeesKey = "gasFees"
 const kalpFoundation = "kalpAdmin"
+const mintOperator = ""
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
 const PaymentRoleValue = "PaymentAdmin"
@@ -284,16 +285,24 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	logger.Infof("AddFunds CheckInitialized---->")
-	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
+	// err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
+	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
 		return Response{
-			Message:    fmt.Sprintf("payment admin role check failed: %v", err),
+			Message:    fmt.Sprintf("failed to get client id: %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
+	}
+	if operator != mintOperator {
+		return Response{
+			Message:    "only mint admin are allowed to mint",
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error: payment admin role check failed: %v", http.StatusInternalServerError, err)
+		}, fmt.Errorf("error with status code %v, error: only mint admin are allowed to mint", http.StatusInternalServerError)
 	}
-
 	// Parse input data into NIU struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
@@ -376,16 +385,6 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("error with tatus code %v, unable to Marshal Token struct : %v", http.StatusBadRequest, err)
-	}
-
-	operator, err := kaps.GetUserId(ctx)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to get client id: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
 
 	giniJSON, err := ctx.GetState(GINI)
