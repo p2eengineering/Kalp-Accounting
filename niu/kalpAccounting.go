@@ -898,8 +898,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
 		return false
 	}
-	transferNIU.Id = GINI
-	transferNIU.DocType = GINI_PAYMENT_TXN
+
 	logger.Info("transferNIU transferNIUAmount")
 	transferNIUAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
 	if !su {
