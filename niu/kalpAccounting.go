@@ -656,7 +656,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,can't convert amount to big int", http.StatusConflict, acc.Amount)
+		}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
 	}
 	gini.TotalSupply = gigiTotalSupply.Sub(gigiTotalSupply, accAmount).String() // -= acc.Amount
 	giniiJSON, err := json.Marshal(gini)
