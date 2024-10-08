@@ -418,7 +418,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	} else {
 		return Response{
-			Message:    fmt.Sprintf("can't call mintrequest twice twice"),
+			Message:    "can't call mintrequest twice twice",
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
