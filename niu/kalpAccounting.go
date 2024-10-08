@@ -28,7 +28,7 @@ const nameKey = "name"
 const symbolKey = "symbol"
 const decimalKey = "decimal"
 const gasFeesKey = "gasFees"
-const kalpFoundation = ""
+const kalpFoundation = "kalpAdmin"
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
 const PaymentRoleValue = "PaymentAdmin"
@@ -116,7 +116,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
-
 	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
 	if err != nil {
 		return false, fmt.Errorf("failed to set gasfees: %v", err)
@@ -154,7 +153,7 @@ func (s *SmartContract) GasFees(ctx kalpsdk.TransactionContextInterface) string 
 	bytes, err := ctx.GetState(gasFeesKey)
 	if err != nil {
 		// return "", fmt.Errorf("failed to get Name: %v", err)
-		fmt.Printf("failed to get Name: %v", err)
+		fmt.Printf("failed to get Gas Fee: %v", err)
 	}
 	if bytes != nil {
 		// return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
@@ -856,7 +855,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
 		return false
 	}
-
+	logger.Info("transferNIU Kyc check")
 	if env != "dev" {
 		kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
 		if err != nil {
@@ -918,7 +917,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	}
 	transferNIU.Id = GINI
 	transferNIU.DocType = GINI_PAYMENT_TXN
-
+	logger.Info("transferNIU transferNIUAmount")
 	transferNIUAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
 	if !su {
 		// return Response{
@@ -934,7 +933,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	if !su {
 		return false
 	}
+	fmt.Printf("gasFeesAmount %v\n", gasFeesAmount)
 	removeAmount := transferNIUAmount.Add(transferNIUAmount, gasFeesAmount)
+	fmt.Printf("remove amount %v\n", removeAmount)
 	// Withdraw the funds from the sender address
 	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, false, removeAmount)
 	if err != nil {
@@ -947,9 +948,19 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
 		return false
 	}
-
+	addAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
+	if !su {
+		// return Response{
+		// 	Message:    fmt.Sprintf("can't convert amount to big int %s", transferNIU.Amount),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusConflict,
+		// }, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
+		return false
+	}
+	logger.Infof("Add amount %v\n", addAmount)
 	// Deposit the fund to the recipient address
-	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, false, transferNIUAmount)
+	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, false, addAmount)
 	if err != nil {
 		// return Response{
 		// 	Message:    "error while adding balance",
@@ -959,6 +970,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		return false
 	}
+	logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
 	err = kaps.AddUtxo(ctx, transferNIU.Id, kalpFoundation, false, gasFeesAmount)
 	if err != nil {
 		// return Response{
@@ -999,14 +1011,14 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 }
 
-func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
+func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
 	logger := kalpsdk.NewLogger()
-	account = strings.Trim(account, " ")
-	if account == "" {
+	owner = strings.Trim(owner, " ")
+	if owner == "" {
 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
 	}
 	id := GINI
-	amt, err := kaps.GetTotalUTXO(ctx, id, account)
+	amt, err := kaps.GetTotalUTXO(ctx, id, owner)
 	if err != nil {
 		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
 	}
