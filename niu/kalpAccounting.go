@@ -30,6 +30,7 @@ const decimalKey = "decimal"
 const gasFeesKey = "gasFees"
 const kalpFoundation = "kalpAdmin"
 const mintOperator = ""
+const gasFeesAdmin = ""
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
 const PaymentRoleValue = "PaymentAdmin"
@@ -152,7 +153,14 @@ func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) stri
 }
 
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
-	err := ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
+	operator, err := kaps.GetUserId(ctx)
+	if err != nil {
+		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
+	}
+	if operator != gasFeesAdmin {
+		return fmt.Errorf("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError)
+	}
+	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
 	if err != nil {
 		return fmt.Errorf("failed to set gasfees: %v", err)
 	}
