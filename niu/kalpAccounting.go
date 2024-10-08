@@ -7,7 +7,6 @@ import (
 	//Standard Libs
 
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -98,7 +97,7 @@ func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) erro
 }
 
 // Initializing smart contract
-func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, decimal uint8, gasFees string) (bool, error) {
+func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, gasFees string) (bool, error) {
 	//check contract options are not already set, client is not authorized to change them once intitialized
 	bytes, err := ctx.GetState(nameKey)
 	if err != nil {
@@ -117,10 +116,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
-	err = ctx.PutStateWithoutKYC(decimalKey, []byte{decimal})
-	if err != nil {
-		return false, fmt.Errorf("failed to set decimal: %v", err)
-	}
+
 	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
 	if err != nil {
 		return false, fmt.Errorf("failed to set gasfees: %v", err)
@@ -150,20 +146,8 @@ func (s *SmartContract) Symbol(ctx kalpsdk.TransactionContextInterface) (string,
 	return string(bytes), nil
 }
 
-func (s *SmartContract) Decimals(ctx kalpsdk.TransactionContextInterface) uint {
-	bytes, err := ctx.GetState(decimalKey)
-	if err != nil {
-		// return "", fmt.Errorf("failed to get Name: %v", err)
-		fmt.Printf("failed to get Name: %v", err)
-	}
-	if bytes != nil {
-		// return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
-		fmt.Printf("contract options are already set, client is not authorized to change them")
-	}
-	var num uint64 = binary.BigEndian.Uint64(bytes)
-
-	var decimals uint = uint(num)
-	return decimals
+func (s *SmartContract) Decimals(ctx kalpsdk.TransactionContextInterface) uint8 {
+	return 18
 }
 
 func (s *SmartContract) GasFees(ctx kalpsdk.TransactionContextInterface) string {
