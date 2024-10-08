@@ -99,7 +99,7 @@ func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) erro
 }
 
 // Initializing smart contract
-func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, gasFees string) (bool, error) {
+func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string) (bool, error) {
 	//check contract options are not already set, client is not authorized to change them once intitialized
 	bytes, err := ctx.GetState(nameKey)
 	if err != nil {
