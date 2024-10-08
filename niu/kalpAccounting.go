@@ -50,6 +50,7 @@ type GiniTransaction struct {
 	Desc          string `json:"Desc"`
 }
 
+// This struct is used to store total supply in the ledger
 type GiniNIU struct {
 	Id          string      `json:"Id"`
 	DocType     string      `json:"DocType"`
@@ -116,10 +117,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
-	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
-	if err != nil {
-		return false, fmt.Errorf("failed to set gasfees: %v", err)
-	}
+
 	return true, nil
 }
 
@@ -127,9 +125,6 @@ func (s *SmartContract) Name(ctx kalpsdk.TransactionContextInterface) (string, e
 	bytes, err := ctx.GetState(nameKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to get Name: %v", err)
-	}
-	if bytes != nil {
-		return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
 	}
 	return string(bytes), nil
 }
@@ -139,9 +134,6 @@ func (s *SmartContract) Symbol(ctx kalpsdk.TransactionContextInterface) (string,
 	if err != nil {
 		return "", fmt.Errorf("failed to get Name: %v", err)
 	}
-	if bytes != nil {
-		return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
-	}
 	return string(bytes), nil
 }
 
@@ -149,17 +141,21 @@ func (s *SmartContract) Decimals(ctx kalpsdk.TransactionContextInterface) uint8 
 	return 18
 }
 
-func (s *SmartContract) GasFees(ctx kalpsdk.TransactionContextInterface) string {
+func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) string {
 	bytes, err := ctx.GetState(gasFeesKey)
 	if err != nil {
 		// return "", fmt.Errorf("failed to get Name: %v", err)
 		fmt.Printf("failed to get Gas Fee: %v", err)
 	}
-	if bytes != nil {
-		// return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
-		fmt.Printf("contract options are already set, client is not authorized to change them")
-	}
 	return string(bytes)
+}
+
+func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
+	err := ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
+	if err != nil {
+		return fmt.Errorf("failed to set gasfees: %v", err)
+	}
+	return nil
 }
 
 // 	if err := ctx.PutStateWithKYC(niuData.Id, niuJSON); err != nil {
@@ -421,29 +417,12 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.TotalSupply = acc.Amount
 
 	} else {
-		errs = json.Unmarshal([]byte(giniJSON), &gini)
-		if errs != nil {
-			return Response{
-				Message:    fmt.Sprintf("internal error: error in parsing existing GINI data in Mint request %v", errs),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request %v", http.StatusBadRequest, errs)
-		}
-
-		gini.Id = GINI
-		gini.Name = GINI
-		gini.DocType = kaps.DocTypeNIU
-		gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
-		if !su {
-			return Response{
-				Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusConflict,
-			}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
-		}
-		gini.TotalSupply = gigiTotalSupply.Add(gigiTotalSupply, accAmount).String() // += acc.Amount
+		return Response{
+			Message:    fmt.Sprintf("can't call mintrequest twice twice"),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("internal error %v: error can't call mint twice %v", http.StatusBadRequest, errs)
 	}
 
 	giniiJSON, err := json.Marshal(gini)
@@ -600,7 +579,17 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	accAmount, su := big.NewInt(0).SetString(acc.Amount, 10)
+
+	amount, err := s.BalanceOf(ctx, acc.Account)
+	if err != nil {
+		return Response{
+			Message:    fmt.Sprintf("failed to get balance : %v", err),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:failed to get balance : %v", http.StatusBadRequest, err)
+	}
+	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
 		return Response{
 			Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
@@ -795,6 +784,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	logger.Infof("transferNIU", transferNIU)
 	err = transferNIU.TransferNIUValidation()
 	if err != nil {
+		logger.Infof("err: %v\n", err)
 		// return Response{
 		// 	Message:    fmt.Sprintf("%v", err),
 		// 	Success:    false,
@@ -806,6 +796,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	}
 	txnJSON, err := ctx.GetState(transferNIU.TxnId)
 	if err != nil {
+		logger.Infof("err: %v\n", err)
 		// return Response{
 		// 	Message:    fmt.Sprintf("failed to read from world state: %v", err),
 		// 	Success:    false,
@@ -834,17 +825,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		return false
 	}
 
-	operator, err := kaps.GetUserId(ctx)
-	if err != nil {
-		// return Response{
-		// 	Message:    fmt.Sprintf("failed to get client id: %v", err),
-		// 	Success:    false,
-		// 	Status:     "Failure",
-		// 	StatusCode: http.StatusBadRequest,
-		// }, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
-		return false
-	}
-	logger.Infof("operator-->", operator, transferNIU.Sender)
+	logger.Infof("operator-->", transferNIU.Sender)
 	transferNIUJSON, err := json.Marshal(transferNIU)
 	if err != nil {
 		// return Response{
@@ -898,6 +879,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			return false
 		}
 		if err = ctx.PutStateWithKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
+			logger.Infof("err: %v\n", err)
 			// return Response{
 			// 	Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
 			// 	Success:    false,
@@ -907,6 +889,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			return false
 		}
 	} else if err = ctx.PutStateWithoutKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
+		logger.Infof("err: %v\n", err)
 		// return Response{
 		// 	Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
 		// 	Success:    false,
@@ -920,6 +903,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	logger.Info("transferNIU transferNIUAmount")
 	transferNIUAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
 	if !su {
+		logger.Infof("transferNIU.Amount can't be converted to string ")
 		// return Response{
 		// 	Message:    fmt.Sprintf("can't convert amount to big int %s", transferNIU.Amount),
 		// 	Success:    false,
@@ -928,7 +912,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
 		return false
 	}
-	gasFees := s.GasFees(ctx)
+	gasFees := s.GetGasFees(ctx)
 	gasFeesAmount, su := big.NewInt(0).SetString(gasFees, 10)
 	if !su {
 		return false
@@ -939,7 +923,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	// Withdraw the funds from the sender address
 	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, false, removeAmount)
 	if err != nil {
-		fmt.Printf("transfer remove err: %v", err)
+		logger.Infof("transfer remove err: %v", err)
 		// return Response{
 		// 	Message:    "error while reducing balance",
 		// 	Success:    false,
@@ -950,6 +934,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	}
 	addAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
 	if !su {
+		logger.Infof("transferNIU.Amount can't be converted to string ")
 		// return Response{
 		// 	Message:    fmt.Sprintf("can't convert amount to big int %s", transferNIU.Amount),
 		// 	Success:    false,
@@ -962,6 +947,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	// Deposit the fund to the recipient address
 	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, false, addAmount)
 	if err != nil {
+		logger.Infof("err: %v\n", err)
 		// return Response{
 		// 	Message:    "error while adding balance",
 		// 	Success:    false,
@@ -973,6 +959,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
 	err = kaps.AddUtxo(ctx, transferNIU.Id, kalpFoundation, false, gasFeesAmount)
 	if err != nil {
+		logger.Infof("err: %v\n", err)
 		// return Response{
 		// 	Message:    "error while adding balance",
 		// 	Success:    false,
@@ -981,8 +968,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		return false
 	}
-	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
+	transferSingleEvent := kaps.TransferSingle{Operator: sender, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
+		logger.Infof("err: %v\n", err)
 		// return Response{
 		// 	Message:    fmt.Sprintf("unable to remove funds: %v", err),
 		// 	Success:    false,
