@@ -417,11 +417,11 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	} else {
 		return Response{
-			Message:    "can't call mintrequest twice twice",
+			Message:    "can't call mint request twice twice",
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: error can't call mint twice %v", http.StatusBadRequest, errs)
+		}, fmt.Errorf("internal error %v: error can't call mint request twice %v", http.StatusBadRequest, errs)
 	}
 
 	giniiJSON, err := json.Marshal(gini)
