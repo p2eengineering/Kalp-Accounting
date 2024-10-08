@@ -876,11 +876,11 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, da
 	err := json.Unmarshal([]byte(data), &transferFrom)
 	if err != nil {
 		return Response{
-			Message:    fmt.Sprintf("unable to marshall data: %v", err),
+			Message:    fmt.Sprintf("unable to marshal data: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error: unable to marshall data: %v", err)
+		}, fmt.Errorf("error: unable to marshal data: %v", err)
 	}
 	validate := validator.New()
 	err = validate.Struct(transferFrom)
