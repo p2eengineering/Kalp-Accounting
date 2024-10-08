@@ -7,6 +7,7 @@ import (
 	//Standard Libs
 
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -26,6 +27,9 @@ const attrRole = "hf.Type"
 // const admintype = "client"
 const nameKey = "name"
 const symbolKey = "symbol"
+const decimalKey = "decimal"
+const gasFeesKey = "gasFees"
+const kalpFoundation = ""
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
 const PaymentRoleValue = "PaymentAdmin"
@@ -94,7 +98,7 @@ func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) erro
 }
 
 // Initializing smart contract
-func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string) (bool, error) {
+func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, decimal uint8, gasFees string) (bool, error) {
 	//check contract options are not already set, client is not authorized to change them once intitialized
 	bytes, err := ctx.GetState(nameKey)
 	if err != nil {
@@ -112,6 +116,14 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	err = ctx.PutStateWithoutKYC(symbolKey, []byte(symbol))
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
+	}
+	err = ctx.PutStateWithoutKYC(decimalKey, []byte{decimal})
+	if err != nil {
+		return false, fmt.Errorf("failed to set decimal: %v", err)
+	}
+	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
+	if err != nil {
+		return false, fmt.Errorf("failed to set gasfees: %v", err)
 	}
 	return true, nil
 }
@@ -136,6 +148,35 @@ func (s *SmartContract) Symbol(ctx kalpsdk.TransactionContextInterface) (string,
 		return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
 	}
 	return string(bytes), nil
+}
+
+func (s *SmartContract) Decimals(ctx kalpsdk.TransactionContextInterface) uint {
+	bytes, err := ctx.GetState(decimalKey)
+	if err != nil {
+		// return "", fmt.Errorf("failed to get Name: %v", err)
+		fmt.Printf("failed to get Name: %v", err)
+	}
+	if bytes != nil {
+		// return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
+		fmt.Printf("contract options are already set, client is not authorized to change them")
+	}
+	var num uint64 = binary.BigEndian.Uint64(bytes)
+
+	var decimals uint = uint(num)
+	return decimals
+}
+
+func (s *SmartContract) GasFees(ctx kalpsdk.TransactionContextInterface) string {
+	bytes, err := ctx.GetState(gasFeesKey)
+	if err != nil {
+		// return "", fmt.Errorf("failed to get Name: %v", err)
+		fmt.Printf("failed to get Name: %v", err)
+	}
+	if bytes != nil {
+		// return "", fmt.Errorf("contract options are already set, client is not authorized to change them")
+		fmt.Printf("contract options are already set, client is not authorized to change them")
+	}
+	return string(bytes)
 }
 
 // 	if err := ctx.PutStateWithKYC(niuData.Id, niuJSON); err != nil {
@@ -723,205 +764,254 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}, nil
 }
 
-func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
+func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) bool {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("Transfer---->%s", env)
 	var transferNIU TransferNIU
-	errs := json.Unmarshal([]byte(data), &transferNIU)
-	if errs != nil {
-		return Response{
-			Message:    fmt.Sprintf("error in parsing transfer request data: %v", errs),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:error in parsing transfer request data: %v", http.StatusBadRequest, errs)
+	// errs := json.Unmarshal([]byte(data), &transferNIU)
+	// if errs != nil {
+	// 	return Response{
+	// 		Message:    fmt.Sprintf("error in parsing transfer request data: %v", errs),
+	// 		Success:    false,
+	// 		Status:     "Failure",
+	// 		StatusCode: http.StatusBadRequest,
+	// 	}, fmt.Errorf("error with status code %v, error:error in parsing transfer request data: %v", http.StatusBadRequest, errs)
+	// }
+	sender, err := ctx.GetUserID()
+	if err != nil {
+		return false
+	}
+	timeStamp, err := s.GetTransactionTimestamp(ctx)
+	if err != nil {
+		return false
+	}
+	transferNIU = TransferNIU{
+		TxnId:     ctx.GetTxID(),
+		Sender:    sender,
+		Receiver:  address,
+		Id:        GINI,
+		DocType:   GINI_PAYMENT_TXN,
+		Amount:    amount,
+		TimeStamp: timeStamp,
 	}
 
 	validate := validator.New()
-	err := validate.Struct(transferNIU)
+	err = validate.Struct(transferNIU)
 	if err != nil {
-		for _, e := range err.(validator.ValidationErrors) {
-			return Response{
-				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
-		}
+		// for _, e := range err.(validator.ValidationErrors) {
+		// 	return Response{
+		// 		Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+		// 		Success:    false,
+		// 		Status:     "Failure",
+		// 		StatusCode: http.StatusBadRequest,
+		// 	}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
+		// }
+		return false
 	}
 
 	logger.Infof("transferNIU", transferNIU)
 	err = transferNIU.TransferNIUValidation()
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("%v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("%v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
+		return false
 
 	}
 	txnJSON, err := ctx.GetState(transferNIU.TxnId)
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to read from world state: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("failed to read from world state: %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
+		return false
 	}
 	if txnJSON != nil {
-		return Response{
-			Message:    fmt.Sprintf("transaction %v already accounted", transferNIU.TxnId),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferNIU.TxnId)
+		// return Response{
+		// 	Message:    fmt.Sprintf("transaction %v already accounted", transferNIU.TxnId),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferNIU.TxnId)
+		return false
 	}
 
 	if transferNIU.Sender == transferNIU.Receiver {
-		return Response{
-			Message:    "transfer to self is not allowed",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:transfer to self is not allowed", http.StatusBadRequest)
+		// return Response{
+		// 	Message:    "transfer to self is not allowed",
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:transfer to self is not allowed", http.StatusBadRequest)
+		return false
 	}
 
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to get client id: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("failed to get client id: %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
+		return false
 	}
 	logger.Infof("operator-->", operator, transferNIU.Sender)
 	transferNIUJSON, err := json.Marshal(transferNIU)
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
+		return false
 	}
 
 	if env != "dev" {
 		kycCheck, err := kaps.IsKyced(ctx, transferNIU.Sender)
 		if err != nil {
-			return Response{
-				Message:    fmt.Sprintf("not able to do KYC check for sender:%s, error:%v", transferNIU.Sender, err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error:not able to do KYC check for sender:%s, error:%v", http.StatusBadRequest, transferNIU.Sender, err)
+			// return Response{
+			// 	Message:    fmt.Sprintf("not able to do KYC check for sender:%s, error:%v", transferNIU.Sender, err),
+			// 	Success:    false,
+			// 	Status:     "Failure",
+			// 	StatusCode: http.StatusBadRequest,
+			// }, fmt.Errorf("error with status code %v, error:not able to do KYC check for sender:%s, error:%v", http.StatusBadRequest, transferNIU.Sender, err)
+			return false
 		}
 		if !kycCheck {
-			return Response{
-				Message:    fmt.Sprintf("sender %s is not kyced", transferNIU.Sender),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error:sender %s is not kyced", http.StatusBadRequest, transferNIU.Sender)
-
+			// return Response{
+			// 	Message:    fmt.Sprintf("sender %s is not kyced", transferNIU.Sender),
+			// 	Success:    false,
+			// 	Status:     "Failure",
+			// 	StatusCode: http.StatusBadRequest,
+			// }, fmt.Errorf("error with status code %v, error:sender %s is not kyced", http.StatusBadRequest, transferNIU.Sender)
+			return false
 		}
 
 		// Check KYC status for each recipient
 		kycCheck, err = kaps.IsKyced(ctx, transferNIU.Receiver)
 		if err != nil {
-			return Response{
-				Message:    fmt.Sprintf("not able to do KYC check for receiver:%s, error:%v", transferNIU.Receiver, err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error:not able to do KYC check for receiver:%s, error:%v", http.StatusBadRequest, transferNIU.Receiver, err)
+			// return Response{
+			// 	Message:    fmt.Sprintf("not able to do KYC check for receiver:%s, error:%v", transferNIU.Receiver, err),
+			// 	Success:    false,
+			// 	Status:     "Failure",
+			// 	StatusCode: http.StatusBadRequest,
+			// }, fmt.Errorf("error with status code %v, error:not able to do KYC check for receiver:%s, error:%v", http.StatusBadRequest, transferNIU.Receiver, err)
+			return false
 		}
 		if !kycCheck {
-			return Response{
-				Message:    fmt.Sprintf("receiver %s is not kyced", transferNIU.Receiver),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error:receiver %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
+			// return Response{
+			// 	Message:    fmt.Sprintf("receiver %s is not kyced", transferNIU.Receiver),
+			// 	Success:    false,
+			// 	Status:     "Failure",
+			// 	StatusCode: http.StatusBadRequest,
+			// }, fmt.Errorf("error with status code %v, error:receiver %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
+			return false
 		}
 		if err = ctx.PutStateWithKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
-			return Response{
-				Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
+			// return Response{
+			// 	Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
+			// 	Success:    false,
+			// 	Status:     "Failure",
+			// 	StatusCode: http.StatusBadRequest,
+			// }, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
+			return false
 		}
 	} else if err = ctx.PutStateWithoutKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
-		return Response{
-			Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
+		return false
 	}
 	transferNIU.Id = GINI
 	transferNIU.DocType = GINI_PAYMENT_TXN
 
 	transferNIUAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
 	if !su {
-		return Response{
-			Message:    fmt.Sprintf("can't convert amount to big int %s", transferNIU.Amount),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
+		// return Response{
+		// 	Message:    fmt.Sprintf("can't convert amount to big int %s", transferNIU.Amount),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusConflict,
+		// }, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
+		return false
 	}
+	gasFees := s.GasFees(ctx)
+	gasFeesAmount, su := big.NewInt(0).SetString(gasFees, 10)
+	if !su {
+		return false
+	}
+	removeAmount := transferNIUAmount.Add(transferNIUAmount, gasFeesAmount)
 	// Withdraw the funds from the sender address
-	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, false, transferNIUAmount)
+	err = kaps.RemoveUtxo(ctx, transferNIU.Id, transferNIU.Sender, false, removeAmount)
 	if err != nil {
 		fmt.Printf("transfer remove err: %v", err)
-		return Response{
-			Message:    "error while reducing balance",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    "error while reducing balance",
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusInternalServerError,
+		// }, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
+		return false
 	}
 
 	// Deposit the fund to the recipient address
 	err = kaps.AddUtxo(ctx, transferNIU.Id, transferNIU.Receiver, false, transferNIUAmount)
 	if err != nil {
-		return Response{
-			Message:    "error while adding balance",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    "error while adding balance",
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusInternalServerError,
+		// }, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
+		return false
 	}
-
+	err = kaps.AddUtxo(ctx, transferNIU.Id, kalpFoundation, false, gasFeesAmount)
+	if err != nil {
+		// return Response{
+		// 	Message:    "error while adding balance",
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusInternalServerError,
+		// }, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
+		return false
+	}
 	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to remove funds: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:unable to remove funds: %v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("unable to remove funds: %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusInternalServerError,
+		// }, fmt.Errorf("error with status code %v, error:unable to remove funds: %v", http.StatusBadRequest, err)
+		return false
 	}
 
-	funcName, _ := ctx.GetFunctionAndParameters()
-	response := map[string]interface{}{
-		"txId":            ctx.GetTxID(),
-		"txFcn":           funcName,
-		"txType":          "Invoke",
-		"transactionData": transferNIU,
-	}
+	// funcName, _ := ctx.GetFunctionAndParameters()
+	// response := map[string]interface{}{
+	// 	"txId":            ctx.GetTxID(),
+	// 	"txFcn":           funcName,
+	// 	"txType":          "Invoke",
+	// 	"transactionData": transferNIU,
+	// }
 
-	return Response{
-		Message:    "Funds transfered successfully",
-		Success:    true,
-		Status:     "Success",
-		StatusCode: http.StatusCreated,
-		Response:   response,
-	}, nil
+	// return Response{
+	// 	Message:    "Funds transfered successfully",
+	// 	Success:    true,
+	// 	Status:     "Success",
+	// 	StatusCode: http.StatusCreated,
+	// 	Response:   response,
+	// }, nil
+	return true
 
 }
 
@@ -946,7 +1036,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, accou
 func (s *SmartContract) GetHistoryForAsset(ctx contractapi.TransactionContextInterface, id string) (string, error) {
 	resultsIterator, err := ctx.GetStub().GetHistoryForKey(id)
 	if err != nil {
-		return "", fmt.Errorf(err.Error())
+		return "", err
 	}
 	defer resultsIterator.Close()
 
@@ -957,7 +1047,7 @@ func (s *SmartContract) GetHistoryForAsset(ctx contractapi.TransactionContextInt
 	for resultsIterator.HasNext() {
 		response, err := resultsIterator.Next()
 		if err != nil {
-			return "", fmt.Errorf(err.Error())
+			return "", err
 		}
 		if bArrayMemberAlreadyWritten {
 			buffer.WriteString(",")
