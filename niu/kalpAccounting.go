@@ -38,6 +38,8 @@ const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
+
+// mint twice will be true only in dev and testing environment anf false in production environment
 const mintTwice = true
 const giniAdmin = "GINI-ADMIN"
 const gasFeesAdminRole = "GasFeesAdmin"
@@ -106,7 +108,7 @@ type UserRole struct {
 	Desc    string `json:"Desc"`
 }
 
-type FoundationTransfer struct {
+type Sender struct {
 	Sender string `json:"sender"`
 }
 
@@ -810,8 +812,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	}
 	logger.Infof("useRole: %s\n", userRole)
 	if userRole == kalpGateWayAdmin {
-		var foundationSender FoundationTransfer
-		errs := json.Unmarshal([]byte(address), &foundationSender)
+		var send Sender
+		errs := json.Unmarshal([]byte(address), &send)
 		if errs != nil {
 			logger.Info("internal error: error in parsing sender data")
 			return false
@@ -822,7 +824,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 			return false
 		}
-		err = kaps.RemoveUtxo(ctx, GINI, foundationSender.Sender, false, gAmount)
+		err = kaps.RemoveUtxo(ctx, GINI, send.Sender, false, gAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false
@@ -1351,12 +1353,20 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 	if errs != nil {
 		return "", fmt.Errorf("failed to parse data: %v", errs)
 	}
-
-	err = kaps.IsAdmin(ctx)
-	if userValid, _ := s.ValidateUserRole(ctx, giniAdmin); !userValid && err != nil {
-		return "", fmt.Errorf("user roles can be defined by %v only", giniAdmin)
+	if userRole.Role == giniAdmin {
+		err = kaps.IsAdmin(ctx)
+		if err != nil {
+			return "", fmt.Errorf("user role GINI-ADMIN can be defined by blockchain admin only")
+		}
+	} else {
+		userValid, err := s.ValidateUserRole(ctx, giniAdmin)
+		if err != nil {
+			return "", fmt.Errorf("error in validating the role %v", err)
+		}
+		if !userValid {
+			return "", fmt.Errorf("error in setting role %s, only GINI-ADMIN can set the roles", userRole.Role)
+		}
 	}
-
 	// Validate input data.
 	if userRole.Id == "" {
 		return "", fmt.Errorf("user Id can not be null")
@@ -1366,7 +1376,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("role can not be null")
 	}
 
-	ValidRoles := []string{gasFeesAdminRole, kalpGateWayAdmin}
+	ValidRoles := []string{giniAdmin, gasFeesAdminRole, kalpGateWayAdmin}
 	if !slices.Contains(ValidRoles, userRole.Role) {
 		return "", fmt.Errorf("invalid input role")
 	}
