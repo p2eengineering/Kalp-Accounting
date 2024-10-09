@@ -1398,7 +1398,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
 	}
 	// Store the NIU struct in the state database
-	if err := ctx.PutStateWithKYC(key, usrRoleJSON); err != nil {
+	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
 		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
 	}
 	return s.GetTransactionTimestamp(ctx)
