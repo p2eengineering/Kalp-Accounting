@@ -808,6 +808,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Infof("error checking sponsor's role: %v", err)
 		return false
 	}
+	logger.Infof("useRole: %s\n", userRole)
 	if userRole == kalpGateWayAdmin {
 		var foundationSender FoundationTransfer
 		errs := json.Unmarshal([]byte(address), &foundationSender)
@@ -815,16 +816,24 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Info("internal error: error in parsing sender data")
 			return false
 		}
-		err = kaps.RemoveUtxo(ctx, GINI, foundationSender.Sender, false, amount)
+		gAmount, su := big.NewInt(0).SetString(amount, 10)
+		if !su {
+			logger.Infof("amount can't be converted to string ")
+
+			return false
+		}
+		err = kaps.RemoveUtxo(ctx, GINI, foundationSender.Sender, false, gAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false
 		}
-		err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, amount)
+
+		err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, gAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false
 		}
+		logger.Infof("foundation transfer : %s\n", userRole)
 		return true
 	}
 	timeStamp, err := s.GetTransactionTimestamp(ctx)
