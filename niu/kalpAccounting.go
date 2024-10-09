@@ -428,11 +428,11 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			errs = json.Unmarshal([]byte(giniJSON), &gini)
 			if errs != nil {
 				return Response{
-					Message:    fmt.Sprintf("internal error: error in parsing existing GINI data in Mint request %v", errs),
+					Message:    "internal error: error in parsing existing GINI data in Mint request ",
 					Success:    false,
 					Status:     "Failure",
 					StatusCode: http.StatusBadRequest,
-				}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request %v", http.StatusBadRequest, errs)
+				}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request", http.StatusBadRequest)
 			}
 
 			gini.Id = GINI
@@ -454,7 +454,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("internal error %v: error can't call mint request twice %v", http.StatusBadRequest, errs)
+			}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
 		}
 	}
 
