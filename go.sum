@@ -78,8 +78,8 @@ github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJ
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
 github.com/mitchellh/mapstructure v1.1.2/go.mod h1:FVVH3fgwuzCH5S8UJGiWEs2h04kUh9fWfEaFds41c1Y=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
-github.com/p2eengineering/kalp-kaps v0.0.0-20240723100903-2beb87048c19 h1:frgvx/AlUtH5dq2dEq7spN+e1IFas99WyTyOXk42qck=
-github.com/p2eengineering/kalp-kaps v0.0.0-20240723100903-2beb87048c19/go.mod h1:SBWYXRpdkSMMxrLbDE7oBtBaLKKsC+GB3uHnAjagEOU=
+github.com/p2eengineering/kalp-kaps v0.0.0-20241008043045-81ccd14ccdd0 h1:4sNIBiaBqQ3GLvC853tsUj8DTSvsJFUxEcvU1peGxk0=
+github.com/p2eengineering/kalp-kaps v0.0.0-20241008043045-81ccd14ccdd0/go.mod h1:SBWYXRpdkSMMxrLbDE7oBtBaLKKsC+GB3uHnAjagEOU=
 github.com/p2eengineering/kalp-sdk-public v0.0.0-20240709111532-b1e8d8fef366 h1:rHS267o4pFvNrnEK8F+6N4pVT1Xq8zL8H2pU0LE3fwE=
 github.com/p2eengineering/kalp-sdk-public v0.0.0-20240709111532-b1e8d8fef366/go.mod h1:sohxRXvH17OjZbUVLXT0EsTOvyxiB8eMtQtBaRRq5v8=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
