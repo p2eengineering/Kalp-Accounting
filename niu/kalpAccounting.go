@@ -1421,7 +1421,7 @@ func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id
 		return "", fmt.Errorf("failed to read from world state: %v", err)
 	}
 	if userJSON == nil {
-		return "", fmt.Errorf("the user role %v does not exist", id)
+		return "", nil
 	}
 
 	// Unmarshal asset from JSON to struct
