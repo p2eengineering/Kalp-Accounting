@@ -22,6 +22,13 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// Deployment notes for GINI contract:
+// Initialize with name and symbol as GINI, GINI
+// Create Admin user (admin privilege role will be given during NGL register/enroll)
+// Create 3 users for GINI-ADMIN, GasFeeAdmin, GatewayAdmin (using Kalp wallet)
+// Admin user to invoke setuserrole with enrollment id of user and GINI-ADMIN role,   (only blockchain Admin can set GINI-ADMIN)
+// Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only GINI-ADMIN can set Gasfee)
+// Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only GINI-ADMIN can set Gasfee)
 const attrRole = "hf.Type"
 
 // const admintype = "client"
