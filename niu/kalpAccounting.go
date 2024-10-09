@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/p2eengineering/kalp-kaps/kaps"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"golang.org/x/exp/slices"
 )
 
 const attrRole = "hf.Type"
@@ -29,14 +30,20 @@ const symbolKey = "symbol"
 const decimalKey = "decimal"
 const gasFeesKey = "gasFees"
 const kalpFoundation = "kalpAdmin"
-const mintOperator = ""
-const gasFeesAdmin = ""
+const mintOperator = "kalpAdmin"
+const gasFeesAdmin = "kalpAdmin"
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
 const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
+const mintTwice = true
+const giniAdmin = "GINI-ADMIN"
+const gasFeesAdminRole = "GasFeesAdmin"
+const kalpGateWayAdmin = "KalpGatewayAdmin"
+const userRolePrefix = "ID~UserRoleMap"
+const UserRoleMap = "UserRoleMap"
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
@@ -91,6 +98,16 @@ type Response struct {
 	Success    bool        `json:"success"`
 	Message    string      `json:"message"`
 	Response   interface{} `json:"response" `
+}
+type UserRole struct {
+	Id      string `json:"User"`
+	Role    string `json:"Role"`
+	DocType string `json:"DocType"`
+	Desc    string `json:"Desc"`
+}
+
+type FoundationTransfer struct {
+	Sender string `json:"sender"`
 }
 
 func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) error {
@@ -424,7 +441,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.TotalSupply = acc.Amount
 
 	} else {
-		if env == "dev" {
+		if mintTwice {
 			errs = json.Unmarshal([]byte(giniJSON), &gini)
 			if errs != nil {
 				return Response{
@@ -785,6 +802,30 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	sender, err := ctx.GetUserID()
 	if err != nil {
 		return false
+	}
+	userRole, err := s.GetUserRoles(ctx, sender)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
+		return false
+	}
+	if userRole == kalpGateWayAdmin {
+		var foundationSender FoundationTransfer
+		errs := json.Unmarshal([]byte(address), &foundationSender)
+		if errs != nil {
+			logger.Info("internal error: error in parsing sender data")
+			return false
+		}
+		err = kaps.RemoveUtxo(ctx, GINI, foundationSender.Sender, false, amount)
+		if err != nil {
+			logger.Infof("transfer remove err: %v", err)
+			return false
+		}
+		err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, amount)
+		if err != nil {
+			logger.Infof("err: %v\n", err)
+			return false
+		}
+		return true
 	}
 	timeStamp, err := s.GetTransactionTimestamp(ctx)
 	if err != nil {
@@ -1280,4 +1321,106 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (st
 	}
 
 	return big.NewInt(0).String(), nil
+}
+
+// SetUserRoles is a smart contract function which is used to setup a role for user.
+func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
+	//check if contract has been intilized first
+
+	fmt.Println("SetUserRoles", data)
+	initialized, err := kaps.CheckInitialized(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
+	}
+	if !initialized {
+		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
+	}
+
+	// Parse input data into NIU struct.
+	var userRole UserRole
+	errs := json.Unmarshal([]byte(data), &userRole)
+	if errs != nil {
+		return "", fmt.Errorf("failed to parse data: %v", errs)
+	}
+
+	err = kaps.IsAdmin(ctx)
+	if userValid, _ := s.ValidateUserRole(ctx, giniAdmin); !userValid && err != nil {
+		return "", fmt.Errorf("user roles can be defined by %v only", giniAdmin)
+	}
+
+	// Validate input data.
+	if userRole.Id == "" {
+		return "", fmt.Errorf("user Id can not be null")
+	}
+
+	if userRole.Role == "" {
+		return "", fmt.Errorf("role can not be null")
+	}
+
+	ValidRoles := []string{gasFeesAdminRole, kalpGateWayAdmin}
+	if !slices.Contains(ValidRoles, userRole.Role) {
+		return "", fmt.Errorf("invalid input role")
+	}
+
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{userRole.Id, UserRoleMap})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+	// Generate JSON representation of NIU struct.
+	usrRoleJSON, err := json.Marshal(userRole)
+	if err != nil {
+		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
+	}
+	// Store the NIU struct in the state database
+	if err := ctx.PutStateWithKYC(key, usrRoleJSON); err != nil {
+		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
+	}
+	return s.GetTransactionTimestamp(ctx)
+
+}
+
+func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
+
+	// Check if operator is authorized to create NIU.
+	operator, err := kaps.GetUserId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get client id: %v", err)
+	}
+
+	fmt.Println("operator---------------", operator)
+	userRole, err1 := s.GetUserRoles(ctx, operator)
+	if err1 != nil {
+		return false, fmt.Errorf("error: %v", err1)
+	}
+
+	if userRole != Role {
+		return false, fmt.Errorf("this transaction can be performed by %v only", Role)
+	}
+	return true, nil
+}
+
+// GetUserRoles is a smart contract function which is used to get a role of a user.
+func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
+	// Get the asset from the ledger using id & check if asset exists
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{id, UserRoleMap})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+
+	userJSON, err := ctx.GetState(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if userJSON == nil {
+		return "", fmt.Errorf("the user role %v does not exist", id)
+	}
+
+	// Unmarshal asset from JSON to struct
+	var userRole UserRole
+	err = json.Unmarshal(userJSON, &userRole)
+	if err != nil {
+		return "", fmt.Errorf("unable to unmarshal user role struct : %v", err)
+	}
+
+	return userRole.Role, nil
 }
