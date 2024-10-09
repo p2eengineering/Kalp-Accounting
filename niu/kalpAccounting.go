@@ -424,12 +424,38 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.TotalSupply = acc.Amount
 
 	} else {
-		return Response{
-			Message:    "can't call mint request twice twice",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: error can't call mint request twice %v", http.StatusBadRequest, errs)
+		if env == "dev" {
+			errs = json.Unmarshal([]byte(giniJSON), &gini)
+			if errs != nil {
+				return Response{
+					Message:    fmt.Sprintf("internal error: error in parsing existing GINI data in Mint request %v", errs),
+					Success:    false,
+					Status:     "Failure",
+					StatusCode: http.StatusBadRequest,
+				}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request %v", http.StatusBadRequest, errs)
+			}
+
+			gini.Id = GINI
+			gini.Name = GINI
+			gini.DocType = kaps.DocTypeNIU
+			gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
+			if !su {
+				return Response{
+					Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+					Success:    false,
+					Status:     "Failure",
+					StatusCode: http.StatusConflict,
+				}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
+			}
+			gini.TotalSupply = gigiTotalSupply.Add(gigiTotalSupply, accAmount).String()
+		} else {
+			return Response{
+				Message:    "can't call mint request twice twice",
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("internal error %v: error can't call mint request twice %v", http.StatusBadRequest, errs)
+		}
 	}
 
 	giniiJSON, err := json.Marshal(gini)
