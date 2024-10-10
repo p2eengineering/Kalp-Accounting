@@ -179,11 +179,18 @@ func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) stri
 }
 
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
+	logger := kalpsdk.NewLogger()
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	if operator != gasFeesAdmin {
+	userRole, err := s.GetUserRoles(ctx, operator)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
+		return fmt.Errorf("error checking sponsor's role: %v", err)
+	}
+	logger.Infof("useRole: %s\n", userRole)
+	if userRole != gasFeesAdminRole {
 		return fmt.Errorf("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError)
 	}
 	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
@@ -329,14 +336,28 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	if operator != mintOperator {
+
+	userRole, err := s.GetUserRoles(ctx, operator)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
 		return Response{
-			Message:    "only mint admin are allowed to mint",
+			Message:    fmt.Sprintf("error checking sponsor's role: %v", err),
 			Success:    false,
 			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error: only mint admin are allowed to mint", http.StatusInternalServerError)
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
 	}
+	logger.Infof("useRole: %s\n", userRole)
+	if userRole != giniAdmin {
+		logger.Infof("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
+		return Response{
+			Message:    fmt.Sprintf("error with status code %v, error: only gini admin is allowed to mint", http.StatusInternalServerError),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
+	}
+
 	// Parse input data into NIU struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
