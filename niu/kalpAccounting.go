@@ -19,8 +19,16 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/p2eengineering/kalp-kaps/kaps"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"golang.org/x/exp/slices"
 )
 
+// Deployment notes for GINI contract:
+// Initialize with name and symbol as GINI, GINI
+// Create Admin user (admin privilege role will be given during NGL register/enroll)
+// Create 3 users for GINI-ADMIN, GasFeeAdmin, GatewayAdmin (using Kalp wallet)
+// Admin user to invoke setuserrole with enrollment id of user and GINI-ADMIN role,   (only blockchain Admin can set GINI-ADMIN)
+// Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only GINI-ADMIN can set Gasfee)
+// Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only GINI-ADMIN can set Gasfee)
 const attrRole = "hf.Type"
 
 // const admintype = "client"
@@ -37,6 +45,14 @@ const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
+
+// mint twice will be true only in dev and testing environment and false in production environment
+const mintTwice = true
+const giniAdmin = "GINI-ADMIN"
+const gasFeesAdminRole = "GasFeesAdmin"
+const kalpGateWayAdmin = "KalpGatewayAdmin"
+const userRolePrefix = "ID~UserRoleMap"
+const UserRoleMap = "UserRoleMap"
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
@@ -91,6 +107,16 @@ type Response struct {
 	Success    bool        `json:"success"`
 	Message    string      `json:"message"`
 	Response   interface{} `json:"response" `
+}
+type UserRole struct {
+	Id      string `json:"User"`
+	Role    string `json:"Role"`
+	DocType string `json:"DocType"`
+	Desc    string `json:"Desc"`
+}
+
+type Sender struct {
+	Sender string `json:"sender"`
 }
 
 func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) error {
@@ -153,11 +179,18 @@ func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) stri
 }
 
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
+	logger := kalpsdk.NewLogger()
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	if operator != gasFeesAdmin {
+	userRole, err := s.GetUserRoles(ctx, operator)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
+		return fmt.Errorf("error checking sponsor's role: %v", err)
+	}
+	logger.Infof("useRole: %s\n", userRole)
+	if userRole != gasFeesAdminRole {
 		return fmt.Errorf("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError)
 	}
 	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
@@ -303,14 +336,28 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	if operator != mintOperator {
+
+	userRole, err := s.GetUserRoles(ctx, operator)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
 		return Response{
-			Message:    "only mint admin are allowed to mint",
+			Message:    fmt.Sprintf("error checking sponsor's role: %v", err),
 			Success:    false,
 			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error: only mint admin are allowed to mint", http.StatusInternalServerError)
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
 	}
+	logger.Infof("useRole: %s\n", userRole)
+	if userRole != giniAdmin {
+		logger.Infof("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
+		return Response{
+			Message:    fmt.Sprintf("error with status code %v, error: only gini admin is allowed to mint", http.StatusInternalServerError),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
+	}
+
 	// Parse input data into NIU struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
@@ -424,12 +471,38 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.TotalSupply = acc.Amount
 
 	} else {
-		return Response{
-			Message:    "can't call mint request twice twice",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: error can't call mint request twice %v", http.StatusBadRequest, errs)
+		if mintTwice {
+			errs = json.Unmarshal([]byte(giniJSON), &gini)
+			if errs != nil {
+				return Response{
+					Message:    "internal error: error in parsing existing GINI data in Mint request ",
+					Success:    false,
+					Status:     "Failure",
+					StatusCode: http.StatusBadRequest,
+				}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request", http.StatusBadRequest)
+			}
+
+			gini.Id = GINI
+			gini.Name = GINI
+			gini.DocType = kaps.DocTypeNIU
+			gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
+			if !su {
+				return Response{
+					Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+					Success:    false,
+					Status:     "Failure",
+					StatusCode: http.StatusConflict,
+				}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
+			}
+			gini.TotalSupply = gigiTotalSupply.Add(gigiTotalSupply, accAmount).String()
+		} else {
+			return Response{
+				Message:    "can't call mint request twice twice",
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
+		}
 	}
 
 	giniiJSON, err := json.Marshal(gini)
@@ -759,6 +832,39 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	sender, err := ctx.GetUserID()
 	if err != nil {
 		return false
+	}
+	userRole, err := s.GetUserRoles(ctx, sender)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
+		return false
+	}
+	logger.Infof("useRole: %s\n", userRole)
+	if userRole == kalpGateWayAdmin {
+		var send Sender
+		errs := json.Unmarshal([]byte(address), &send)
+		if errs != nil {
+			logger.Info("internal error: error in parsing sender data")
+			return false
+		}
+		gAmount, su := big.NewInt(0).SetString(amount, 10)
+		if !su {
+			logger.Infof("amount can't be converted to string ")
+
+			return false
+		}
+		err = kaps.RemoveUtxo(ctx, GINI, send.Sender, false, gAmount)
+		if err != nil {
+			logger.Infof("transfer remove err: %v", err)
+			return false
+		}
+
+		err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, gAmount)
+		if err != nil {
+			logger.Infof("err: %v\n", err)
+			return false
+		}
+		logger.Infof("foundation transfer : %s\n", userRole)
+		return true
 	}
 	timeStamp, err := s.GetTransactionTimestamp(ctx)
 	if err != nil {
@@ -1273,4 +1379,114 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) str
 	}
 
 	return big.NewInt(0).String()
+}
+
+// SetUserRoles is a smart contract function which is used to setup a role for user.
+func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
+	//check if contract has been intilized first
+
+	fmt.Println("SetUserRoles", data)
+	initialized, err := kaps.CheckInitialized(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
+	}
+	if !initialized {
+		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
+	}
+
+	// Parse input data into NIU struct.
+	var userRole UserRole
+	errs := json.Unmarshal([]byte(data), &userRole)
+	if errs != nil {
+		return "", fmt.Errorf("failed to parse data: %v", errs)
+	}
+	if userRole.Role == giniAdmin {
+		err = kaps.IsAdmin(ctx)
+		if err != nil {
+			return "", fmt.Errorf("user role GINI-ADMIN can be defined by blockchain admin only")
+		}
+	} else {
+		userValid, err := s.ValidateUserRole(ctx, giniAdmin)
+		if err != nil {
+			return "", fmt.Errorf("error in validating the role %v", err)
+		}
+		if !userValid {
+			return "", fmt.Errorf("error in setting role %s, only GINI-ADMIN can set the roles", userRole.Role)
+		}
+	}
+	// Validate input data.
+	if userRole.Id == "" {
+		return "", fmt.Errorf("user Id can not be null")
+	}
+
+	if userRole.Role == "" {
+		return "", fmt.Errorf("role can not be null")
+	}
+
+	ValidRoles := []string{giniAdmin, gasFeesAdminRole, kalpGateWayAdmin}
+	if !slices.Contains(ValidRoles, userRole.Role) {
+		return "", fmt.Errorf("invalid input role")
+	}
+
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{userRole.Id, UserRoleMap})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+	// Generate JSON representation of NIU struct.
+	usrRoleJSON, err := json.Marshal(userRole)
+	if err != nil {
+		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
+	}
+	// Store the NIU struct in the state database
+	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
+		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
+	}
+	return s.GetTransactionTimestamp(ctx)
+
+}
+
+func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
+
+	// Check if operator is authorized to create NIU.
+	operator, err := kaps.GetUserId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get client id: %v", err)
+	}
+
+	fmt.Println("operator---------------", operator)
+	userRole, err1 := s.GetUserRoles(ctx, operator)
+	if err1 != nil {
+		return false, fmt.Errorf("error: %v", err1)
+	}
+
+	if userRole != Role {
+		return false, fmt.Errorf("this transaction can be performed by %v only", Role)
+	}
+	return true, nil
+}
+
+// GetUserRoles is a smart contract function which is used to get a role of a user.
+func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
+	// Get the asset from the ledger using id & check if asset exists
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{id, UserRoleMap})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+
+	userJSON, err := ctx.GetState(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if userJSON == nil {
+		return "", nil
+	}
+
+	// Unmarshal asset from JSON to struct
+	var userRole UserRole
+	err = json.Unmarshal(userJSON, &userRole)
+	if err != nil {
+		return "", fmt.Errorf("unable to unmarshal user role struct : %v", err)
+	}
+
+	return userRole.Role, nil
 }
