@@ -349,22 +349,15 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 	logger.Infof("useRole: %s\n", userRole)
 	if userRole != giniAdmin {
-		logger.Infof("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError)
+		logger.Infof("error with status code %v, error: only gini admin is allowed to update gas fees", http.StatusInternalServerError)
 		return Response{
 			Message:    fmt.Sprintf("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError)
+		}, fmt.Errorf("error with status code %v, error: only gini admin is allowed to update gas fees", http.StatusInternalServerError)
 	}
-	if operator != mintOperator {
-		return Response{
-			Message:    "only mint admin are allowed to mint",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error: only mint admin are allowed to mint", http.StatusInternalServerError)
-	}
+
 	// Parse input data into NIU struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
