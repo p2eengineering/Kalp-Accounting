@@ -169,13 +169,17 @@ func (s *SmartContract) Decimals(ctx kalpsdk.TransactionContextInterface) uint8 
 	return 18
 }
 
-func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) string {
+func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	bytes, err := ctx.GetState(gasFeesKey)
 	if err != nil {
 		// return "", fmt.Errorf("failed to get Name: %v", err)
 		fmt.Printf("failed to get Gas Fee: %v", err)
+		return "", fmt.Errorf("failed to get Gas Fee: %v", err)
 	}
-	return string(bytes)
+	if bytes == nil {
+		return "", fmt.Errorf("gas fee not set")
+	}
+	return string(bytes), nil
 }
 
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
@@ -1025,7 +1029,10 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
 		return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
 	}
-	gasFees := s.GetGasFees(ctx)
+	gasFees, err := s.GetGasFees(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get gas gee: %v", err)
+	}
 	gasFeesAmount, su := big.NewInt(0).SetString(gasFees, 10)
 	if !su {
 		return false, fmt.Errorf("gasfee can't be converted to big int")
