@@ -49,7 +49,7 @@ const kalpGateWayAdmin = "KalpGatewayAdmin"
 const userRolePrefix = "ID~UserRoleMap"
 const UserRoleMap = "UserRoleMap"
 const BridgeContractAddress = "0x23156a30E545efC2A09212E21EEF2dB24aF84751"
-const BridgeContractName = "KalpBridge"
+const BridgeContractName = "klp-6b616c70627269646765-cc"
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
@@ -431,6 +431,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 	acc.Id = GINI
 	acc.DocType = GINI_PAYMENT_TXN
+	acc.Account = BridgeContractAddress
 
 	logger.Infof("GINI amount %v\n", accAmount)
 	accJSON, err := json.Marshal(acc)
