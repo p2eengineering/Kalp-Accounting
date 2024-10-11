@@ -19,8 +19,16 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/p2eengineering/kalp-kaps/kaps"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"golang.org/x/exp/slices"
 )
 
+// Deployment notes for GINI contract:
+// Initialize with name and symbol as GINI, GINI
+// Create Admin user (admin privilege role will be given during NGL register/enroll)
+// Create 3 users for GINI-ADMIN, GasFeeAdmin, GatewayAdmin (using Kalp wallet)
+// Admin user to invoke setuserrole with enrollment id of user and GINI-ADMIN role,   (only blockchain Admin can set GINI-ADMIN)
+// Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only GINI-ADMIN can set Gasfee)
+// Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only GINI-ADMIN can set Gasfee)
 const attrRole = "hf.Type"
 
 // const admintype = "client"
@@ -37,6 +45,14 @@ const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
+
+// mint twice will be true only in dev and testing environment and false in production environment
+const mintTwice = true
+const giniAdmin = "GINI-ADMIN"
+const gasFeesAdminRole = "GasFeesAdmin"
+const kalpGateWayAdmin = "KalpGatewayAdmin"
+const userRolePrefix = "ID~UserRoleMap"
+const UserRoleMap = "UserRoleMap"
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
@@ -92,6 +108,16 @@ type Response struct {
 	Message    string      `json:"message"`
 	Response   interface{} `json:"response" `
 }
+type UserRole struct {
+	Id      string `json:"User"`
+	Role    string `json:"Role"`
+	DocType string `json:"DocType"`
+	Desc    string `json:"Desc"`
+}
+
+type Sender struct {
+	Sender string `json:"sender"`
+}
 
 func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) error {
 	logger := kalpsdk.NewLogger()
@@ -143,21 +169,32 @@ func (s *SmartContract) Decimals(ctx kalpsdk.TransactionContextInterface) uint8 
 	return 18
 }
 
-func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) string {
+func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	bytes, err := ctx.GetState(gasFeesKey)
 	if err != nil {
 		// return "", fmt.Errorf("failed to get Name: %v", err)
 		fmt.Printf("failed to get Gas Fee: %v", err)
+		return "", fmt.Errorf("failed to get Gas Fee: %v", err)
 	}
-	return string(bytes)
+	if bytes == nil {
+		return "", fmt.Errorf("gas fee not set")
+	}
+	return string(bytes), nil
 }
 
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
+	logger := kalpsdk.NewLogger()
 	operator, err := kaps.GetUserId(ctx)
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	if operator != gasFeesAdmin {
+	userRole, err := s.GetUserRoles(ctx, operator)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
+		return fmt.Errorf("error checking sponsor's role: %v", err)
+	}
+	logger.Infof("useRole: %s\n", userRole)
+	if userRole != gasFeesAdminRole {
 		return fmt.Errorf("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError)
 	}
 	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(gasFees))
@@ -303,14 +340,28 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	if operator != mintOperator {
+
+	userRole, err := s.GetUserRoles(ctx, operator)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
 		return Response{
-			Message:    "only mint admin are allowed to mint",
+			Message:    fmt.Sprintf("error checking sponsor's role: %v", err),
 			Success:    false,
 			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error: only mint admin are allowed to mint", http.StatusInternalServerError)
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
 	}
+	logger.Infof("useRole: %s\n", userRole)
+	if userRole != giniAdmin {
+		logger.Infof("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
+		return Response{
+			Message:    fmt.Sprintf("error with status code %v, error: only gini admin is allowed to mint", http.StatusInternalServerError),
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
+	}
+
 	// Parse input data into NIU struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
@@ -424,12 +475,38 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.TotalSupply = acc.Amount
 
 	} else {
-		return Response{
-			Message:    "can't call mint request twice twice",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: error can't call mint request twice %v", http.StatusBadRequest, errs)
+		if mintTwice {
+			errs = json.Unmarshal([]byte(giniJSON), &gini)
+			if errs != nil {
+				return Response{
+					Message:    "internal error: error in parsing existing GINI data in Mint request ",
+					Success:    false,
+					Status:     "Failure",
+					StatusCode: http.StatusBadRequest,
+				}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request", http.StatusBadRequest)
+			}
+
+			gini.Id = GINI
+			gini.Name = GINI
+			gini.DocType = kaps.DocTypeNIU
+			gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
+			if !su {
+				return Response{
+					Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+					Success:    false,
+					Status:     "Failure",
+					StatusCode: http.StatusConflict,
+				}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
+			}
+			gini.TotalSupply = gigiTotalSupply.Add(gigiTotalSupply, accAmount).String()
+		} else {
+			return Response{
+				Message:    "can't call mint request twice twice",
+				Success:    false,
+				Status:     "Failure",
+				StatusCode: http.StatusBadRequest,
+			}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
+		}
 	}
 
 	giniiJSON, err := json.Marshal(gini)
@@ -743,7 +820,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	}, nil
 }
 
-func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) bool {
+func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) (bool, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("Transfer---->%s", env)
 	var transferNIU TransferNIU
@@ -758,11 +835,44 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	// }
 	sender, err := ctx.GetUserID()
 	if err != nil {
-		return false
+		return false, fmt.Errorf("error in getting user id: %v", err)
+	}
+	userRole, err := s.GetUserRoles(ctx, sender)
+	if err != nil {
+		logger.Infof("error checking sponsor's role: %v", err)
+		return false, fmt.Errorf("error checking sponsor's role:: %v", err)
+	}
+	logger.Infof("useRole: %s\n", userRole)
+	if userRole == kalpGateWayAdmin {
+		var send Sender
+		errs := json.Unmarshal([]byte(address), &send)
+		if errs != nil {
+			logger.Info("internal error: error in parsing sender data")
+			return false, fmt.Errorf("internal error: error in parsing sender data")
+		}
+		gAmount, su := big.NewInt(0).SetString(amount, 10)
+		if !su {
+			logger.Infof("amount can't be converted to string ")
+
+			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+		}
+		err = kaps.RemoveUtxo(ctx, GINI, send.Sender, false, gAmount)
+		if err != nil {
+			logger.Infof("transfer remove err: %v", err)
+			return false, fmt.Errorf("transfer remove err: %v", err)
+		}
+
+		err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, gAmount)
+		if err != nil {
+			logger.Infof("err: %v\n", err)
+			return false, fmt.Errorf("transfer add err: %v", err)
+		}
+		logger.Infof("foundation transfer : %s\n", userRole)
+		return true, nil
 	}
 	timeStamp, err := s.GetTransactionTimestamp(ctx)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
 	}
 	transferNIU = TransferNIU{
 		TxnId:     ctx.GetTxID(),
@@ -777,15 +887,16 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	validate := validator.New()
 	err = validate.Struct(transferNIU)
 	if err != nil {
-		// for _, e := range err.(validator.ValidationErrors) {
-		// 	return Response{
-		// 		Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
-		// 		Success:    false,
-		// 		Status:     "Failure",
-		// 		StatusCode: http.StatusBadRequest,
-		// 	}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
-		// }
-		return false
+		for _, e := range err.(validator.ValidationErrors) {
+			// 	return Response{
+			// 		Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+			// 		Success:    false,
+			// 		Status:     "Failure",
+			// 		StatusCode: http.StatusBadRequest,
+			// 	}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
+			return false, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
+		}
+
 	}
 
 	logger.Infof("transferNIU", transferNIU)
@@ -798,7 +909,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
 
 	}
 	txnJSON, err := ctx.GetState(transferNIU.TxnId)
@@ -810,7 +921,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
 	}
 	if txnJSON != nil {
 		// return Response{
@@ -819,7 +930,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferNIU.TxnId)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferNIU.TxnId)
 	}
 
 	if transferNIU.Sender == transferNIU.Receiver {
@@ -829,7 +940,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error:transfer to self is not allowed", http.StatusBadRequest)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:transfer to self is not allowed", http.StatusBadRequest)
 	}
 
 	logger.Infof("operator-->", transferNIU.Sender)
@@ -841,7 +952,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
 	}
 	logger.Info("transferNIU Kyc check")
 	if env != "dev" {
@@ -853,7 +964,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			// 	Status:     "Failure",
 			// 	StatusCode: http.StatusBadRequest,
 			// }, fmt.Errorf("error with status code %v, error:not able to do KYC check for sender:%s, error:%v", http.StatusBadRequest, transferNIU.Sender, err)
-			return false
+			return false, fmt.Errorf("error with status code %v, error:not able to do KYC check for sender:%s, error:%v", http.StatusBadRequest, transferNIU.Sender, err)
 		}
 		if !kycCheck {
 			// return Response{
@@ -862,7 +973,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			// 	Status:     "Failure",
 			// 	StatusCode: http.StatusBadRequest,
 			// }, fmt.Errorf("error with status code %v, error:sender %s is not kyced", http.StatusBadRequest, transferNIU.Sender)
-			return false
+			return false, fmt.Errorf("error with status code %v, error:sender %s is not kyced", http.StatusBadRequest, transferNIU.Sender)
 		}
 
 		// Check KYC status for each recipient
@@ -874,7 +985,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			// 	Status:     "Failure",
 			// 	StatusCode: http.StatusBadRequest,
 			// }, fmt.Errorf("error with status code %v, error:not able to do KYC check for receiver:%s, error:%v", http.StatusBadRequest, transferNIU.Receiver, err)
-			return false
+			return false, fmt.Errorf("error with status code %v, error:not able to do KYC check for receiver:%s, error:%v", http.StatusBadRequest, transferNIU.Receiver, err)
 		}
 		if !kycCheck {
 			// return Response{
@@ -883,7 +994,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			// 	Status:     "Failure",
 			// 	StatusCode: http.StatusBadRequest,
 			// }, fmt.Errorf("error with status code %v, error:receiver %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
-			return false
+			return false, fmt.Errorf("error with status code %v, error:receiver %s is not kyced", http.StatusBadRequest, transferNIU.Receiver)
 		}
 		if err = ctx.PutStateWithKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
 			logger.Infof("err: %v\n", err)
@@ -893,7 +1004,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			// 	Status:     "Failure",
 			// 	StatusCode: http.StatusBadRequest,
 			// }, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
-			return false
+			return false, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
 		}
 	} else if err = ctx.PutStateWithoutKYC(transferNIU.TxnId, transferNIUJSON); err != nil {
 		logger.Infof("err: %v\n", err)
@@ -903,7 +1014,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
 	}
 
 	logger.Info("transferNIU transferNIUAmount")
@@ -916,12 +1027,15 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusConflict,
 		// }, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
-		return false
+		return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
 	}
-	gasFees := s.GetGasFees(ctx)
+	gasFees, err := s.GetGasFees(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get gas gee: %v", err)
+	}
 	gasFeesAmount, su := big.NewInt(0).SetString(gasFees, 10)
 	if !su {
-		return false
+		return false, fmt.Errorf("gasfee can't be converted to big int")
 	}
 	fmt.Printf("gasFeesAmount %v\n", gasFeesAmount)
 	removeAmount := transferNIUAmount.Add(transferNIUAmount, gasFeesAmount)
@@ -936,7 +1050,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusInternalServerError,
 		// }, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
 	}
 	addAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
 	if !su {
@@ -947,7 +1061,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusConflict,
 		// }, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
-		return false
+		return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
 	}
 	logger.Infof("Add amount %v\n", addAmount)
 	// Deposit the fund to the recipient address
@@ -960,7 +1074,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusInternalServerError,
 		// }, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 	}
 	logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
 	err = kaps.AddUtxo(ctx, transferNIU.Id, kalpFoundation, false, gasFeesAmount)
@@ -972,7 +1086,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusInternalServerError,
 		// }, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 	}
 	transferSingleEvent := kaps.TransferSingle{Operator: sender, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
@@ -983,7 +1097,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusInternalServerError,
 		// }, fmt.Errorf("error with status code %v, error:unable to remove funds: %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 	}
 
 	// funcName, _ := ctx.GetFunctionAndParameters()
@@ -1001,7 +1115,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	// 	StatusCode: http.StatusCreated,
 	// 	Response:   response,
 	// }, nil
-	return true
+	return true, nil
 
 }
 
@@ -1254,4 +1368,114 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (st
 	}
 
 	return big.NewInt(0).String(), nil
+}
+
+// SetUserRoles is a smart contract function which is used to setup a role for user.
+func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
+	//check if contract has been intilized first
+
+	fmt.Println("SetUserRoles", data)
+	initialized, err := kaps.CheckInitialized(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
+	}
+	if !initialized {
+		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
+	}
+
+	// Parse input data into NIU struct.
+	var userRole UserRole
+	errs := json.Unmarshal([]byte(data), &userRole)
+	if errs != nil {
+		return "", fmt.Errorf("failed to parse data: %v", errs)
+	}
+	if userRole.Role == giniAdmin {
+		err = kaps.IsAdmin(ctx)
+		if err != nil {
+			return "", fmt.Errorf("user role GINI-ADMIN can be defined by blockchain admin only")
+		}
+	} else {
+		userValid, err := s.ValidateUserRole(ctx, giniAdmin)
+		if err != nil {
+			return "", fmt.Errorf("error in validating the role %v", err)
+		}
+		if !userValid {
+			return "", fmt.Errorf("error in setting role %s, only GINI-ADMIN can set the roles", userRole.Role)
+		}
+	}
+	// Validate input data.
+	if userRole.Id == "" {
+		return "", fmt.Errorf("user Id can not be null")
+	}
+
+	if userRole.Role == "" {
+		return "", fmt.Errorf("role can not be null")
+	}
+
+	ValidRoles := []string{giniAdmin, gasFeesAdminRole, kalpGateWayAdmin}
+	if !slices.Contains(ValidRoles, userRole.Role) {
+		return "", fmt.Errorf("invalid input role")
+	}
+
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{userRole.Id, UserRoleMap})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+	// Generate JSON representation of NIU struct.
+	usrRoleJSON, err := json.Marshal(userRole)
+	if err != nil {
+		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
+	}
+	// Store the NIU struct in the state database
+	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
+		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
+	}
+	return s.GetTransactionTimestamp(ctx)
+
+}
+
+func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
+
+	// Check if operator is authorized to create NIU.
+	operator, err := kaps.GetUserId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get client id: %v", err)
+	}
+
+	fmt.Println("operator---------------", operator)
+	userRole, err1 := s.GetUserRoles(ctx, operator)
+	if err1 != nil {
+		return false, fmt.Errorf("error: %v", err1)
+	}
+
+	if userRole != Role {
+		return false, fmt.Errorf("this transaction can be performed by %v only", Role)
+	}
+	return true, nil
+}
+
+// GetUserRoles is a smart contract function which is used to get a role of a user.
+func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
+	// Get the asset from the ledger using id & check if asset exists
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{id, UserRoleMap})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+
+	userJSON, err := ctx.GetState(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if userJSON == nil {
+		return "", nil
+	}
+
+	// Unmarshal asset from JSON to struct
+	var userRole UserRole
+	err = json.Unmarshal(userJSON, &userRole)
+	if err != nil {
+		return "", fmt.Errorf("unable to unmarshal user role struct : %v", err)
+	}
+
+	return userRole.Role, nil
 }
