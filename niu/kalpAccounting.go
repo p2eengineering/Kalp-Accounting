@@ -1197,10 +1197,10 @@ func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextIn
 	return timestamp.AsTime().String(), nil
 }
 
-func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, value string) bool {
+func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, value string) (bool, error) {
 	owner, err := ctx.GetUserID()
 	if err != nil {
-		return false
+		return false, err
 	}
 
 	err = kaps.Approve(ctx, owner, spender, GINI, value)
@@ -1212,7 +1212,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusInternalServerError,
 		// }, fmt.Errorf("error unable to approve funds: %v", err)
-		return false
+		return false, err
 	}
 	// funcName, _ := ctx.GetFunctionAndParameters()
 	// response := map[string]interface{}{
@@ -1229,19 +1229,19 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 	// 	StatusCode: http.StatusCreated,
 	// 	Response:   response,
 	// }, nil
-	return true
+	return true, nil
 }
 
-func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, from string, to string, value string) bool {
+func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, from string, to string, value string) (bool, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("TransferFrom---->%s", env)
 	spender, err := ctx.GetUserID()
 	if err != nil {
-		return false
+		return false, fmt.Errorf("error iin getting spender's id: %v", err)
 	}
 	timeStamp, err := s.GetTransactionTimestamp(ctx)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
 	}
 	transferFrom := TransferfromNIU{
 		Id:        GINI,
@@ -1267,16 +1267,15 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 	err = validate.Struct(transferFrom)
 	if err != nil {
 		logger.Infof("err: %v\n", err)
-		// for _, e := range err.(validator.ValidationErrors) {
-		// 	return Response{
-		// 		Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
-		// 		Success:    false,
-		// 		Status:     "Failure",
-		// 		StatusCode: http.StatusBadRequest,
-		// 	}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
-		// }
-
-		return false
+		for _, e := range err.(validator.ValidationErrors) {
+			// 	return Response{
+			// 		Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+			// 		Success:    false,
+			// 		Status:     "Failure",
+			// 		StatusCode: http.StatusBadRequest,
+			// 	}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
+			return false, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
+		}
 	}
 	err = transferFrom.TransferFromNIUValidation()
 	if err != nil {
@@ -1287,7 +1286,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
 		logger.Infof("err: %v\n", err)
-		return false
+		return false, fmt.Errorf("err: %v", err)
 	}
 	txnJSON, err := ctx.GetState(transferFrom.TxnId)
 	if err != nil {
@@ -1299,7 +1298,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 		// }, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
 
 		logger.Infof("err: %v\n", err)
-		return false
+		return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
 	}
 	if txnJSON != nil {
 		logger.Infof("err: %v\n", err)
@@ -1309,7 +1308,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferFrom.TxnId)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferFrom.TxnId)
 	}
 	transferFrom.Id = GINI
 	transferFrom.DocType = GINI_PAYMENT_TXN
@@ -1322,7 +1321,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
 	}
 	if err = ctx.PutStateWithoutKYC(transferFrom.TxnId, transferNIUJSON); err != nil {
 		logger.Infof("err: %v\n", err)
@@ -1332,7 +1331,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusBadRequest,
 		// }, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
-		return false
+		return false, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
 	}
 	fmt.Printf("allow: %v\n", transferFrom)
 	err = kaps.TransferUTXOFrom(ctx, []string{transferFrom.Owner}, []string{transferFrom.Spender}, transferFrom.Receiver, GINI, transferFrom.Amount, "UTXO")
@@ -1344,6 +1343,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 		// 	Status:     "Failure",
 		// 	StatusCode: http.StatusInternalServerError,
 		// }, fmt.Errorf("error: unable to transfer funds: %v", err)
+		return false, fmt.Errorf("error: unable to transfer funds: %v", err)
 	}
 	// funcName, _ := ctx.GetFunctionAndParameters()
 	// response := map[string]interface{}{
@@ -1353,25 +1353,25 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 	// 	"transactionData": transferFrom,
 	// }
 
-	return true
+	return true, nil
 }
 
-func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender string) string {
+func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
 
 	allowance, err := kaps.Allowance(ctx, owner, spender)
 	if err != nil {
-		return fmt.Sprintf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err) //big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
+		return "", fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err) //big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
-	return allowance
+	return allowance, nil
 }
 
-func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) string {
+func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	logger := kalpsdk.NewLogger()
 
 	// Retrieve the current balance for the account and token ID
 	giniBytes, err := ctx.GetState(GINI)
 	if err != nil {
-		return fmt.Sprintf("internal error: failed to read GINI NIU %v", err)
+		return "", fmt.Errorf("internal error: failed to read GINI NIU %v", err)
 	}
 	var gini GiniNIU
 	if giniBytes != nil {
@@ -1380,13 +1380,13 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) str
 		// Unmarshal the current GINI NIU details into an GININIU struct
 		err = json.Unmarshal(giniBytes, &gini)
 		if err != nil {
-			return fmt.Sprintf("internal error: failed to parse GINI NIU %v", err)
+			return "", fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
 		}
 		logger.Infof("gini %v\n", gini)
-		return gini.TotalSupply
+		return gini.TotalSupply, nil
 	}
 
-	return big.NewInt(0).String()
+	return big.NewInt(0).String(), nil
 }
 
 // SetUserRoles is a smart contract function which is used to setup a role for user.
