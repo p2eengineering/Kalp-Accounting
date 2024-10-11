@@ -37,8 +37,10 @@ const symbolKey = "symbol"
 const decimalKey = "decimal"
 const gasFeesKey = "gasFees"
 const kalpFoundation = "kalpAdmin"
-const mintOperator = ""
-const gasFeesAdmin = ""
+const mintOperator = "PAYADMINNOKYC"
+const gasFeesAdmin = "PAYADMINNOKYC"
+const BridgeContractAddress = "0x23156a30E545efC2A09212E21EEF2dB24aF84751"
+const BridgeContractName = "KalpBridge"
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
 const PaymentRoleValue = "PaymentAdmin"
@@ -471,7 +473,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.Id = GINI
 		gini.Name = GINI
 		gini.DocType = kaps.DocTypeNIU
-		gini.Account = operator
+		gini.Account = BridgeContractAddress
 		gini.TotalSupply = acc.Amount
 
 	} else {
@@ -869,7 +871,11 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		logger.Infof("foundation transfer : %s\n", userRole)
 		return true, nil
+	} else if b, err := kaps.IsCallerKalpBridge(ctx, BridgeContractName); b && err == nil {
+		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
+		sender = BridgeContractAddress
 	}
+
 	timeStamp, err := s.GetTransactionTimestamp(ctx)
 	if err != nil {
 		return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
