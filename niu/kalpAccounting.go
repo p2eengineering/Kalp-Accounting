@@ -47,7 +47,7 @@ const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
 
 // mint twice will be true only in dev and testing environment and false in production environment
-const mintTwice = true
+const mintTwice = false
 const giniAdmin = "GINI-ADMIN"
 const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
