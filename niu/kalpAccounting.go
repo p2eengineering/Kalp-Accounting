@@ -46,8 +46,6 @@ const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
 
-// mint twice will be true only in dev and testing environment and false in production environment
-const mintTwice = false
 const giniAdmin = "GINI-ADMIN"
 const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
@@ -475,38 +473,12 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.TotalSupply = acc.Amount
 
 	} else {
-		if mintTwice {
-			errs = json.Unmarshal([]byte(giniJSON), &gini)
-			if errs != nil {
-				return Response{
-					Message:    "internal error: error in parsing existing GINI data in Mint request ",
-					Success:    false,
-					Status:     "Failure",
-					StatusCode: http.StatusBadRequest,
-				}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request", http.StatusBadRequest)
-			}
-
-			gini.Id = GINI
-			gini.Name = GINI
-			gini.DocType = kaps.DocTypeNIU
-			gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
-			if !su {
-				return Response{
-					Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
-					Success:    false,
-					Status:     "Failure",
-					StatusCode: http.StatusConflict,
-				}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
-			}
-			gini.TotalSupply = gigiTotalSupply.Add(gigiTotalSupply, accAmount).String()
-		} else {
-			return Response{
-				Message:    "can't call mint request twice twice",
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
-		}
+		return Response{
+			Message:    "can't call mint request twice twice",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
 	}
 
 	giniiJSON, err := json.Marshal(gini)
