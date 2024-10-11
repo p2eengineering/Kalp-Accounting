@@ -550,7 +550,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, Mint: unable to store GINI transaction data in blockchain: %v", http.StatusInternalServerError, err)
 	}
 	logger.Infof("Transfer single event: %v\n", accAmount)
-	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, ID: acc.Id, Value: accAmount}
+	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, Value: accAmount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to add funds: %v", err),
@@ -793,7 +793,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}
 	}
 
-	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: accAmount}); err != nil {
+	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", Value: accAmount}); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to remove funds: %v", err),
 			Success:    false,
@@ -1088,7 +1088,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 	}
-	transferSingleEvent := kaps.TransferSingle{Operator: sender, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
+	transferSingleEvent := kaps.TransferSingle{Operator: sender, From: transferNIU.Sender, To: transferNIU.Receiver, Value: transferNIU.Amount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		logger.Infof("err: %v\n", err)
 		// return Response{
