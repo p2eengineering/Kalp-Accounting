@@ -46,8 +46,6 @@ const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
 
-// mint twice will be true only in dev and testing environment and false in production environment
-const mintTwice = true
 const giniAdmin = "GINI-ADMIN"
 const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
@@ -475,38 +473,12 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		gini.TotalSupply = acc.Amount
 
 	} else {
-		if mintTwice {
-			errs = json.Unmarshal([]byte(giniJSON), &gini)
-			if errs != nil {
-				return Response{
-					Message:    "internal error: error in parsing existing GINI data in Mint request ",
-					Success:    false,
-					Status:     "Failure",
-					StatusCode: http.StatusBadRequest,
-				}, fmt.Errorf("internal error %v: error in parsing existing GINI data in Mint request", http.StatusBadRequest)
-			}
-
-			gini.Id = GINI
-			gini.Name = GINI
-			gini.DocType = kaps.DocTypeNIU
-			gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
-			if !su {
-				return Response{
-					Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
-					Success:    false,
-					Status:     "Failure",
-					StatusCode: http.StatusConflict,
-				}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
-			}
-			gini.TotalSupply = gigiTotalSupply.Add(gigiTotalSupply, accAmount).String()
-		} else {
-			return Response{
-				Message:    "can't call mint request twice twice",
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
-		}
+		return Response{
+			Message:    "can't call mint request twice twice",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
 	}
 
 	giniiJSON, err := json.Marshal(gini)
@@ -550,7 +522,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, Mint: unable to store GINI transaction data in blockchain: %v", http.StatusInternalServerError, err)
 	}
 	logger.Infof("Transfer single event: %v\n", accAmount)
-	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, ID: acc.Id, Value: accAmount}
+	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, Value: accAmount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to add funds: %v", err),
@@ -793,7 +765,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}
 	}
 
-	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", ID: acc.Id, Value: accAmount}); err != nil {
+	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", Value: accAmount}); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to remove funds: %v", err),
 			Success:    false,
@@ -1088,7 +1060,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 	}
-	transferSingleEvent := kaps.TransferSingle{Operator: sender, From: transferNIU.Sender, To: transferNIU.Receiver, ID: transferNIU.Id, Value: transferNIU.Amount}
+	transferSingleEvent := kaps.TransferSingle{Operator: sender, From: transferNIU.Sender, To: transferNIU.Receiver, Value: transferNIU.Amount}
 	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		logger.Infof("err: %v\n", err)
 		// return Response{
@@ -1197,151 +1169,170 @@ func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextIn
 	return timestamp.AsTime().String(), nil
 }
 
-func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
-	var allow kaps.Allow
-
-	err := json.Unmarshal([]byte(data), &allow)
+func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, value string) (bool, error) {
+	owner, err := ctx.GetUserID()
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to approve funds: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error is parsing approve request data: %v", err)
-	}
-	err = kaps.Approve(ctx, allow.Owner, allow.Spender, GINI, allow.Amount)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to approve funds: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error unable to approve funds: %v", err)
-	}
-	funcName, _ := ctx.GetFunctionAndParameters()
-	response := map[string]interface{}{
-		"txId":            ctx.GetTxID(),
-		"txFcn":           funcName,
-		"txType":          "Invoke",
-		"transactionData": allow,
+		return false, err
 	}
 
-	return Response{
-		Message:    "Allowance approved successfully",
-		Success:    true,
-		Status:     "Success",
-		StatusCode: http.StatusCreated,
-		Response:   response,
-	}, nil
+	err = kaps.Approve(ctx, owner, spender, GINI, value)
+	if err != nil {
+		fmt.Printf("error unable to approve funds: %v", err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("unable to approve funds: %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusInternalServerError,
+		// }, fmt.Errorf("error unable to approve funds: %v", err)
+		return false, err
+	}
+	// funcName, _ := ctx.GetFunctionAndParameters()
+	// response := map[string]interface{}{
+	// 	"txId":            ctx.GetTxID(),
+	// 	"txFcn":           funcName,
+	// 	"txType":          "Invoke",
+	// 	"transactionData": allow,
+	// }
+
+	// return Response{
+	// 	Message:    "Allowance approved successfully",
+	// 	Success:    true,
+	// 	Status:     "Success",
+	// 	StatusCode: http.StatusCreated,
+	// 	Response:   response,
+	// }, nil
+	return true, nil
 }
 
-func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
+func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, from string, to string, value string) (bool, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("TransferFrom---->%s", env)
-
-	var transferFrom TransferfromNIU
-	err := json.Unmarshal([]byte(data), &transferFrom)
+	spender, err := ctx.GetUserID()
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to marshall data: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error: unable to marshall data: %v", err)
+		return false, fmt.Errorf("error iin getting spender's id: %v", err)
 	}
+	timeStamp, err := s.GetTransactionTimestamp(ctx)
+	if err != nil {
+		return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
+	}
+	transferFrom := TransferfromNIU{
+		Id:        GINI,
+		TxnId:     ctx.GetTxID(),
+		Owner:     from,
+		Spender:   spender,
+		Receiver:  to,
+		Amount:    value,
+		TimeStamp: timeStamp,
+		DocType:   GINI_PAYMENT_TXN,
+	}
+
+	// err := json.Unmarshal([]byte(data), &transferFrom)
+	// if err != nil {
+	// 	return Response{
+	// 		Message:    fmt.Sprintf("unable to marshall data: %v", err),
+	// 		Success:    false,
+	// 		Status:     "Failure",
+	// 		StatusCode: http.StatusInternalServerError,
+	// 	}, fmt.Errorf("error: unable to marshall data: %v", err)
+	// }
 	validate := validator.New()
 	err = validate.Struct(transferFrom)
 	if err != nil {
+		logger.Infof("err: %v\n", err)
 		for _, e := range err.(validator.ValidationErrors) {
-			return Response{
-				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
+			// 	return Response{
+			// 		Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
+			// 		Success:    false,
+			// 		Status:     "Failure",
+			// 		StatusCode: http.StatusBadRequest,
+			// 	}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
+			return false, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
 		}
 	}
 	err = transferFrom.TransferFromNIUValidation()
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("%v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
-
+		// return Response{
+		// 	Message:    fmt.Sprintf("%v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
+		logger.Infof("err: %v\n", err)
+		return false, fmt.Errorf("err: %v", err)
 	}
 	txnJSON, err := ctx.GetState(transferFrom.TxnId)
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to read from world state: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("failed to read from world state: %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:failed to read from world state: %v", http.StatusBadRequest, err)
+
+		logger.Infof("err: %v\n", err)
+		return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
 	}
 	if txnJSON != nil {
-		return Response{
-			Message:    fmt.Sprintf("transaction %v already accounted", transferFrom.TxnId),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferFrom.TxnId)
+		logger.Infof("err: %v\n", err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("transaction %v already accounted", transferFrom.TxnId),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferFrom.TxnId)
+		return false, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferFrom.TxnId)
 	}
 	transferFrom.Id = GINI
 	transferFrom.DocType = GINI_PAYMENT_TXN
 	transferNIUJSON, err := json.Marshal(transferFrom)
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
+		logger.Infof("err: %v\n", err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
+		return false, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
 	}
 	if err = ctx.PutStateWithoutKYC(transferFrom.TxnId, transferNIUJSON); err != nil {
-		return Response{
-			Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
+		logger.Infof("err: %v\n", err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("Transfer: unable to store GINI transaction data in blockchain: %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusBadRequest,
+		// }, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
+		return false, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
 	}
 	fmt.Printf("allow: %v\n", transferFrom)
 	err = kaps.TransferUTXOFrom(ctx, []string{transferFrom.Owner}, []string{transferFrom.Spender}, transferFrom.Receiver, GINI, transferFrom.Amount, "UTXO")
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to transfer funds: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error: unable to transfer funds: %v", err)
+		logger.Infof("err: %v\n", err)
+		// return Response{
+		// 	Message:    fmt.Sprintf("unable to transfer funds: %v", err),
+		// 	Success:    false,
+		// 	Status:     "Failure",
+		// 	StatusCode: http.StatusInternalServerError,
+		// }, fmt.Errorf("error: unable to transfer funds: %v", err)
+		return false, fmt.Errorf("error: unable to transfer funds: %v", err)
 	}
-	funcName, _ := ctx.GetFunctionAndParameters()
-	response := map[string]interface{}{
-		"txId":            ctx.GetTxID(),
-		"txFcn":           funcName,
-		"txType":          "Invoke",
-		"transactionData": transferFrom,
-	}
+	// funcName, _ := ctx.GetFunctionAndParameters()
+	// response := map[string]interface{}{
+	// 	"txId":            ctx.GetTxID(),
+	// 	"txFcn":           funcName,
+	// 	"txType":          "Invoke",
+	// 	"transactionData": transferFrom,
+	// }
 
-	return Response{
-		Message:    "Funds transfered successfully",
-		Success:    true,
-		Status:     "Success",
-		StatusCode: http.StatusCreated,
-		Response:   response,
-	}, nil
+	return true, nil
 }
 
-func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
-	operator, err := kaps.GetUserId(ctx)
+func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
+
+	allowance, err := kaps.Allowance(ctx, owner, spender)
 	if err != nil {
-		return big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get client id: %v", http.StatusBadRequest, err)
-	}
-	allowance, err := kaps.Allowance(ctx, owner, operator)
-	if err != nil {
-		return big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
+		return "", fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err) //big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
 	return allowance, nil
 }
@@ -1352,7 +1343,7 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (st
 	// Retrieve the current balance for the account and token ID
 	giniBytes, err := ctx.GetState(GINI)
 	if err != nil {
-		return big.NewInt(0).String(), fmt.Errorf("internal error: failed to read GINI NIU %v", err)
+		return "", fmt.Errorf("internal error: failed to read GINI NIU %v", err)
 	}
 	var gini GiniNIU
 	if giniBytes != nil {
@@ -1361,7 +1352,7 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (st
 		// Unmarshal the current GINI NIU details into an GININIU struct
 		err = json.Unmarshal(giniBytes, &gini)
 		if err != nil {
-			return big.NewInt(0).String(), fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
+			return "", fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
 		}
 		logger.Infof("gini %v\n", gini)
 		return gini.TotalSupply, nil
