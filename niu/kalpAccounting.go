@@ -814,6 +814,15 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Infof("error checking sponsor's role: %v", err)
 		return false, fmt.Errorf("error checking sponsor's role:: %v", err)
 	}
+
+	gasFees, err := s.GetGasFees(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get gas gee: %v", err)
+	}
+	gasFeesAmount, su := big.NewInt(0).SetString(gasFees, 10)
+	if !su {
+		return false, fmt.Errorf("gasfee can't be converted to big int")
+	}
 	logger.Infof("useRole: %s\n", userRole)
 	if userRole == kalpGateWayAdmin {
 		var send Sender
@@ -843,7 +852,54 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		return true, nil
 	} else if b, err := kaps.IsCallerKalpBridge(ctx, BridgeContractName); b && err == nil {
 		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
-		sender = BridgeContractAddress
+		if sender == kalpFoundation {
+			sender = BridgeContractAddress
+			am, su := big.NewInt(0).SetString(amount, 10)
+			if !su {
+				logger.Infof("amount can't be converted to string ")
+				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+			}
+
+			err = kaps.RemoveUtxo(ctx, GINI, sender, false, am)
+			if err != nil {
+				logger.Infof("transfer remove err: %v", err)
+				return false, fmt.Errorf("transfer remove err: %v", err)
+			}
+
+			err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, am)
+			if err != nil {
+				logger.Infof("err: %v\n", err)
+				return false, fmt.Errorf("transfer add err: %v", err)
+			}
+			logger.Infof("foundation transfer to self : %s\n", userRole)
+			return true, nil
+		} else {
+			sender = BridgeContractAddress
+			am, su := big.NewInt(0).SetString(amount, 10)
+			if !su {
+				logger.Infof("amount can't be converted to string ")
+				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+			}
+
+			err = kaps.RemoveUtxo(ctx, GINI, sender, false, am)
+			if err != nil {
+				logger.Infof("transfer remove err: %v", err)
+				return false, fmt.Errorf("transfer remove err: %v", err)
+			}
+			am = am.Sub(am, gasFeesAmount)
+			err = kaps.AddUtxo(ctx, GINI, address, false, am)
+			if err != nil {
+				logger.Infof("err: %v\n", err)
+				return false, fmt.Errorf("transfer add err: %v", err)
+			}
+			err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, gasFeesAmount)
+			if err != nil {
+				logger.Infof("err: %v\n", err)
+				return false, fmt.Errorf("transfer add err: %v", err)
+			}
+			logger.Infof("foundation transfer to self : %s\n", userRole)
+			return true, nil
+		}
 	}
 
 	timeStamp, err := s.GetTransactionTimestamp(ctx)
@@ -994,7 +1050,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	}
 
 	logger.Info("transferNIU transferNIUAmount")
-	transferNIUAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
+	transferNIUAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
 		logger.Infof("transferNIU.Amount can't be converted to string ")
 		// return Response{
@@ -1005,14 +1061,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
 		return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferNIU.Amount)
 	}
-	gasFees, err := s.GetGasFees(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to get gas gee: %v", err)
-	}
-	gasFeesAmount, su := big.NewInt(0).SetString(gasFees, 10)
-	if !su {
-		return false, fmt.Errorf("gasfee can't be converted to big int")
-	}
+	fmt.Printf("transferNIUAmount %v\n", transferNIUAmount)
 	fmt.Printf("gasFeesAmount %v\n", gasFeesAmount)
 	removeAmount := transferNIUAmount.Add(transferNIUAmount, gasFeesAmount)
 	fmt.Printf("remove amount %v\n", removeAmount)
@@ -1028,7 +1077,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// }, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
 		return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
 	}
-	addAmount, su := big.NewInt(0).SetString(transferNIU.Amount, 10)
+	addAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
 		logger.Infof("transferNIU.Amount can't be converted to string ")
 		// return Response{
