@@ -900,6 +900,52 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Infof("foundation transfer to self : %s\n", userRole)
 			return true, nil
 		}
+	} else if sender == kalpFoundation {
+
+		am, su := big.NewInt(0).SetString(amount, 10)
+		if !su {
+			logger.Infof("amount can't be converted to string ")
+			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+		}
+		err := kaps.RemoveUtxo(ctx, GINI, sender, false, am)
+		if err != nil {
+			logger.Infof("transfer remove err: %v", err)
+			return false, fmt.Errorf("transfer remove err: %v", err)
+		}
+		err = kaps.AddUtxo(ctx, GINI, address, false, am)
+		if err != nil {
+			logger.Infof("err: %v\n", err)
+			return false, fmt.Errorf("transfer add err: %v", err)
+		}
+		logger.Infof("foundation transfer to user : %s\n", userRole)
+		return true, nil
+	} else if address == kalpFoundation {
+		removeAmount, su := big.NewInt(0).SetString(amount, 10)
+		if !su {
+			logger.Infof("amount can't be converted to string ")
+			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+		}
+		removeAmount = removeAmount.Add(removeAmount, gasFeesAmount)
+		err := kaps.RemoveUtxo(ctx, GINI, sender, false, removeAmount)
+		if err != nil {
+			logger.Infof("transfer remove err: %v", err)
+			return false, fmt.Errorf("transfer remove err: %v", err)
+		}
+		logger.Infof("addAmount: %v\n", removeAmount)
+		addAmount, su := big.NewInt(0).SetString(amount, 10)
+		if !su {
+			logger.Infof("amount can't be converted to string ")
+			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+		}
+		addAmount.Add(addAmount, gasFeesAmount)
+		logger.Infof("addAmount: %v\n", addAmount)
+		err = kaps.AddUtxo(ctx, GINI, address, false, addAmount)
+		if err != nil {
+			logger.Infof("err: %v\n", err)
+			return false, fmt.Errorf("transfer add err: %v", err)
+		}
+		logger.Infof("foundation transfer to user : %s\n", userRole)
+		return true, nil
 	}
 
 	timeStamp, err := s.GetTransactionTimestamp(ctx)
