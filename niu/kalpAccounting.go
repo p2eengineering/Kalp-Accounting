@@ -892,7 +892,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			}
 			logger.Infof("foundation transfer to self : %s\n", userRole)
 		} else {
-			// In this scenario sender is Kalp Bridge we will credit gas fees to kalp foundation and remove amount and brigde contract address from reciver will recieveamount after gas fees deduction
+			// In this scenario sender is Kalp Bridge we will credit gas fees to kalp foundation and remove amount from bridge contract
+			// address. Reciver will recieve amount after gas fees deduction
 			sender = BridgeContractAddress
 			am, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
