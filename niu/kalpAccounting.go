@@ -791,7 +791,19 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		Response:   response,
 	}, nil
 }
-
+func ValidateAddress(address string) error {
+	if address == "" {
+		return fmt.Errorf("invalid input address")
+	}
+	if len(address) < 8 || len(address) > 60 {
+		return fmt.Errorf("address must be at least 8 characters long and shorter than 60 characters")
+	}
+	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
+	if strings.ContainsAny(address, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+		return fmt.Errorf("invalid address")
+	}
+	return nil
+}
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) (bool, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("Transfer---->%s", env)
@@ -805,6 +817,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	// 		StatusCode: http.StatusBadRequest,
 	// 	}, fmt.Errorf("error with status code %v, error:error in parsing transfer request data: %v", http.StatusBadRequest, errs)
 	// }
+
 	sender, err := ctx.GetUserID()
 	if err != nil {
 		return false, fmt.Errorf("error in getting user id: %v", err)
@@ -814,7 +827,10 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Infof("error checking sponsor's role: %v", err)
 		return false, fmt.Errorf("error checking sponsor's role:: %v", err)
 	}
-
+	err = ValidateAddress(address)
+	if err != nil {
+		return false, fmt.Errorf("error validating address: %v", err)
+	}
 	gasFees, err := s.GetGasFees(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get gas gee: %v", err)
@@ -824,6 +840,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		return false, fmt.Errorf("gasfee can't be converted to big int")
 	}
 	logger.Infof("useRole: %s\n", userRole)
+	// In this scenario sender is kalp gateway we will credit amount to kalp foundation as gas fees
 	if userRole == kalpGateWayAdmin {
 		var send Sender
 		errs := json.Unmarshal([]byte(address), &send)
@@ -851,7 +868,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Infof("foundation transfer : %s\n", userRole)
 
 	} else if b, err := kaps.IsCallerKalpBridge(ctx, BridgeContractName); b && err == nil {
+		// In this scenario sender is Kalp Bridge we will credit amount to kalp foundation and remove amount from sender
 		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
+		// In this scenario sender is kalp foundation is bridgeing will credit amount to kalp foundation and remove amount from sender without gas fees
 		if sender == kalpFoundation {
 			sender = BridgeContractAddress
 			am, su := big.NewInt(0).SetString(amount, 10)
@@ -873,6 +892,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			}
 			logger.Infof("foundation transfer to self : %s\n", userRole)
 		} else {
+			// In this scenario sender is Kalp Bridge we will credit gas fees to kalp foundation and remove amount and brigde contract address from reciver will recieveamount after gas fees deduction
 			sender = BridgeContractAddress
 			am, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
@@ -899,6 +919,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Infof("foundation transfer to self : %s\n", userRole)
 		}
 	} else if sender == kalpFoundation {
+		//In this scenario sender is kalp foundation and address is the reciver so no gas fees deduction in code
 		am, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
 			logger.Infof("amount can't be converted to string ")
@@ -917,6 +938,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Infof("foundation transfer to user : %s\n", userRole)
 
 	} else if address == kalpFoundation {
+		//In this scenario sender is normal user and address is the kap foundation so gas fees+amount will be credited to kalp foundation
 		removeAmount, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
 			logger.Infof("amount can't be converted to string ")
@@ -943,6 +965,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		logger.Infof("foundation transfer to user : %s\n", userRole)
 	} else {
+		//This is normal scenario where gas fees+ amount will be deducted from sender and amount will credited to address and gas fees will be credited to kalp foundation
 		timeStamp, err := s.GetTransactionTimestamp(ctx)
 		if err != nil {
 			return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
