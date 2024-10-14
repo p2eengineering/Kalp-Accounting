@@ -848,7 +848,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Info("internal error: error in parsing sender data")
 			return false, fmt.Errorf("internal error: error in parsing sender data")
 		}
-		if address != kalpFoundation {
+		if send.Sender != kalpFoundation {
 			gAmount, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
 				logger.Infof("amount can't be converted to string ")
