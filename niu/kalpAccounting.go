@@ -35,7 +35,7 @@ const attrRole = "hf.Type"
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
-const kalpFoundation = "kalpAdmin"
+const kalpFoundation = "fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
 const OwnerPrefix = "ownerId~assetId"
 const MailabRoleAttrName = "MailabUserRole"
 const PaymentRoleValue = "PaymentAdmin"
@@ -828,7 +828,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		return false, fmt.Errorf("error checking sponsor's role:: %v", err)
 	}
 	err = ValidateAddress(address)
-	if err != nil {
+	if err != nil && userRole != kalpGateWayAdmin {
 		return false, fmt.Errorf("error validating address: %v", err)
 	}
 	gasFees, err := s.GetGasFees(ctx)
