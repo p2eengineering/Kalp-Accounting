@@ -920,6 +920,10 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			}
 			logger.Infof("foundation transfer to self : %s\n", userRole)
 		}
+	} else if sender == kalpFoundation && address == kalpFoundation {
+		//In this scenario sender is kalp foundation and address is the kalp foundation so no addition or removal is required
+		logger.Infof("foundation transfer to sender : %s address:%s\n", sender, address)
+
 	} else if sender == kalpFoundation {
 		//In this scenario sender is kalp foundation and address is the reciver so no gas fees deduction in code
 		am, su := big.NewInt(0).SetString(amount, 10)
