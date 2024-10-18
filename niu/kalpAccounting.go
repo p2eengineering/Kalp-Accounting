@@ -40,7 +40,7 @@ const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
 const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
-
+const totalSupply = "2000000000000000000000000000"
 const giniAdmin = "GINI-ADMIN"
 const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
@@ -98,7 +98,22 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
+	operator, err := GetUserId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
+	}
 
+	userRole, err := s.GetUserRoles(ctx, operator)
+	if err != nil {
+		return false, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
+	}
+	if userRole != giniAdmin {
+		return false, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
+	}
+	_, err = s.mint(ctx, BridgeContractAddress, totalSupply)
+	if err != nil {
+		return false, fmt.Errorf("error with status code %v,error in minting: %v", http.StatusInternalServerError, err)
+	}
 	return true, nil
 }
 
@@ -157,58 +172,9 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 	return nil
 }
 
-func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, addres string, amount string) (Response, error) {
+func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, addres string, amount string) (Response, error) {
 	logger := kalpsdk.NewLogger()
-	logger.Infof("AddFunds---->")
-	initialized, err := CheckInitialized(ctx)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, err:failed to check if contract is already initialized: %v ", http.StatusInternalServerError, err)
-	}
-	if !initialized {
-		return Response{
-			Message:    "contract options need to be set before calling any function, call Initialize() to initialize contract",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, contract options need to be set before calling any function, call Initialize() to initialize contract", http.StatusInternalServerError)
-	}
-
-	logger.Infof("AddFunds CheckInitialized---->")
-	operator, err := GetUserId(ctx)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to get client id: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
-	}
-
-	userRole, err := s.GetUserRoles(ctx, operator)
-	if err != nil {
-		logger.Infof("error checking sponsor's role: %v", err)
-		return Response{
-			Message:    fmt.Sprintf("error checking sponsor's role: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
-	}
-	logger.Infof("useRole: %s\n", userRole)
-	if userRole != giniAdmin {
-		logger.Infof("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
-		return Response{
-			Message:    fmt.Sprintf("error with status code %v, error: only gini admin is allowed to mint", http.StatusInternalServerError),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
-	}
+	logger.Infof("Mint---->")
 
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
@@ -238,9 +204,8 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, addres str
 		}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
 	}
 
-	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
-	err = MintUtxoHelperWithoutKYC(ctx, []string{addres}, GINI, accAmount, DocTypeNIU)
+	err := MintUtxoHelperWithoutKYC(ctx, []string{addres}, GINI, accAmount, DocTypeNIU)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
@@ -270,7 +235,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, addres str
 
 }
 
-func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address string, amount string) (Response, error) {
+func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address string) (Response, error) {
 	//check if contract has been intilized first
 	logger := kalpsdk.NewLogger()
 	logger.Infof("RemoveFunds---->%s", env)
@@ -313,7 +278,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address st
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
 
-	amount, err = s.BalanceOf(ctx, address)
+	amount, err := s.BalanceOf(ctx, address)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to get balance : %v", err),
@@ -365,18 +330,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address st
 		Response:   response,
 	}, nil
 }
-func ValidateAddress(address string) error {
-	if address == "" {
-		return fmt.Errorf("invalid input address")
-	}
-	if len(address) < 8 || len(address) > 60 {
-		return fmt.Errorf("address must be at least 8 characters long and shorter than 60 characters")
-	}
-	if strings.ContainsAny(address, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
-		return fmt.Errorf("invalid address")
-	}
-	return nil
-}
+
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) (bool, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("Transfer---->%s", env)
@@ -388,10 +342,6 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	if err != nil {
 		logger.Infof("error checking sponsor's role: %v", err)
 		return false, fmt.Errorf("error checking sponsor's role:: %v", err)
-	}
-	err = ValidateAddress(address)
-	if err != nil && userRole != kalpGateWayAdmin {
-		return false, fmt.Errorf("error validating address: %v", err)
 	}
 	gasFees, err := s.GetGasFees(ctx)
 	if err != nil {
@@ -704,7 +654,7 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 }
 
 func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
-	return "2000000000000000000000000000", nil
+	return totalSupply, nil
 }
 
 // SetUserRoles is a smart contract function which is used to setup a role for user.
