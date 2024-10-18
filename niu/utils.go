@@ -1,0 +1,559 @@
+package kalpAccounting
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"math/big"
+	"reflect"
+	"strings"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+)
+
+const adminType = "admin"
+const UTXO = "UTXO"
+const DocTypeNFT = "NFTM"
+const DocTypeAsset = "ASSET-R2CI"
+const DocTypeNIU = "NIU"
+const DocTypeLand = "LAND-PARCEL"
+const DocTypeSmartAsset = "SMART-ASSET"
+
+type Utxo struct {
+	Key     string `json:"_id,omitempty"`
+	Id      string `json:"id"`
+	Account string `json:"account"`
+	DocType string `json:"docType"`
+	Amount  string `json:"amount"`
+}
+
+type Allow struct {
+	Owner   string `json:"id"`
+	Amount  string `json:"amount"`
+	DocType string `json:"docType"`
+	Spender string `json:"account"`
+}
+
+type TransferSingle struct {
+	Operator string      `json:"address"`
+	From     string      `json:"from"`
+	To       string      `json:"to"`
+	ID       string      `json:"id"`
+	Value    interface{} `json:"value"`
+}
+
+func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
+	switch v := value.(type) {
+	case int:
+		return big.NewInt(int64(v)), nil
+	case int64:
+		return big.NewInt(v), nil
+	case *big.Int:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("unsupported type: %s", reflect.TypeOf(value))
+	}
+
+}
+
+// As of now, we are not supporting usecases where asset is owned by multiple owners.
+func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account []string, id string, iamount interface{}, docType string) error {
+
+	amount, err := CustomBigIntConvertor(iamount)
+	if err != nil {
+		return fmt.Errorf("error in CustomFloatConvertor %v", err)
+	}
+
+	fmt.Println(account)
+	for i := 0; i < len(account); i++ {
+		if account[i] == "0x0" {
+			return fmt.Errorf("mint to the zero address")
+		}
+
+		if (docType == DocTypeNIU || docType == DocTypeNFT) && amount.Cmp(big.NewInt(0)) == 0 && amount.Cmp(big.NewInt(0)) == -1 {
+			return fmt.Errorf("mint amount must be a positive integer")
+		}
+
+	}
+	fmt.Println("owners in mintutxohelper -", account)
+
+	err = AddUtxo(sdk, id, account[0], false, amount)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func MintUTXOHelper(sdk kalpsdk.TransactionContextInterface, account []string, id string, iamount interface{}, docType string) error {
+
+	amount, err := CustomBigIntConvertor(iamount)
+	if err != nil {
+		return fmt.Errorf("error in CustomFloatConvertor %v", err)
+	}
+	for i := 0; i < len(account); i++ {
+		fmt.Println(account)
+
+		if account[i] == "0x0" {
+			return fmt.Errorf("mint to the zero address")
+		}
+
+		if (docType == DocTypeNIU || docType == DocTypeNFT) && amount.Cmp(big.NewInt(0)) == 0 && amount.Cmp(big.NewInt(0)) == -1 {
+			return fmt.Errorf("mint amount must be a positive integer")
+		}
+
+		fmt.Println("owners in minterhelper -", account)
+	}
+
+	err = AddUtxo(sdk, id, account[0], true, amount)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func AddUtxo(sdk kalpsdk.TransactionContextInterface, id string, account string, kyc bool, iamount interface{}) error {
+	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{id, account, sdk.GetTxID()})
+	if err != nil {
+		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
+	}
+	amount, err := CustomBigIntConvertor(iamount)
+	if err != nil {
+		return fmt.Errorf("error in CustomFloatConvertor %v", err)
+	}
+	fmt.Printf("utxoKey: %v\n", utxoKey)
+	utxo := Utxo{
+		Id:      id,
+		DocType: UTXO,
+		Account: account,
+		Amount:  amount.String(),
+	}
+
+	utxoJSON, err := json.Marshal(utxo)
+	if err != nil {
+		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", id, account, err)
+	}
+	fmt.Printf("utxoJSON: %s\n", utxoJSON)
+
+	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
+	if err != nil {
+		return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", id, account, err)
+
+	}
+	return nil
+}
+func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, id string, account string, kyc bool, iamount interface{}) error {
+
+	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{id, account, sdk.GetTxID()})
+	if err != nil {
+		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
+	}
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `","id":"` + id + `"},"use_index": "indexIdDocType"}`
+	amount, err := CustomBigIntConvertor(iamount)
+	if err != nil {
+		return fmt.Errorf("error in CustomFloatConvertor %v", err)
+	}
+	fmt.Printf("queryString: %s\n", queryString)
+	resultsIterator, err := sdk.GetQueryResult(queryString)
+	if err != nil {
+		return fmt.Errorf("failed to read from world state: %v", err)
+	}
+	var utxo []Utxo
+	amt := big.NewInt(0)
+	for resultsIterator.HasNext() {
+		var u Utxo
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("query Value %s\n", queryResult.Value)
+		fmt.Printf("query key %s\n", queryResult.Key)
+		err = json.Unmarshal(queryResult.Value, &u)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal value %v", err)
+		}
+		u.Key = queryResult.Key
+		am, s := big.NewInt(0).SetString(u.Amount, 10)
+		if !s {
+			return fmt.Errorf("failed to set string")
+		}
+		amt.Add(amt, am)
+		utxo = append(utxo, u)
+		if amt.Cmp(amount) == 0 || amt.Cmp(amount) == 1 { // >= amount {
+			break
+		}
+	}
+	fmt.Printf("total balance%v\n", amt)
+	if amount.Cmp(amt) == 1 {
+		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, id, amount, amt)
+	}
+
+	for i := 0; i < len(utxo); i++ {
+		am, s := big.NewInt(0).SetString(utxo[i].Amount, 10)
+		if !s {
+			return fmt.Errorf("failed to set string")
+		}
+		if amount.Cmp(am) == 0 || amount.Cmp(am) == 1 { // >= utxo[i].Amount {
+			fmt.Printf("amount> delete: %s\n", utxo[i].Amount)
+			amount = amount.Sub(amount, am)
+			if err := sdk.DelStateWithoutKYC(utxo[i].Key); err != nil {
+				return fmt.Errorf("%v", err)
+			}
+		} else if amount.Cmp(am) == -1 { // < utxo[i].Amount {
+			fmt.Printf("amount<: %s\n", utxo[i].Amount)
+			if err := sdk.DelStateWithoutKYC(utxo[i].Key); err != nil {
+				return fmt.Errorf("%v", err)
+			}
+			// Create a new utxo object
+			utxo := Utxo{
+				Id:      id,
+				DocType: UTXO,
+				Account: account,
+				Amount:  am.Sub(am, amount).String(),
+			}
+			utxoJSON, err := json.Marshal(utxo)
+			if err != nil {
+				return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", utxo.Id, account, err)
+			}
+
+			if kyc {
+				err = sdk.PutStateWithKYC(utxoKey, utxoJSON)
+				if err != nil {
+					return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", utxo.Id, account, err)
+				}
+			} else {
+				err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
+				if err != nil {
+					return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", utxo.Id, account, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// Function to get extract the userId from ca identity.  It is required to for checking the minter
+func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
+	b64ID, err := sdk.GetClientIdentity().GetID()
+	if err != nil {
+		return "", fmt.Errorf("failed to read clientID: %v", err)
+	}
+
+	decodeID, err := base64.StdEncoding.DecodeString(b64ID)
+	if err != nil {
+		return "", fmt.Errorf("failed to base64 decode clientID: %v", err)
+	}
+
+	completeId := string(decodeID)
+	userId := completeId[(strings.Index(completeId, "x509::CN=") + 9):strings.Index(completeId, ",")]
+	return userId, nil
+}
+
+// Checks that contract options have been already initialized
+func CheckInitialized(sdk kalpsdk.TransactionContextInterface) (bool, error) {
+	tokenName, err := sdk.GetState(nameKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to get token name: %v", err)
+	}
+	if tokenName == nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func EmitTransferSingle(sdk kalpsdk.TransactionContextInterface, transferSingleEvent TransferSingle) error {
+	transferSingleEventJSON, err := json.Marshal(transferSingleEvent)
+	if err != nil {
+		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+	}
+
+	err = sdk.SetEvent("TransferSingle", transferSingleEventJSON)
+	if err != nil {
+		return fmt.Errorf("failed to set event: %v", err)
+	}
+
+	return nil
+}
+
+func InvokerAssertAttributeValue(sdk kalpsdk.TransactionContextInterface, attrName, attrValue string) error {
+	err := sdk.GetClientIdentity().AssertAttributeValue(attrName, attrValue)
+	if err != nil {
+		return fmt.Errorf("AssertAttributeValue error: %v", err)
+	}
+	return nil
+}
+
+func IsCallerKalpBridge(sdk kalpsdk.TransactionContextInterface, KalpBridgeContractName string) (bool, error) {
+	signedProposal, err := sdk.GetSignedProposal()
+	if signedProposal == nil {
+		return false, fmt.Errorf("could not retrieve proposal details")
+	}
+	if err != nil {
+		return false, fmt.Errorf("error in getting signed proposal")
+	}
+
+	data := signedProposal.GetProposalBytes()
+	if data == nil {
+		return false, fmt.Errorf("error in fetching signed proposal")
+	}
+
+	proposal := &peer.Proposal{}
+	err = proto.Unmarshal(data, proposal)
+	if err != nil {
+		return false, fmt.Errorf("error in parsing signed proposal")
+	}
+
+	payload := &common.Payload{}
+	err = proto.Unmarshal(proposal.Payload, payload)
+	if err != nil {
+		return false, fmt.Errorf("error in parsing payload")
+	}
+
+	paystring := payload.GetHeader().GetChannelHeader()
+	if paystring == nil {
+		return false, fmt.Errorf("channel header is empty")
+	}
+
+	fmt.Println(paystring, KalpBridgeContractName)
+	return strings.Contains(string(paystring), KalpBridgeContractName), nil
+}
+
+func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, id string, account string) (string, error) {
+	logger := kalpsdk.NewLogger()
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `","id":"` + id + `"}}`
+	logger.Infof("queryString: %s\n", queryString)
+	resultsIterator, err := sdk.GetQueryResult(queryString)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from world state: %v", err)
+	}
+	amt := big.NewInt(0)
+	for resultsIterator.HasNext() {
+		var u map[string]interface{}
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return "", err
+		}
+		logger.Infof("query Value %s\n", string(queryResult.Value))
+		logger.Infof("query key %s\n", queryResult.Key)
+		err = json.Unmarshal(queryResult.Value, &u)
+		if err != nil {
+			logger.Infof("%v", err)
+			return "", err
+		}
+		fmt.Printf("%v\n", u["amount"])
+		amount := new(big.Int)
+		if uamount, ok := u["amount"].(string); ok {
+			amount.SetString(uamount, 10)
+		}
+
+		amt = amt.Add(amt, amount) // += u.Amount
+
+	}
+
+	return amt.String(), nil
+}
+
+func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender string, id string, amount string) error {
+	// Emit the Approval event
+	operator, err := GetUserId(sdk)
+	if err != nil {
+		return fmt.Errorf("failed to get client id: %v", err)
+	}
+	//bridge contract will be  providing approval for bridge admin as a usecase where owner != calling user.
+	if owner != operator {
+		return fmt.Errorf("caller is not owner")
+	}
+
+	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
+	if err != nil {
+		return fmt.Errorf("failed to create the composite key for owner with ID %s and account address %s: %v", owner, spender, err)
+	}
+
+	fmt.Println("owner->", owner)
+	// Get the current balance of the owner
+	balance, err := GetTotalUTXO(sdk, id, owner)
+	if err != nil {
+		return fmt.Errorf("failed to get balance %v", err)
+	}
+	fmt.Println("owner Balance->", owner)
+	balanceAmount, s := big.NewInt(0).SetString(balance, 10)
+	if !s {
+		return fmt.Errorf("failed to convert balance to big int")
+	}
+	fmt.Printf("balanceAmount:%v\n", balanceAmount)
+	amt, s := big.NewInt(0).SetString(amount, 10)
+	if !s {
+		return fmt.Errorf("failed to conver amount to big int ")
+	}
+	fmt.Printf("amt:%v\n", amt)
+	if balanceAmount.Cmp(amt) == -1 {
+		return fmt.Errorf("approval amount can not be greater than balance")
+	}
+	var approval = Allow{
+		Owner:   owner,
+		Amount:  amount,
+		DocType: "Allowance",
+		Spender: spender,
+	}
+	approvalJSON, err := json.Marshal(approval)
+	if err != nil {
+		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+	}
+	// Update the state of the smart contract by adding the allowanceKey and value
+	err = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
+	if err != nil {
+		return fmt.Errorf("failed to update state of smart contract for key %s: %v", sdk.GetTxID(), err)
+	}
+
+	err = sdk.SetEvent("Approval", approvalJSON)
+	if err != nil {
+		return fmt.Errorf("failed to set event: %v", err)
+	}
+
+	fmt.Printf("client %s approved a withdrawal allowance of %s for spender %s", owner, amount, spender)
+
+	return nil
+}
+
+// Allowance returns the amount still available for the spender to withdraw from the owner
+func Allowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
+	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for owner with ID %s and account address %s: %v", owner, spender, err)
+	}
+	// Get the current balance of the owner
+	approvalByte, err := sdk.GetState(approvalKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to read current balance of owner with ID %s and account address %s from world state: %v", owner, spender, err)
+	}
+	var approval Allow
+	if approvalByte != nil {
+		err = json.Unmarshal(approvalByte, &approval)
+		if err != nil {
+			return "", fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", owner, spender, err)
+		}
+	}
+
+	return approval.Amount, nil
+}
+
+func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
+	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
+	if err != nil {
+		return fmt.Errorf("failed to create the composite key for owner with ID %s and account address %s: %v", owner, spender, err)
+	}
+	// Get the current balance of the owner
+	approvalByte, err := sdk.GetState(approvalKey)
+	if err != nil {
+		return fmt.Errorf("failed to read current balance of owner with ID %s and account address %s from world state: %v", owner, spender, err)
+	}
+	var approval Allow
+	if approvalByte != nil {
+		err = json.Unmarshal(approvalByte, &approval)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", owner, spender, err)
+		}
+		approvalAmount, s := big.NewInt(0).SetString(approval.Amount, 10)
+		if !s {
+			return fmt.Errorf("failed to convert approvalAmount to big int")
+		}
+		amountSpent, s := big.NewInt(0).SetString(spent, 10)
+		if !s {
+			return fmt.Errorf("failed to convert approvalAmount to big int")
+		}
+		if amountSpent.Cmp(approvalAmount) == 1 { // amountToAdd > approvalAmount {
+			return fmt.Errorf("failed to convert approvalAmount to float64")
+		}
+		approval.Amount = fmt.Sprint(approvalAmount.Sub(approvalAmount, amountSpent))
+	}
+	approvalJSON, err := json.Marshal(approval)
+	if err != nil {
+		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+	}
+	// Update the state of the smart contract by adding the allowanceKey and value
+	err = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
+	if err != nil {
+		return fmt.Errorf("failed to update state of smart contract for key %s: %v", approvalKey, err)
+	}
+	err = sdk.SetEvent("Approval", approvalJSON)
+	if err != nil {
+		return fmt.Errorf("failed to set event: %v", err)
+	}
+	return nil
+}
+
+func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, spender []string, receiver string, id string, iamount interface{}, docType string) error {
+
+	// Get ID of submitting client identity
+	operator, err := GetUserId(sdk)
+	if err != nil {
+		return fmt.Errorf("failed to get client id: %v", err)
+	}
+	fmt.Printf("owner: %v\n", owner[0])
+	fmt.Printf("spender: %v\n", spender[0])
+	approved, err := Allowance(sdk, owner[0], spender[0])
+	if err != nil {
+		return fmt.Errorf("error in getting allowance: %v", err)
+	}
+	approvedAmount, s := big.NewInt(0).SetString(approved, 10)
+	if !s {
+		return fmt.Errorf("failed to convert approvalAmount to big int")
+	}
+	var am string
+	if a, ok := iamount.(string); ok {
+		am = a
+		fmt.Printf("String found: %s\n", am)
+	}
+	amount, s := big.NewInt(0).SetString(am, 10)
+	if !s {
+		return fmt.Errorf("failed to convert approvalAmount to big int")
+	}
+
+	if approvedAmount.Cmp(amount) == -1 { //approvedAmount < amount {
+		fmt.Printf("approvedAmount: %f\n", approvedAmount)
+		fmt.Printf("amount: %f\n", amount)
+		return fmt.Errorf("transfer amount can not be greater than allowed amount")
+	}
+	if spender[0] == owner[0] {
+		return fmt.Errorf("owner and spender can not be same account")
+	}
+	fmt.Printf("spender check")
+
+	err = RemoveUtxo(sdk, id, owner[0], true, amount)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("removed utxo")
+	if receiver == "0x0" {
+		return fmt.Errorf("transfer to the zero address")
+	}
+
+	// Deposit the fund to the recipient address
+	err = AddUtxo(sdk, id, receiver, true, amount)
+	if err != nil {
+		return err
+	}
+
+	err = UpdateAllowance(sdk, owner[0], spender[0], fmt.Sprint(amount))
+	if err != nil {
+		return err
+	}
+	// Emit TransferSingle event
+	transferSingleEvent := TransferSingle{Operator: operator, From: owner[0], To: receiver, Value: amount}
+	return EmitTransferSingle(sdk, transferSingleEvent)
+}
+
+// IsAdmin function determines whether or not a user is an administrator.
+func IsAdmin(sdk kalpsdk.TransactionContextInterface) error {
+	fmt.Println("IsAdmin invoked...")
+	//check if user is admin
+	err := InvokerAssertAttributeValue(sdk, attrRole, adminType)
+	if err != nil {
+		return fmt.Errorf("admin role check failed: %v", err)
+	}
+	return nil
+}

@@ -4,10 +4,10 @@ go 1.19
 
 require (
 	github.com/go-playground/validator/v10 v10.22.0
+	github.com/golang/protobuf v1.5.3
 	github.com/hyperledger/fabric-chaincode-go v0.0.0-20230228194215-b84622ba6a7a
 	github.com/hyperledger/fabric-contract-api-go v1.2.1
 	github.com/hyperledger/fabric-protos-go v0.3.0
-	github.com/p2eengineering/kalp-kaps v0.0.0-20241011163819-e937c387ed11
 	github.com/p2eengineering/kalp-sdk-public v0.0.0-20241011133021-97f6b94399bb
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53
@@ -27,7 +27,6 @@ require (
 	github.com/gobuffalo/envy v1.10.1 // indirect
 	github.com/gobuffalo/packd v1.0.1 // indirect
 	github.com/gobuffalo/packr v1.30.1 // indirect
-	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/joho/godotenv v1.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect

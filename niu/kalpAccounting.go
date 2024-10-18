@@ -17,7 +17,6 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
-	"github.com/p2eengineering/kalp-kaps/kaps"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 	"golang.org/x/exp/slices"
 )
@@ -78,15 +77,6 @@ type GiniNIU struct {
 	TotalSupply string      `json:"totalSupply,omitempty" metadata:",optional"`
 	Uri         string      `json:"uri,omitempty" metadata:",optional"`
 	AssetDigest string      `json:"assetDigest,omitempty" metadata:",optional"`
-}
-type TransferNIU struct {
-	TxnId     string `json:"TxnId" validate:"required"`
-	Sender    string `json:"Sender" validate:"required"`
-	Receiver  string `json:"Receiver" validate:"required"`
-	Id        string `json:"Id" `
-	DocType   string `json:"DocType"`
-	Amount    string `json:"Amount" validate:"required"`
-	TimeStamp string `json:"TimeStamp" `
 }
 type TransferfromNIU struct {
 	Id        string `json:"Id" `
@@ -181,7 +171,7 @@ func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) (str
 
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
 	logger := kalpsdk.NewLogger()
-	operator, err := kaps.GetUserId(ctx)
+	operator, err := GetUserId(ctx)
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
@@ -219,34 +209,7 @@ func (g *GiniTransaction) Validation() error {
 	}
 	return nil
 }
-func (t *TransferNIU) TransferNIUValidation() error {
-	txnId := strings.Trim(t.TxnId, " ")
-	if txnId == "" {
-		return fmt.Errorf("invalid input TxnId")
-	}
 
-	sender := strings.Trim(t.Sender, " ")
-	if sender == "" {
-		return fmt.Errorf("invalid input Sender")
-	}
-	if len(sender) < 8 || len(sender) > 60 {
-		return fmt.Errorf("sender must be at least 8 characters long and shorter than 60 characters")
-	}
-	if strings.ContainsAny(sender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
-		return fmt.Errorf("invalid sender")
-	}
-	receiver := strings.Trim(t.Receiver, " ")
-	if receiver == "" {
-		return fmt.Errorf("invalid input Receiver")
-	}
-	if len(receiver) < 8 || len(receiver) > 60 {
-		return fmt.Errorf("receiver must be at least 8 characters long and shorter than 60 characters")
-	}
-	if strings.ContainsAny(receiver, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
-		return fmt.Errorf("invalid receiver")
-	}
-	return nil
-}
 func (t *TransferfromNIU) TransferFromNIUValidation() error {
 	txnId := strings.Trim(t.TxnId, " ")
 	if txnId == "" {
@@ -279,7 +242,7 @@ func (t *TransferfromNIU) TransferFromNIUValidation() error {
 func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("AddFunds---->")
-	initialized, err := kaps.CheckInitialized(ctx)
+	initialized, err := CheckInitialized(ctx)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
@@ -298,7 +261,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 
 	logger.Infof("AddFunds CheckInitialized---->")
-	operator, err := kaps.GetUserId(ctx)
+	operator, err := GetUserId(ctx)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to get client id: %v", err),
@@ -436,7 +399,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}
 		gini.Id = GINI
 		gini.Name = GINI
-		gini.DocType = kaps.DocTypeNIU
+		gini.DocType = DocTypeNIU
 		gini.Account = BridgeContractAddress
 		gini.TotalSupply = acc.Amount
 
@@ -469,7 +432,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	}
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
-	err = kaps.MintUtxoHelperWithoutKYC(ctx, []string{acc.Account}, acc.Id, accAmount, kaps.DocTypeNIU)
+	err = MintUtxoHelperWithoutKYC(ctx, []string{acc.Account}, acc.Id, accAmount, DocTypeNIU)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
@@ -490,8 +453,8 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, Mint: unable to store GINI transaction data in blockchain: %v", http.StatusInternalServerError, err)
 	}
 	logger.Infof("Transfer single event: %v\n", accAmount)
-	transferSingleEvent := kaps.TransferSingle{Operator: operator, From: "0x0", To: acc.Account, Value: accAmount}
-	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
+	transferSingleEvent := TransferSingle{Operator: operator, From: "0x0", To: acc.Account, Value: accAmount}
+	if err := EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to add funds: %v", err),
 			Success:    false,
@@ -521,7 +484,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	//check if contract has been intilized first
 	logger := kalpsdk.NewLogger()
 	logger.Infof("RemoveFunds---->%s", env)
-	initialized, err := kaps.CheckInitialized(ctx)
+	initialized, err := CheckInitialized(ctx)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
@@ -540,7 +503,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v,error: contract options need to be set before calling any function, call Initialize() to initialize contract", http.StatusInternalServerError)
 	}
 
-	err = kaps.InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
+	err = InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("payment admin role check failed in Brun request: %v", err),
@@ -594,7 +557,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	acc.Id = GINI
 	acc.DocType = GINI_PAYMENT_TXN
 
-	operator, err := kaps.GetUserId(ctx)
+	operator, err := GetUserId(ctx)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to get client id: %v", err),
@@ -622,7 +585,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusConflict,
 		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
 	}
-	err = kaps.RemoveUtxo(ctx, acc.Id, acc.Account, false, accAmount)
+	err = RemoveUtxo(ctx, acc.Id, acc.Account, false, accAmount)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
@@ -733,7 +696,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}
 	}
 
-	if err := kaps.EmitTransferSingle(ctx, kaps.TransferSingle{Operator: operator, From: acc.Account, To: "0x0", Value: accAmount}); err != nil {
+	if err := EmitTransferSingle(ctx, TransferSingle{Operator: operator, From: acc.Account, To: "0x0", Value: accAmount}); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to remove funds: %v", err),
 			Success:    false,
@@ -808,20 +771,20 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
-		err = kaps.RemoveUtxo(ctx, GINI, send.Sender, false, gAmount)
+		err = RemoveUtxo(ctx, GINI, send.Sender, false, gAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
 		}
 
-		err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, gAmount)
+		err = AddUtxo(ctx, GINI, kalpFoundation, false, gAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("transfer add err: %v", err)
 		}
 		logger.Infof("foundation transfer : %s\n", userRole)
 
-	} else if b, err := kaps.IsCallerKalpBridge(ctx, BridgeContractName); b && err == nil {
+	} else if b, err := IsCallerKalpBridge(ctx, BridgeContractName); b && err == nil {
 		// In this scenario sender is Kalp Bridge we will credit amount to kalp foundation and remove amount from sender
 		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
 		// In this scenario sender is kalp foundation is bridgeing will credit amount to kalp foundation and remove amount from sender without gas fees
@@ -833,13 +796,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 
-			err = kaps.RemoveUtxo(ctx, GINI, sender, false, am)
+			err = RemoveUtxo(ctx, GINI, sender, false, am)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
 
-			err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, am)
+			err = AddUtxo(ctx, GINI, kalpFoundation, false, am)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -855,18 +818,18 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 
-			err = kaps.RemoveUtxo(ctx, GINI, sender, false, am)
+			err = RemoveUtxo(ctx, GINI, sender, false, am)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
 			am = am.Sub(am, gasFeesAmount)
-			err = kaps.AddUtxo(ctx, GINI, address, false, am)
+			err = AddUtxo(ctx, GINI, address, false, am)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
 			}
-			err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, gasFeesAmount)
+			err = AddUtxo(ctx, GINI, kalpFoundation, false, gasFeesAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -884,12 +847,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Infof("amount can't be converted to string ")
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
-		err := kaps.RemoveUtxo(ctx, GINI, sender, false, am)
+		err := RemoveUtxo(ctx, GINI, sender, false, am)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
 		}
-		err = kaps.AddUtxo(ctx, GINI, address, false, am)
+		err = AddUtxo(ctx, GINI, address, false, am)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("transfer add err: %v", err)
@@ -904,7 +867,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
 		removeAmount = removeAmount.Add(removeAmount, gasFeesAmount)
-		err := kaps.RemoveUtxo(ctx, GINI, sender, false, removeAmount)
+		err := RemoveUtxo(ctx, GINI, sender, false, removeAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
@@ -917,7 +880,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		addAmount.Add(addAmount, gasFeesAmount)
 		logger.Infof("addAmount: %v\n", addAmount)
-		err = kaps.AddUtxo(ctx, GINI, address, false, addAmount)
+		err = AddUtxo(ctx, GINI, address, false, addAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("transfer add err: %v", err)
@@ -937,7 +900,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		removeAmount := transferAmount.Add(transferAmount, gasFeesAmount)
 		fmt.Printf("remove amount %v\n", removeAmount)
 		// Withdraw the funds from the sender address
-		err = kaps.RemoveUtxo(ctx, GINI, sender, false, removeAmount)
+		err = RemoveUtxo(ctx, GINI, sender, false, removeAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
@@ -949,20 +912,20 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		logger.Infof("Add amount %v\n", addAmount)
 		// Deposit the fund to the recipient address
-		err = kaps.AddUtxo(ctx, GINI, address, false, addAmount)
+		err = AddUtxo(ctx, GINI, address, false, addAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		}
 		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
-		err = kaps.AddUtxo(ctx, GINI, kalpFoundation, false, gasFeesAmount)
+		err = AddUtxo(ctx, GINI, kalpFoundation, false, gasFeesAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		}
 	}
-	transferSingleEvent := kaps.TransferSingle{Operator: sender, From: sender, To: address, Value: amount}
-	if err := kaps.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
+	transferSingleEvent := TransferSingle{Operator: sender, From: sender, To: address, Value: amount}
+	if err := EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		logger.Infof("err: %v\n", err)
 		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 	}
@@ -977,7 +940,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
 	}
 	id := GINI
-	amt, err := kaps.GetTotalUTXO(ctx, id, owner)
+	amt, err := GetTotalUTXO(ctx, id, owner)
 	if err != nil {
 		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
 	}
@@ -1054,7 +1017,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 		return false, err
 	}
 
-	err = kaps.Approve(ctx, owner, spender, GINI, value)
+	err = Approve(ctx, owner, spender, GINI, value)
 	if err != nil {
 		fmt.Printf("error unable to approve funds: %v", err)
 		return false, err
@@ -1069,55 +1032,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 	if err != nil {
 		return false, fmt.Errorf("error iin getting spender's id: %v", err)
 	}
-	timeStamp, err := s.GetTransactionTimestamp(ctx)
-	if err != nil {
-		return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
-	}
-	transferFrom := TransferfromNIU{
-		Id:        GINI,
-		TxnId:     ctx.GetTxID(),
-		Owner:     from,
-		Spender:   spender,
-		Receiver:  to,
-		Amount:    value,
-		TimeStamp: timeStamp,
-		DocType:   GINI_PAYMENT_TXN,
-	}
-	validate := validator.New()
-	err = validate.Struct(transferFrom)
-	if err != nil {
-		logger.Infof("err: %v\n", err)
-		for _, e := range err.(validator.ValidationErrors) {
-			return false, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
-		}
-	}
-	err = transferFrom.TransferFromNIUValidation()
-	if err != nil {
-		logger.Infof("err: %v\n", err)
-		return false, fmt.Errorf("err: %v", err)
-	}
-	txnJSON, err := ctx.GetState(transferFrom.TxnId)
-	if err != nil {
-		logger.Infof("err: %v\n", err)
-		return false, fmt.Errorf("error in getting transaction time stamp: %v", err)
-	}
-	if txnJSON != nil {
-		logger.Infof("err: %v\n", err)
-		return false, fmt.Errorf("error with status code %v, error:transaction %v already accounted", http.StatusBadRequest, transferFrom.TxnId)
-	}
-	transferFrom.Id = GINI
-	transferFrom.DocType = GINI_PAYMENT_TXN
-	transferNIUJSON, err := json.Marshal(transferFrom)
-	if err != nil {
-		logger.Infof("err: %v\n", err)
-		return false, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
-	}
-	if err = ctx.PutStateWithoutKYC(transferFrom.TxnId, transferNIUJSON); err != nil {
-		logger.Infof("err: %v\n", err)
-		return false, fmt.Errorf("error with status code %v, error: Transfer: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
-	}
-	fmt.Printf("allow: %v\n", transferFrom)
-	err = kaps.TransferUTXOFrom(ctx, []string{transferFrom.Owner}, []string{transferFrom.Spender}, transferFrom.Receiver, GINI, transferFrom.Amount, "UTXO")
+	err = TransferUTXOFrom(ctx, []string{from}, []string{spender}, to, GINI, value, UTXO)
 	if err != nil {
 		logger.Infof("err: %v\n", err)
 		return false, fmt.Errorf("error: unable to transfer funds: %v", err)
@@ -1127,7 +1042,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 
 func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
 
-	allowance, err := kaps.Allowance(ctx, owner, spender)
+	allowance, err := Allowance(ctx, owner, spender)
 	if err != nil {
 		return "", fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err) //big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
@@ -1163,7 +1078,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 	//check if contract has been intilized first
 
 	fmt.Println("SetUserRoles", data)
-	initialized, err := kaps.CheckInitialized(ctx)
+	initialized, err := CheckInitialized(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
 	}
@@ -1178,7 +1093,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("failed to parse data: %v", errs)
 	}
 	if userRole.Role == giniAdmin {
-		err = kaps.IsAdmin(ctx)
+		err = IsAdmin(ctx)
 		if err != nil {
 			return "", fmt.Errorf("user role GINI-ADMIN can be defined by blockchain admin only")
 		}
@@ -1225,7 +1140,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
 
 	// Check if operator is authorized to create NIU.
-	operator, err := kaps.GetUserId(ctx)
+	operator, err := GetUserId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get client id: %v", err)
 	}
