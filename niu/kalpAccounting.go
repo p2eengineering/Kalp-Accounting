@@ -172,7 +172,7 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 	return nil
 }
 
-func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, addres string, amount string) (Response, error) {
+func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address string, amount string) (Response, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("Mint---->")
 
@@ -194,7 +194,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, addres str
 		}, fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
 	}
 
-	balance, _ := GetTotalUTXO(ctx, GINI, addres)
+	balance, _ := GetTotalUTXO(ctx, GINI, address)
 	if balance == "" {
 		return Response{
 			Message:    "can't call mint request twice twice",
@@ -205,7 +205,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, addres str
 	}
 
 	// Mint tokens
-	err := MintUtxoHelperWithoutKYC(ctx, []string{addres}, GINI, accAmount, DocTypeNIU)
+	err := MintUtxoHelperWithoutKYC(ctx, []string{address}, GINI, accAmount, DocTypeNIU)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
@@ -222,7 +222,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, addres str
 		"txId":            ctx.GetTxID(),
 		"txFcn":           funcName,
 		"txType":          "Invoke",
-		"transactionData": addres,
+		"transactionData": address,
 	}
 
 	return Response{
@@ -296,7 +296,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address st
 			StatusCode: http.StatusConflict,
 		}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
 	}
-	err = RemoveUtxo(ctx, GINI, address, false, accAmount)
+	err = RemoveUtxo(ctx, address, false, accAmount)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
@@ -375,13 +375,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			err = RemoveUtxo(ctx, GINI, send.Sender, false, gAmount)
+			err = RemoveUtxo(ctx, send.Sender, false, gAmount)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
 
-			err = AddUtxo(ctx, GINI, kalpFoundation, false, gAmount)
+			err = AddUtxo(ctx, kalpFoundation, false, gAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -400,13 +400,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 
-			err = RemoveUtxo(ctx, GINI, sender, false, am)
+			err = RemoveUtxo(ctx, sender, false, am)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
 
-			err = AddUtxo(ctx, GINI, kalpFoundation, false, am)
+			err = AddUtxo(ctx, kalpFoundation, false, am)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -422,18 +422,18 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 
-			err = RemoveUtxo(ctx, GINI, sender, false, am)
+			err = RemoveUtxo(ctx, sender, false, am)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
 			am = am.Sub(am, gasFeesAmount)
-			err = AddUtxo(ctx, GINI, address, false, am)
+			err = AddUtxo(ctx, address, false, am)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
 			}
-			err = AddUtxo(ctx, GINI, kalpFoundation, false, gasFeesAmount)
+			err = AddUtxo(ctx, kalpFoundation, false, gasFeesAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -451,12 +451,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Infof("amount can't be converted to string ")
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
-		err := RemoveUtxo(ctx, GINI, sender, false, am)
+		err := RemoveUtxo(ctx, sender, false, am)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
 		}
-		err = AddUtxo(ctx, GINI, address, false, am)
+		err = AddUtxo(ctx, address, false, am)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("transfer add err: %v", err)
@@ -471,7 +471,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
 		removeAmount = removeAmount.Add(removeAmount, gasFeesAmount)
-		err := RemoveUtxo(ctx, GINI, sender, false, removeAmount)
+		err := RemoveUtxo(ctx, sender, false, removeAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
@@ -484,7 +484,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		addAmount.Add(addAmount, gasFeesAmount)
 		logger.Infof("addAmount: %v\n", addAmount)
-		err = AddUtxo(ctx, GINI, address, false, addAmount)
+		err = AddUtxo(ctx, address, false, addAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("transfer add err: %v", err)
@@ -504,7 +504,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		removeAmount := transferAmount.Add(transferAmount, gasFeesAmount)
 		fmt.Printf("remove amount %v\n", removeAmount)
 		// Withdraw the funds from the sender address
-		err = RemoveUtxo(ctx, GINI, sender, false, removeAmount)
+		err = RemoveUtxo(ctx, sender, false, removeAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
@@ -516,13 +516,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		logger.Infof("Add amount %v\n", addAmount)
 		// Deposit the fund to the recipient address
-		err = AddUtxo(ctx, GINI, address, false, addAmount)
+		err = AddUtxo(ctx, address, false, addAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		}
 		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
-		err = AddUtxo(ctx, GINI, kalpFoundation, false, gasFeesAmount)
+		err = AddUtxo(ctx, kalpFoundation, false, gasFeesAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)

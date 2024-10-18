@@ -24,7 +24,6 @@ const DocTypeSmartAsset = "SMART-ASSET"
 
 type Utxo struct {
 	Key     string `json:"_id,omitempty"`
-	Id      string `json:"id"`
 	Account string `json:"account"`
 	DocType string `json:"docType"`
 	Amount  string `json:"amount"`
@@ -80,7 +79,7 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 	}
 	fmt.Println("owners in mintutxohelper -", account)
 
-	err = AddUtxo(sdk, id, account[0], false, amount)
+	err = AddUtxo(sdk, account[0], false, amount)
 	if err != nil {
 		return err
 	}
@@ -108,15 +107,15 @@ func MintUTXOHelper(sdk kalpsdk.TransactionContextInterface, account []string, i
 		fmt.Println("owners in minterhelper -", account)
 	}
 
-	err = AddUtxo(sdk, id, account[0], true, amount)
+	err = AddUtxo(sdk, account[0], true, amount)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func AddUtxo(sdk kalpsdk.TransactionContextInterface, id string, account string, kyc bool, iamount interface{}) error {
-	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{id, account, sdk.GetTxID()})
+func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc bool, iamount interface{}) error {
+	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
 	}
@@ -126,7 +125,6 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, id string, account string,
 	}
 	fmt.Printf("utxoKey: %v\n", utxoKey)
 	utxo := Utxo{
-		Id:      id,
 		DocType: UTXO,
 		Account: account,
 		Amount:  amount.String(),
@@ -134,24 +132,24 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, id string, account string,
 
 	utxoJSON, err := json.Marshal(utxo)
 	if err != nil {
-		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", id, account, err)
+		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", GINI, account, err)
 	}
 	fmt.Printf("utxoJSON: %s\n", utxoJSON)
 
 	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
 	if err != nil {
-		return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", id, account, err)
+		return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", GINI, account, err)
 
 	}
 	return nil
 }
-func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, id string, account string, kyc bool, iamount interface{}) error {
+func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc bool, iamount interface{}) error {
 
-	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{id, account, sdk.GetTxID()})
+	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
 	}
-	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `","id":"` + id + `"},"use_index": "indexIdDocType"}`
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"},"use_index": "indexIdDocType"}`
 	amount, err := CustomBigIntConvertor(iamount)
 	if err != nil {
 		return fmt.Errorf("error in CustomFloatConvertor %v", err)
@@ -188,7 +186,7 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, id string, account stri
 	}
 	fmt.Printf("total balance%v\n", amt)
 	if amount.Cmp(amt) == 1 {
-		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, id, amount, amt)
+		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, GINI, amount, amt)
 	}
 
 	for i := 0; i < len(utxo); i++ {
@@ -209,25 +207,24 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, id string, account stri
 			}
 			// Create a new utxo object
 			utxo := Utxo{
-				Id:      id,
 				DocType: UTXO,
 				Account: account,
 				Amount:  am.Sub(am, amount).String(),
 			}
 			utxoJSON, err := json.Marshal(utxo)
 			if err != nil {
-				return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", utxo.Id, account, err)
+				return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", GINI, account, err)
 			}
 
 			if kyc {
 				err = sdk.PutStateWithKYC(utxoKey, utxoJSON)
 				if err != nil {
-					return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", utxo.Id, account, err)
+					return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", GINI, account, err)
 				}
 			} else {
 				err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
 				if err != nil {
-					return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", utxo.Id, account, err)
+					return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", GINI, account, err)
 				}
 			}
 		}
@@ -523,7 +520,7 @@ func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, s
 	}
 	fmt.Printf("spender check")
 
-	err = RemoveUtxo(sdk, id, owner[0], true, amount)
+	err = RemoveUtxo(sdk, owner[0], true, amount)
 	if err != nil {
 		return err
 	}
@@ -533,7 +530,7 @@ func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, s
 	}
 
 	// Deposit the fund to the recipient address
-	err = AddUtxo(sdk, id, receiver, true, amount)
+	err = AddUtxo(sdk, receiver, true, amount)
 	if err != nil {
 		return err
 	}
