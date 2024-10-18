@@ -386,11 +386,11 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 	if err := ctx.PutStateWithoutKYC(gini.Id, giniiJSON); err != nil {
 		logger.Errorf("error: %v\n", err)
 		return Response{
-			Message:    fmt.Sprintf("internal error: unable to store GINI NIU data in blockchain: %v", err),
+			Message:    fmt.Sprintf("internal error: unable to store GINIs data in blockchain: %v", err),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("internal error %v: unable to store GINI NIU data in blockchain: %v", http.StatusInternalServerError, err)
+		}, fmt.Errorf("internal error %v: unable to store GINI data in blockchain: %v", http.StatusInternalServerError, err)
 	}
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
@@ -475,7 +475,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, error: payment admin role check failed in Brun request: %v", http.StatusInternalServerError, err)
 	}
 
-	// Parse input data into NIU struct.
+	// Parse input data into struct.
 	var acc GiniTransaction
 	errs := json.Unmarshal([]byte(data), &acc)
 	if errs != nil {
@@ -631,11 +631,11 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		if err := ctx.PutStateWithoutKYC(gini.Id, giniiJSON); err != nil {
 			logger.Errorf("error: %v\n", err)
 			return Response{
-				Message:    fmt.Sprintf("internal error: unable to store NIU data in blockchain: %v", err),
+				Message:    fmt.Sprintf("internal error: unable to store data in blockchain: %v", err),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusInternalServerError,
-			}, fmt.Errorf("internal error %v: unable to store NIU data in blockchain: %v", http.StatusInternalServerError, err)
+			}, fmt.Errorf("internal error %v: unable to store data in blockchain: %v", http.StatusInternalServerError, err)
 		}
 	} else {
 		if err = ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
@@ -650,11 +650,11 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		if err = ctx.PutStateWithKYC(gini.Id, giniiJSON); err != nil {
 			logger.Errorf("error: %v\n", err)
 			return Response{
-				Message:    fmt.Sprintf("internal error: unable to store NIU data with KYC in blockchain: %v", err),
+				Message:    fmt.Sprintf("internal error: unable to store data with KYC in blockchain: %v", err),
 				Success:    false,
 				Status:     "Failure",
 				StatusCode: http.StatusInternalServerError,
-			}, fmt.Errorf("internal error %v: unable to store NIU data with KYC in blockchain: %v", http.StatusInternalServerError, err)
+			}, fmt.Errorf("internal error %v: unable to store data with KYC in blockchain: %v", http.StatusInternalServerError, err)
 		}
 	}
 
@@ -859,13 +859,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	} else {
 		//This is normal scenario where gas fees+ amount will be deducted from sender and amount will credited to address and gas fees will be credited to kalp foundation
 		logger.Infof("operator-->", sender)
-		logger.Info("transferNIU transferNIUAmount")
+		logger.Info("transfer transferAmount")
 		transferAmount, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
 			logger.Infof("Amount can't be converted to string")
 			return false, fmt.Errorf("error with status code %v,Amount can't be converted to string", http.StatusConflict)
 		}
-		fmt.Printf("transferNIUAmount %v\n", transferAmount)
+		fmt.Printf("transferAmount %v\n", transferAmount)
 		fmt.Printf("gasFeesAmount %v\n", gasFeesAmount)
 		removeAmount := transferAmount.Add(transferAmount, gasFeesAmount)
 		fmt.Printf("remove amount %v\n", removeAmount)
@@ -877,7 +877,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		addAmount, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
-			logger.Infof("transferNIU.Amount can't be converted to string ")
+			logger.Infof("transfer Amount can't be converted to string ")
 			return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferAmount)
 		}
 		logger.Infof("Add amount %v\n", addAmount)
@@ -1025,16 +1025,16 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (st
 	// Retrieve the current balance for the account and token ID
 	giniBytes, err := ctx.GetState(GINI)
 	if err != nil {
-		return "", fmt.Errorf("internal error: failed to read GINI NIU %v", err)
+		return "", fmt.Errorf("internal error: failed to read GINI  %v", err)
 	}
 	var gini GiniNIU
 	if giniBytes != nil {
 		logger.Infof("%s\n", string(giniBytes))
 		logger.Infof("unmarshelling GINI  bytes")
-		// Unmarshal the current GINI NIU details into an GININIU struct
+		// Unmarshal the current GINI details into an GININIU struct
 		err = json.Unmarshal(giniBytes, &gini)
 		if err != nil {
-			return "", fmt.Errorf("internal error: failed to parse GINI NIU %v", err)
+			return "", fmt.Errorf("internal error: failed to parse GINI %v", err)
 		}
 		logger.Infof("gini %v\n", gini)
 		return gini.TotalSupply, nil
@@ -1056,7 +1056,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
 	}
 
-	// Parse input data into NIU struct.
+	// Parse input data into Role struct.
 	var userRole UserRole
 	errs := json.Unmarshal([]byte(data), &userRole)
 	if errs != nil {
@@ -1094,12 +1094,12 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 	if err != nil {
 		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
 	}
-	// Generate JSON representation of NIU struct.
+	// Generate JSON representation of Role struct.
 	usrRoleJSON, err := json.Marshal(userRole)
 	if err != nil {
 		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
 	}
-	// Store the NIU struct in the state database
+	// Store the Role struct in the state database
 	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
 		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
 	}
@@ -1109,7 +1109,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 
 func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
 
-	// Check if operator is authorized to create NIU.
+	// Check if operator is authorized to create Role.
 	operator, err := GetUserId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get client id: %v", err)
