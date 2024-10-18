@@ -235,101 +235,101 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 
 }
 
-func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address string) (Response, error) {
-	//check if contract has been intilized first
-	logger := kalpsdk.NewLogger()
-	logger.Infof("RemoveFunds---->%s", env)
-	initialized, err := CheckInitialized(ctx)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v,error: failed to check if contract is already initialized: %v", http.StatusInternalServerError, err)
+// func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address string) (Response, error) {
+// 	//check if contract has been intilized first
+// 	logger := kalpsdk.NewLogger()
+// 	logger.Infof("RemoveFunds---->%s", env)
+// 	initialized, err := CheckInitialized(ctx)
+// 	if err != nil {
+// 		return Response{
+// 			Message:    fmt.Sprintf("failed to check if contract is already initialized: %v", err),
+// 			Success:    false,
+// 			Status:     "Failure",
+// 			StatusCode: http.StatusInternalServerError,
+// 		}, fmt.Errorf("error with status code %v,error: failed to check if contract is already initialized: %v", http.StatusInternalServerError, err)
 
-	}
-	if !initialized {
-		return Response{
-			Message:    "contract options need to be set before calling any function, call Initialize() to initialize contract",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v,error: contract options need to be set before calling any function, call Initialize() to initialize contract", http.StatusInternalServerError)
-	}
+// 	}
+// 	if !initialized {
+// 		return Response{
+// 			Message:    "contract options need to be set before calling any function, call Initialize() to initialize contract",
+// 			Success:    false,
+// 			Status:     "Failure",
+// 			StatusCode: http.StatusInternalServerError,
+// 		}, fmt.Errorf("error with status code %v,error: contract options need to be set before calling any function, call Initialize() to initialize contract", http.StatusInternalServerError)
+// 	}
 
-	err = InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("payment admin role check failed in Brun request: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error: payment admin role check failed in Brun request: %v", http.StatusInternalServerError, err)
-	}
+// 	err = InvokerAssertAttributeValue(ctx, MailabRoleAttrName, PaymentRoleValue)
+// 	if err != nil {
+// 		return Response{
+// 			Message:    fmt.Sprintf("payment admin role check failed in Brun request: %v", err),
+// 			Success:    false,
+// 			Status:     "Failure",
+// 			StatusCode: http.StatusInternalServerError,
+// 		}, fmt.Errorf("error with status code %v, error: payment admin role check failed in Brun request: %v", http.StatusInternalServerError, err)
+// 	}
 
-	operator, err := GetUserId(ctx)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to get client id: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
-	}
+// 	operator, err := GetUserId(ctx)
+// 	if err != nil {
+// 		return Response{
+// 			Message:    fmt.Sprintf("failed to get client id: %v", err),
+// 			Success:    false,
+// 			Status:     "Failure",
+// 			StatusCode: http.StatusBadRequest,
+// 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
+// 	}
 
-	amount, err := s.BalanceOf(ctx, address)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to get balance : %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:failed to get balance : %v", http.StatusBadRequest, err)
-	}
-	accAmount, su := big.NewInt(0).SetString(amount, 10)
-	if !su {
-		return Response{
-			Message:    fmt.Sprintf("can't convert amount to big int %s", amount),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
-	}
-	err = RemoveUtxo(ctx, address, false, accAmount)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:Remove balance in burn has error: %v", http.StatusBadRequest, err)
-	}
+// 	amount, err := s.BalanceOf(ctx, address)
+// 	if err != nil {
+// 		return Response{
+// 			Message:    fmt.Sprintf("failed to get balance : %v", err),
+// 			Success:    false,
+// 			Status:     "Failure",
+// 			StatusCode: http.StatusBadRequest,
+// 		}, fmt.Errorf("error with status code %v, error:failed to get balance : %v", http.StatusBadRequest, err)
+// 	}
+// 	accAmount, su := big.NewInt(0).SetString(amount, 10)
+// 	if !su {
+// 		return Response{
+// 			Message:    fmt.Sprintf("can't convert amount to big int %s", amount),
+// 			Success:    false,
+// 			Status:     "Failure",
+// 			StatusCode: http.StatusConflict,
+// 		}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
+// 	}
+// 	err = RemoveUtxo(ctx, address, false, accAmount)
+// 	if err != nil {
+// 		return Response{
+// 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
+// 			Success:    false,
+// 			Status:     "Failure",
+// 			StatusCode: http.StatusInternalServerError,
+// 		}, fmt.Errorf("error with status code %v, error:Remove balance in burn has error: %v", http.StatusBadRequest, err)
+// 	}
 
-	if err := EmitTransferSingle(ctx, TransferSingle{Operator: operator, From: address, To: "0x0", Value: accAmount}); err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to remove funds: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, error:unable to remove funds: %v", http.StatusBadRequest, err)
-	}
+// 	if err := EmitTransferSingle(ctx, TransferSingle{Operator: operator, From: address, To: "0x0", Value: accAmount}); err != nil {
+// 		return Response{
+// 			Message:    fmt.Sprintf("unable to remove funds: %v", err),
+// 			Success:    false,
+// 			Status:     "Failure",
+// 			StatusCode: http.StatusInternalServerError,
+// 		}, fmt.Errorf("error with status code %v, error:unable to remove funds: %v", http.StatusBadRequest, err)
+// 	}
 
-	funcName, _ := ctx.GetFunctionAndParameters()
-	response := map[string]interface{}{
-		"txId":            ctx.GetTxID(),
-		"txFcn":           funcName,
-		"txType":          "Invoke",
-		"transactionData": address,
-	}
-	return Response{
-		Message:    "Funds removed successfully",
-		Success:    true,
-		Status:     "Success",
-		StatusCode: http.StatusCreated,
-		Response:   response,
-	}, nil
-}
+// 	funcName, _ := ctx.GetFunctionAndParameters()
+// 	response := map[string]interface{}{
+// 		"txId":            ctx.GetTxID(),
+// 		"txFcn":           funcName,
+// 		"txType":          "Invoke",
+// 		"transactionData": address,
+// 	}
+// 	return Response{
+// 		Message:    "Funds removed successfully",
+// 		Success:    true,
+// 		Status:     "Success",
+// 		StatusCode: http.StatusCreated,
+// 		Response:   response,
+// 	}, nil
+// }
 
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) (bool, error) {
 	logger := kalpsdk.NewLogger()
