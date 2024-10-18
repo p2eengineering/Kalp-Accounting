@@ -92,6 +92,10 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if userRole != giniAdmin {
 		return false, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
 	}
+	_, err = s.mint(ctx, BridgeContractAddress, totalSupply)
+	if err != nil {
+		return false, fmt.Errorf("error with status code %v,error in minting: %v", http.StatusInternalServerError, err)
+	}
 	bytes, err := ctx.GetState(nameKey)
 	if err != nil {
 		return false, fmt.Errorf("failed to get Name: %v", err)
@@ -108,11 +112,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	err = ctx.PutStateWithoutKYC(symbolKey, []byte(symbol))
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
-	}
-
-	_, err = s.mint(ctx, BridgeContractAddress, totalSupply)
-	if err != nil {
-		return false, fmt.Errorf("error with status code %v,error in minting: %v", http.StatusInternalServerError, err)
 	}
 	return true, nil
 }
@@ -195,7 +194,9 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 	}
 
 	balance, _ := GetTotalUTXO(ctx, GINI, address)
-	if balance != "" {
+	logger.Infof("balance: %s", balance)
+	balanceAmount, su := big.NewInt(0).SetString(balance, 10)
+	if balanceAmount.Cmp(big.NewInt(0)) == 1 {
 		return Response{
 			Message:    "can't call mint request twice twice",
 			Success:    false,
