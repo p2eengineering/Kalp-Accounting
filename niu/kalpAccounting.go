@@ -195,7 +195,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 	}
 
 	balance, _ := GetTotalUTXO(ctx, GINI, address)
-	if balance == "" {
+	if balance != "" {
 		return Response{
 			Message:    "can't call mint request twice twice",
 			Success:    false,
