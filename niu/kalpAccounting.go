@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 	"golang.org/x/exp/slices"
@@ -53,30 +52,6 @@ const BridgeContractName = "klp-6b616c70627269646765-cc"
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
 	kalpsdk.Contract
-}
-
-type GiniTransaction struct {
-	OffchainTxnId string `json:"OffchainTxnId" validate:"required"`
-	Id            string
-	Account       string `json:"Account" validate:"required"`
-	DocType       string
-	Amount        string `json:"Amount" validate:"required"`
-	Desc          string `json:"Desc"`
-}
-
-// This struct is used to store total supply in the ledger
-type GiniNIU struct {
-	Id          string      `json:"Id"`
-	DocType     string      `json:"DocType"`
-	Name        string      `json:"name"`
-	Type        string      `json:"type,omitempty" metadata:",optional"`
-	Desc        string      `json:"Desc,omitempty" metadata:",optional"`
-	Status      string      `json:"status,omitempty" metadata:",optional"`
-	Account     string      `json:"Account"`
-	MetaData    interface{} `json:"metadata,omitempty" metadata:",optional"`
-	TotalSupply string      `json:"totalSupply,omitempty" metadata:",optional"`
-	Uri         string      `json:"uri,omitempty" metadata:",optional"`
-	AssetDigest string      `json:"assetDigest,omitempty" metadata:",optional"`
 }
 
 type Response struct {
@@ -182,26 +157,7 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 	return nil
 }
 
-func (g *GiniTransaction) Validation() error {
-	offchainTxnId := strings.Trim(g.OffchainTxnId, " ")
-	if offchainTxnId == "" {
-		return fmt.Errorf("invalid input OffchainTxnId")
-	}
-
-	account := strings.Trim(g.Account, " ")
-	if account == "" {
-		return fmt.Errorf("invalid input Account")
-	}
-	if len(account) < 8 || len(account) > 60 {
-		return fmt.Errorf("account must be at least 8 characters long and shorter than 60 characters")
-	}
-	if strings.ContainsAny(account, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
-		return fmt.Errorf("invalid Account")
-	}
-	return nil
-}
-
-func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
+func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, addres string, amount string) (Response, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("AddFunds---->")
 	initialized, err := CheckInitialized(ctx)
@@ -253,65 +209,15 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 			StatusCode: http.StatusBadRequest,
 		}, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
 	}
-	var acc GiniTransaction
-	errs := json.Unmarshal([]byte(data), &acc)
-	if errs != nil {
-		logger.Infoln(errs)
-		return Response{
-			Message:    fmt.Sprintf("failed to parse data: %v", errs),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error: failed to parse data: %v", http.StatusBadRequest, errs)
-	}
-	validate := validator.New()
 
-	err = validate.Struct(acc)
-	if err != nil {
-		for _, e := range err.(validator.ValidationErrors) {
-			return Response{
-				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
-		}
-	}
-	err = acc.Validation()
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("%v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
-
-	}
-	txnJSON, err := ctx.GetState(acc.OffchainTxnId)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to read from world state: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v,failed to read from world state: %v", http.StatusBadRequest, err)
-	}
-	if txnJSON != nil {
-		return Response{
-			Message:    fmt.Sprintf("transaction %v already accounted", acc.OffchainTxnId),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
-	}
-	accAmount, su := big.NewInt(0).SetString(acc.Amount, 10)
+	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
 		return Response{
-			Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+			Message:    fmt.Sprintf("can't convert amount to big int %s", amount),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
+		}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
 	}
 	if accAmount.Cmp(big.NewInt(0)) == -1 || accAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
 		return Response{
@@ -322,50 +228,8 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
 	}
 
-	acc.Id = GINI
-	acc.DocType = GINI_PAYMENT_TXN
-	acc.Account = BridgeContractAddress
-
-	logger.Infof("GINI amount %v\n", accAmount)
-	accJSON, err := json.Marshal(acc)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with tatus code %v, unable to Marshal Token struct : %v", http.StatusBadRequest, err)
-	}
-
-	giniJSON, err := ctx.GetState(GINI)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("internal error: failed to read GINI world state in Mint request: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: failed to read GINI world state in Mint request: %v", http.StatusBadRequest, err)
-	}
-
-	var gini GiniNIU
-	if giniJSON == nil {
-
-		errs = json.Unmarshal([]byte(data), &gini)
-		if errs != nil {
-			return Response{
-				Message:    fmt.Sprintf("internal error: error in parsing GINI data in Mint request %v", errs),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("internal error %v: error in parsing GINI data in Mint request %v", http.StatusBadRequest, errs)
-		}
-		gini.Id = GINI
-		gini.Name = GINI
-		gini.DocType = DocTypeNIU
-		gini.Account = BridgeContractAddress
-		gini.TotalSupply = acc.Amount
-
-	} else {
+	balance, _ := GetTotalUTXO(ctx, GINI, addres)
+	if balance == "" {
 		return Response{
 			Message:    "can't call mint request twice twice",
 			Success:    false,
@@ -374,27 +238,9 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
 	}
 
-	giniiJSON, err := json.Marshal(gini)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("internal error: unable to parse GINI data %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: unable to parse GINI data %v", http.StatusBadRequest, err)
-	}
-	if err := ctx.PutStateWithoutKYC(gini.Id, giniiJSON); err != nil {
-		logger.Errorf("error: %v\n", err)
-		return Response{
-			Message:    fmt.Sprintf("internal error: unable to store GINIs data in blockchain: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("internal error %v: unable to store GINI data in blockchain: %v", http.StatusInternalServerError, err)
-	}
 	logger.Infof("MintToken operator---->%v\n", operator)
 	// Mint tokens
-	err = MintUtxoHelperWithoutKYC(ctx, []string{acc.Account}, acc.Id, accAmount, DocTypeNIU)
+	err = MintUtxoHelperWithoutKYC(ctx, []string{addres}, GINI, accAmount, DocTypeNIU)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
@@ -404,32 +250,14 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
 	}
 
-	logger.Infof("MintToken Amount---->%v\n", acc.Amount)
-	if err := ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
-		logger.Errorf("error: %v\n", err)
-		return Response{
-			Message:    fmt.Sprintf("Mint: unable to store GINI transaction data in blockchain: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v, Mint: unable to store GINI transaction data in blockchain: %v", http.StatusInternalServerError, err)
-	}
-	logger.Infof("Transfer single event: %v\n", accAmount)
-	transferSingleEvent := TransferSingle{Operator: operator, From: "0x0", To: acc.Account, Value: accAmount}
-	if err := EmitTransferSingle(ctx, transferSingleEvent); err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to add funds: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v,error: unable to add funds: %v", http.StatusInternalServerError, err)
-	}
+	logger.Infof("MintToken Amount---->%v\n", amount)
+
 	funcName, _ := ctx.GetFunctionAndParameters()
 	response := map[string]interface{}{
 		"txId":            ctx.GetTxID(),
 		"txFcn":           funcName,
 		"txType":          "Invoke",
-		"transactionData": acc,
+		"transactionData": addres,
 	}
 
 	return Response{
@@ -442,7 +270,7 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data strin
 
 }
 
-func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
+func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address string, amount string) (Response, error) {
 	//check if contract has been intilized first
 	logger := kalpsdk.NewLogger()
 	logger.Infof("RemoveFunds---->%s", env)
@@ -475,50 +303,6 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, error: payment admin role check failed in Brun request: %v", http.StatusInternalServerError, err)
 	}
 
-	// Parse input data into struct.
-	var acc GiniTransaction
-	errs := json.Unmarshal([]byte(data), &acc)
-	if errs != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to parse data: %v", errs),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v,error: failed to parse data: %v", http.StatusBadRequest, err)
-	}
-
-	logger.Infof("acc---->", acc)
-	err = acc.Validation()
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("%v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:%v", http.StatusBadRequest, err)
-
-	}
-	txnJSON, err := ctx.GetState(acc.OffchainTxnId)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to read from world state: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("error with status code %v,error: failed to read from world state: %v", http.StatusBadRequest, err)
-	}
-	if txnJSON != nil {
-		return Response{
-			Message:    fmt.Sprintf("transaction %v already accounted", acc.OffchainTxnId),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,error: transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
-	}
-
-	acc.Id = GINI
-	acc.DocType = GINI_PAYMENT_TXN
-
 	operator, err := GetUserId(ctx)
 	if err != nil {
 		return Response{
@@ -529,7 +313,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, error:failed to get client id: %v", http.StatusBadRequest, err)
 	}
 
-	amount, err := s.BalanceOf(ctx, acc.Account)
+	amount, err = s.BalanceOf(ctx, address)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("failed to get balance : %v", err),
@@ -541,13 +325,13 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
 		return Response{
-			Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
+			Message:    fmt.Sprintf("can't convert amount to big int %s", amount),
 			Success:    false,
 			Status:     "Failure",
 			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, acc.OffchainTxnId)
+		}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
 	}
-	err = RemoveUtxo(ctx, acc.Id, acc.Account, false, accAmount)
+	err = RemoveUtxo(ctx, GINI, address, false, accAmount)
 	if err != nil {
 		return Response{
 			Message:    fmt.Sprintf("Remove balance in burn has error: %v", err),
@@ -557,108 +341,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		}, fmt.Errorf("error with status code %v, error:Remove balance in burn has error: %v", http.StatusBadRequest, err)
 	}
 
-	accJSON, err := json.Marshal(acc)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("unable to Marshal Token struct : %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, error:unable to Marshal Token struct : %v", http.StatusBadRequest, err)
-	}
-
-	validate := validator.New()
-	err = validate.Struct(acc)
-	if err != nil {
-		for _, e := range err.(validator.ValidationErrors) {
-			return Response{
-				Message:    fmt.Sprintf("field: %s, Error: %s", e.Field(), e.Tag()),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: inavalid input %s %s", http.StatusBadRequest, e.Field(), e.Tag())
-		}
-	}
-	var gini GiniNIU
-	giniJSON, err := ctx.GetState(GINI)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("internal error: failed to read GINI from world state in burn request: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: failed to read GINI from world state in burn request: %v", http.StatusBadRequest, err)
-	}
-	errs = json.Unmarshal([]byte(giniJSON), &gini)
-	if errs != nil {
-		return Response{
-			Message:    fmt.Sprintf("internal error: error in parsing GINI data in Burn request %v", errs),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: error in parsing GINI data in Burn request %v", http.StatusBadRequest, errs)
-	}
-	gigiTotalSupply, su := big.NewInt(0).SetString(gini.TotalSupply, 10)
-	if !su {
-		return Response{
-			Message:    fmt.Sprintf("can't convert amount to big int %s", acc.Amount),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, acc.Amount)
-	}
-	gini.TotalSupply = gigiTotalSupply.Sub(gigiTotalSupply, accAmount).String() // -= acc.Amount
-	giniiJSON, err := json.Marshal(gini)
-	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("internal error: unable to parse GINI data in Burn request %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: unable to parse GINI data in Burn request %v", http.StatusBadRequest, err)
-	}
-	logger.Infof("Burn Token Amount---->", accAmount)
-	if env == "dev" {
-		if err = ctx.PutStateWithoutKYC(acc.OffchainTxnId, accJSON); err != nil {
-			return Response{
-				Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data without kyc in blockchain: %v", http.StatusBadRequest, err)
-		}
-
-		if err := ctx.PutStateWithoutKYC(gini.Id, giniiJSON); err != nil {
-			logger.Errorf("error: %v\n", err)
-			return Response{
-				Message:    fmt.Sprintf("internal error: unable to store data in blockchain: %v", err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusInternalServerError,
-			}, fmt.Errorf("internal error %v: unable to store data in blockchain: %v", http.StatusInternalServerError, err)
-		}
-	} else {
-		if err = ctx.PutStateWithKYC(acc.OffchainTxnId, accJSON); err != nil {
-			return Response{
-				Message:    fmt.Sprintf("Burn: unable to store GINI transaction data in blockchain: %v", err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("error with status code %v, error: Burn: unable to store GINI transaction data in blockchain: %v", http.StatusBadRequest, err)
-		}
-
-		if err = ctx.PutStateWithKYC(gini.Id, giniiJSON); err != nil {
-			logger.Errorf("error: %v\n", err)
-			return Response{
-				Message:    fmt.Sprintf("internal error: unable to store data with KYC in blockchain: %v", err),
-				Success:    false,
-				Status:     "Failure",
-				StatusCode: http.StatusInternalServerError,
-			}, fmt.Errorf("internal error %v: unable to store data with KYC in blockchain: %v", http.StatusInternalServerError, err)
-		}
-	}
-
-	if err := EmitTransferSingle(ctx, TransferSingle{Operator: operator, From: acc.Account, To: "0x0", Value: accAmount}); err != nil {
+	if err := EmitTransferSingle(ctx, TransferSingle{Operator: operator, From: address, To: "0x0", Value: accAmount}); err != nil {
 		return Response{
 			Message:    fmt.Sprintf("unable to remove funds: %v", err),
 			Success:    false,
@@ -672,7 +355,7 @@ func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, data strin
 		"txId":            ctx.GetTxID(),
 		"txFcn":           funcName,
 		"txType":          "Invoke",
-		"transactionData": acc,
+		"transactionData": address,
 	}
 	return Response{
 		Message:    "Funds removed successfully",
@@ -1021,27 +704,7 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 }
 
 func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
-	logger := kalpsdk.NewLogger()
-
-	// Retrieve the current balance for the account and token ID
-	giniBytes, err := ctx.GetState(GINI)
-	if err != nil {
-		return "", fmt.Errorf("internal error: failed to read GINI  %v", err)
-	}
-	var gini GiniNIU
-	if giniBytes != nil {
-		logger.Infof("%s\n", string(giniBytes))
-		logger.Infof("unmarshelling GINI  bytes")
-		// Unmarshal the current GINI details into an GININIU struct
-		err = json.Unmarshal(giniBytes, &gini)
-		if err != nil {
-			return "", fmt.Errorf("internal error: failed to parse GINI %v", err)
-		}
-		logger.Infof("gini %v\n", gini)
-		return gini.TotalSupply, nil
-	}
-
-	return big.NewInt(0).String(), nil
+	return "2000000000000000000000000000", nil
 }
 
 // SetUserRoles is a smart contract function which is used to setup a role for user.
