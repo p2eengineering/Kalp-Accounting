@@ -46,8 +46,7 @@ const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
 const userRolePrefix = "ID~UserRoleMap"
 const UserRoleMap = "UserRoleMap"
-const BridgeContractAddress = "0x23156a30E545efC2A09212E21EEF2dB24aF84751"
-const BridgeContractName = "klp-6b616c70627269646765-cc"
+const BridgeContractAddress = "klp-6b616c70627269646765-cc"
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
@@ -388,7 +387,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			}
 			logger.Infof("foundation transfer : %s\n", userRole)
 		}
-	} else if b, err := IsCallerKalpBridge(ctx, BridgeContractName); b && err == nil {
+	} else if b, err := IsCallerKalpBridge(ctx, BridgeContractAddress); b && err == nil {
 		// In this scenario sender is Kalp Bridge we will credit amount to kalp foundation and remove amount from sender
 		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
 		// In this scenario sender is kalp foundation is bridgeing will credit amount to kalp foundation and remove amount from sender without gas fees
