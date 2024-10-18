@@ -339,7 +339,7 @@ func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, id string, account st
 		err = json.Unmarshal(queryResult.Value, &u)
 		if err != nil {
 			logger.Infof("%v", err)
-			return "", err
+			return amt.String(), err
 		}
 		fmt.Printf("%v\n", u["amount"])
 		amount := new(big.Int)

@@ -196,6 +196,15 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 	balance, _ := GetTotalUTXO(ctx, GINI, address)
 	logger.Infof("balance: %s", balance)
 	balanceAmount, su := big.NewInt(0).SetString(balance, 10)
+	if !su {
+		logger.Infof("amount can't be converted to string ")
+		return Response{
+			Message:    "amount can't be converted to string:",
+			Success:    false,
+			Status:     "Failure",
+			StatusCode: http.StatusBadRequest,
+		}, fmt.Errorf("amount can't be converted to string: ")
+	}
 	if balanceAmount.Cmp(big.NewInt(0)) == 1 {
 		return Response{
 			Message:    "can't call mint request twice twice",
