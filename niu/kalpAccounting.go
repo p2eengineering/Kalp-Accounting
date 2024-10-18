@@ -735,25 +735,26 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Info("internal error: error in parsing sender data")
 			return false, fmt.Errorf("internal error: error in parsing sender data")
 		}
-		gAmount, su := big.NewInt(0).SetString(amount, 10)
-		if !su {
-			logger.Infof("amount can't be converted to string ")
+		if send.Sender != kalpFoundation {
+			gAmount, su := big.NewInt(0).SetString(amount, 10)
+			if !su {
+				logger.Infof("amount can't be converted to string ")
 
-			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-		}
-		err = RemoveUtxo(ctx, GINI, send.Sender, false, gAmount)
-		if err != nil {
-			logger.Infof("transfer remove err: %v", err)
-			return false, fmt.Errorf("transfer remove err: %v", err)
-		}
+				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+			}
+			err = RemoveUtxo(ctx, GINI, send.Sender, false, gAmount)
+			if err != nil {
+				logger.Infof("transfer remove err: %v", err)
+				return false, fmt.Errorf("transfer remove err: %v", err)
+			}
 
-		err = AddUtxo(ctx, GINI, kalpFoundation, false, gAmount)
-		if err != nil {
-			logger.Infof("err: %v\n", err)
-			return false, fmt.Errorf("transfer add err: %v", err)
+			err = AddUtxo(ctx, GINI, kalpFoundation, false, gAmount)
+			if err != nil {
+				logger.Infof("err: %v\n", err)
+				return false, fmt.Errorf("transfer add err: %v", err)
+			}
+			logger.Infof("foundation transfer : %s\n", userRole)
 		}
-		logger.Infof("foundation transfer : %s\n", userRole)
-
 	} else if b, err := IsCallerKalpBridge(ctx, BridgeContractName); b && err == nil {
 		// In this scenario sender is Kalp Bridge we will credit amount to kalp foundation and remove amount from sender
 		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
