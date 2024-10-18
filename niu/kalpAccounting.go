@@ -80,6 +80,18 @@ func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) erro
 // Initializing smart contract
 func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string) (bool, error) {
 	//check contract options are not already set, client is not authorized to change them once intitialized
+	operator, err := GetUserId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
+	}
+
+	userRole, err := s.GetUserRoles(ctx, operator)
+	if err != nil {
+		return false, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
+	}
+	if userRole != giniAdmin {
+		return false, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
+	}
 	bytes, err := ctx.GetState(nameKey)
 	if err != nil {
 		return false, fmt.Errorf("failed to get Name: %v", err)
@@ -97,18 +109,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
-	operator, err := GetUserId(ctx)
-	if err != nil {
-		return false, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
-	}
 
-	userRole, err := s.GetUserRoles(ctx, operator)
-	if err != nil {
-		return false, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
-	}
-	if userRole != giniAdmin {
-		return false, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
-	}
 	_, err = s.mint(ctx, BridgeContractAddress, totalSupply)
 	if err != nil {
 		return false, fmt.Errorf("error with status code %v,error in minting: %v", http.StatusInternalServerError, err)
@@ -661,13 +662,6 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 	//check if contract has been intilized first
 
 	fmt.Println("SetUserRoles", data)
-	initialized, err := CheckInitialized(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
-	}
-	if !initialized {
-		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
-	}
 
 	// Parse input data into Role struct.
 	var userRole UserRole
@@ -676,7 +670,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("failed to parse data: %v", errs)
 	}
 	if userRole.Role == giniAdmin {
-		err = IsAdmin(ctx)
+		err := IsAdmin(ctx)
 		if err != nil {
 			return "", fmt.Errorf("user role GINI-ADMIN can be defined by blockchain admin only")
 		}
