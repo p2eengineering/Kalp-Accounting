@@ -78,16 +78,7 @@ type GiniNIU struct {
 	Uri         string      `json:"uri,omitempty" metadata:",optional"`
 	AssetDigest string      `json:"assetDigest,omitempty" metadata:",optional"`
 }
-type TransferfromNIU struct {
-	Id        string `json:"Id" `
-	TxnId     string `json:"TxnId" validate:"required"`
-	Owner     string `json:"owner" validate:"required"`
-	Spender   string `json:"spender" validate:"required"`
-	Receiver  string `json:"receiver" validate:"required"`
-	Amount    string `json:"amount" validate:"required"`
-	TimeStamp string `json:"TimeStamp"`
-	DocType   string `json:"DocType"`
-}
+
 type Response struct {
 	Status     string      `json:"status"`
 	StatusCode uint        `json:"statusCode"`
@@ -210,35 +201,6 @@ func (g *GiniTransaction) Validation() error {
 	return nil
 }
 
-func (t *TransferfromNIU) TransferFromNIUValidation() error {
-	txnId := strings.Trim(t.TxnId, " ")
-	if txnId == "" {
-		return fmt.Errorf("invalid input TxnId")
-	}
-
-	spender := strings.Trim(t.Spender, " ")
-	if spender == "" {
-		return fmt.Errorf("invalid input Sender")
-	}
-	if len(spender) < 8 || len(spender) > 60 {
-		return fmt.Errorf("sender must be at least 8 characters long and shorter than 60 characters")
-	}
-	//`~!@#$%^&*()-_+=[]{}\|;':",./<>?
-	if strings.ContainsAny(spender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
-		return fmt.Errorf("invalid sender")
-	}
-	receiver := strings.Trim(t.Receiver, " ")
-	if receiver == "" {
-		return fmt.Errorf("invalid input Receiver")
-	}
-	if len(receiver) < 8 || len(receiver) > 60 {
-		return fmt.Errorf("receiver must be at least 8 characters long and shorter than 60 characters")
-	}
-	if strings.ContainsAny(receiver, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
-		return fmt.Errorf("invalid receiver")
-	}
-	return nil
-}
 func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, data string) (Response, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("AddFunds---->")
@@ -756,6 +718,14 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	if !su {
 		return false, fmt.Errorf("gasfee can't be converted to big int")
 	}
+	validateAmount, su := big.NewInt(0).SetString(amount, 10)
+	if !su {
+		logger.Infof("Amount can't be converted to string")
+		return false, fmt.Errorf("error with status code %v,Amount can't be converted to string", http.StatusConflict)
+	}
+	if validateAmount.Cmp(big.NewInt(0)) == -1 || validateAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
+		return false, fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
+	}
 	logger.Infof("useRole: %s\n", userRole)
 	// In this scenario sender is kalp gateway we will credit amount to kalp foundation as gas fees
 	if userRole == kalpGateWayAdmin {
@@ -892,8 +862,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Info("transferNIU transferNIUAmount")
 		transferAmount, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
-			logger.Infof("transfer.Amount can't be converted to string ")
-			return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferAmount)
+			logger.Infof("Amount can't be converted to string")
+			return false, fmt.Errorf("error with status code %v,Amount can't be converted to string", http.StatusConflict)
 		}
 		fmt.Printf("transferNIUAmount %v\n", transferAmount)
 		fmt.Printf("gasFeesAmount %v\n", gasFeesAmount)
