@@ -344,19 +344,24 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			return false, fmt.Errorf("internal error: error in parsing sender data")
 		}
 		if send.Sender != kalpFoundation {
-			gAmount, su := big.NewInt(0).SetString(amount, 10)
+			gRemoveAmount, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
 				logger.Infof("amount can't be converted to string ")
 
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			err = RemoveUtxo(ctx, send.Sender, false, gAmount)
+			err = RemoveUtxo(ctx, send.Sender, false, gRemoveAmount)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
+			gAddAmount, su := big.NewInt(0).SetString(amount, 10)
+			if !su {
+				logger.Infof("amount can't be converted to string ")
 
-			err = AddUtxo(ctx, kalpFoundation, false, gAmount)
+				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+			}
+			err = AddUtxo(ctx, kalpFoundation, false, gAddAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -369,19 +374,23 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// In this scenario sender is kalp foundation is bridgeing will credit amount to kalp foundation and remove amount from sender without gas fees
 		if sender == kalpFoundation {
 			sender = BridgeContractAddress
-			am, su := big.NewInt(0).SetString(amount, 10)
+			subAmmount, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 
-			err = RemoveUtxo(ctx, sender, false, am)
+			err = RemoveUtxo(ctx, sender, false, subAmmount)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
-
-			err = AddUtxo(ctx, kalpFoundation, false, am)
+			addAmount, su := big.NewInt(0).SetString(amount, 10)
+			if !su {
+				logger.Infof("amount can't be converted to string ")
+				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+			}
+			err = AddUtxo(ctx, kalpFoundation, false, addAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -391,18 +400,23 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			// In this scenario sender is Kalp Bridge we will credit gas fees to kalp foundation and remove amount from bridge contract
 			// address. Reciver will recieve amount after gas fees deduction
 			sender = BridgeContractAddress
-			am, su := big.NewInt(0).SetString(amount, 10)
+			subAmmount, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 
-			err = RemoveUtxo(ctx, sender, false, am)
+			err = RemoveUtxo(ctx, sender, false, subAmmount)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
-			err = AddUtxo(ctx, address, false, am)
+			addAmount, su := big.NewInt(0).SetString(amount, 10)
+			if !su {
+				logger.Infof("amount can't be converted to string ")
+				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+			}
+			err = AddUtxo(ctx, address, false, addAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -415,17 +429,22 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 	} else if sender == kalpFoundation {
 		//In this scenario sender is kalp foundation and address is the reciver so no gas fees deduction in code
-		am, su := big.NewInt(0).SetString(amount, 10)
+		subAmmount, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
 			logger.Infof("amount can't be converted to string ")
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
-		err := RemoveUtxo(ctx, sender, false, am)
+		err := RemoveUtxo(ctx, sender, false, subAmmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
 		}
-		err = AddUtxo(ctx, address, false, am)
+		addAmount, su := big.NewInt(0).SetString(amount, 10)
+		if !su {
+			logger.Infof("amount can't be converted to string ")
+			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+		}
+		err = AddUtxo(ctx, address, false, addAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("transfer add err: %v", err)
