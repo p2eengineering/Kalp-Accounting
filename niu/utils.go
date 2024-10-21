@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
-	"slices"
+
 	"strings"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"golang.org/x/exp/slices"
 )
 
 const UTXO = "UTXO"
