@@ -128,8 +128,8 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 
 		_, err = s.SetUserRoles(ctx, string(roleJson))
 		if err != nil {
-			fmt.Println("Error setting roles gini admin: %v", err)
-			return false, fmt.Errorf("Error setting roles gini admin: %v", err)
+			fmt.Printf("Error setting roles gini admin: %v", err)
+			return false, fmt.Errorf("error setting roles gini admin: %v", err)
 		}
 	}
 	for _, value := range gasfeeAdmins {
@@ -140,14 +140,14 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		}
 		roleJson, err := json.Marshal(role)
 		if err != nil {
-			fmt.Println("Error marshaling struct:", err)
+			fmt.Printf("error marshaling struct: %v\n", err)
 			return false, fmt.Errorf("error marsheling user role")
 		}
 
 		_, err = s.SetUserRoles(ctx, string(roleJson))
 		if err != nil {
-			fmt.Println("Error setting roles gini admin: %v", err)
-			return false, fmt.Errorf("Error setting roles gini admin: %v", err)
+			fmt.Printf("error setting roles gini admin: %v", err)
+			return false, fmt.Errorf("error setting roles gini admin: %v", err)
 		}
 	}
 	for _, value := range kalpGateWayAdmins {
@@ -164,8 +164,8 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 
 		_, err = s.SetUserRoles(ctx, string(roleJson))
 		if err != nil {
-			fmt.Println("Error setting roles gini admin: %v", err)
-			return false, fmt.Errorf("Error setting roles gini admin: %v", err)
+			fmt.Printf("error setting roles gini admin: %v", err)
+			return false, fmt.Errorf("error setting roles gini admin: %v", err)
 		}
 	}
 
@@ -237,10 +237,10 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
-		fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
+		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
 	}
 	if accAmount.Cmp(big.NewInt(0)) == -1 || accAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
-		fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
+		return fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
 	}
 
 	balance, _ := GetTotalUTXO(ctx, address)
@@ -248,32 +248,35 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 	balanceAmount, su := big.NewInt(0).SetString(balance, 10)
 	if !su {
 		logger.Infof("amount can't be converted to string ")
-		fmt.Errorf("amount can't be converted to string: ")
+		return fmt.Errorf("amount can't be converted to string: ")
 	}
 	if balanceAmount.Cmp(big.NewInt(0)) == 1 {
-		fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
+		return fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
 	}
 
 	// Mint tokens
 	err := MintUtxoHelperWithoutKYC(ctx, []string{address}, accAmount, DocTypeNIU)
 	if err != nil {
-		fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
+		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
 	}
 
 	logger.Infof("MintToken Amount---->%v\n", amount)
 	balanceAfterMint, err := GetTotalUTXO(ctx, address)
+	if err != nil {
+		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusInternalServerError, err)
+	}
 	balanceAfterMintAmount, su := big.NewInt(0).SetString(balanceAfterMint, 10)
 	if !su {
 		logger.Infof("balanceAfterMint amount can't be converted to string ")
-		fmt.Errorf("balanceAfterMint amount can't be converted to string ")
+		return fmt.Errorf("balanceAfterMint amount can't be converted to string ")
 	}
 	totalSupplyAmount, su := big.NewInt(0).SetString(totalSupply, 10)
 	if !su {
 		logger.Infof("totalSupplyAmount amount can't be converted to string ")
-		fmt.Errorf("totalSupplyAmount amount can't be converted to string ")
+		return fmt.Errorf("totalSupplyAmount amount can't be converted to string ")
 	}
 	if balanceAfterMintAmount.Cmp(totalSupplyAmount) != 0 {
-		fmt.Errorf("error with status code %v,error: minitng failed", http.StatusInternalServerError)
+		return fmt.Errorf("error with status code %v,error: minitng failed", http.StatusInternalServerError)
 	}
 	logger.Infof("balance: %s", balance)
 	return nil
