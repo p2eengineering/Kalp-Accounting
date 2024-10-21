@@ -159,8 +159,8 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 	}
 	userRole, err := s.GetUserRoles(ctx, operator)
 	if err != nil {
-		logger.Infof("error checking sponsor's role: %v", err)
-		return fmt.Errorf("error checking sponsor's role: %v", err)
+		logger.Infof("error checking operator's role: %v", err)
+		return fmt.Errorf("error checking operator's role: %v", err)
 	}
 	logger.Infof("useRole: %s\n", userRole)
 	if userRole != gasFeesAdminRole {
@@ -315,8 +315,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	}
 	userRole, err := s.GetUserRoles(ctx, sender)
 	if err != nil {
-		logger.Infof("error checking sponsor's role: %v", err)
-		return false, fmt.Errorf("error checking sponsor's role:: %v", err)
+		logger.Infof("error checking user's role: %v", err)
+		return false, fmt.Errorf("error checking user's role:: %v", err)
 	}
 	gasFees, err := s.GetGasFees(ctx)
 	if err != nil {
@@ -386,7 +386,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
 			}
-			logger.Infof("foundation transfer to self : %s\n", userRole)
+			logger.Infof("bridge transfer to foundation : %s\n", kalpFoundation)
 		} else {
 			// In this scenario sender is Kalp Bridge we will credit gas fees to kalp foundation and remove amount from bridge contract
 			// address. Reciver will recieve amount after gas fees deduction
@@ -407,11 +407,11 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
 			}
-			logger.Infof("foundation transfer to self : %s\n", userRole)
+			logger.Infof("bridge transfer to normal user : %s\n", userRole)
 		}
 	} else if sender == kalpFoundation && address == kalpFoundation {
 		//In this scenario sender is kalp foundation and address is the kalp foundation so no addition or removal is required
-		logger.Infof("foundation transfer to sender : %s address:%s\n", sender, address)
+		logger.Infof("foundation transfer to foundation : %s address:%s\n", sender, address)
 
 	} else if sender == kalpFoundation {
 		//In this scenario sender is kalp foundation and address is the reciver so no gas fees deduction in code
@@ -436,8 +436,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		//In this scenario sender is normal user and address is the kap foundation so gas fees+amount will be credited to kalp foundation
 		removeAmount, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
-			logger.Infof("amount can't be converted to string ")
-			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+			logger.Infof("removeAmount can't be converted to string ")
+			return false, fmt.Errorf("removeAmount can't be converted to string: %v ", err)
 		}
 		removeAmount = removeAmount.Add(removeAmount, gasFeesAmount)
 		err := RemoveUtxo(ctx, sender, false, removeAmount)
