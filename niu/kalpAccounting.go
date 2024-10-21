@@ -479,13 +479,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
 			}
-			am = am.Sub(am, gasFeesAmount)
 			err = AddUtxo(ctx, address, false, am)
-			if err != nil {
-				logger.Infof("err: %v\n", err)
-				return false, fmt.Errorf("transfer add err: %v", err)
-			}
-			err = AddUtxo(ctx, kalpFoundation, false, gasFeesAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
