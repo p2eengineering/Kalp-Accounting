@@ -28,12 +28,12 @@ import (
 // Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only KalpFoundation can set Gasfee)
 // Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only KalpFoundation can set Gasfee)
 const attrRole = "hf.Type"
-const intialgasfeesadmin = ""
-const intialkalpGateWayadmin = ""
+const intialgasfeesadmin = "giniuser201"
+const intialkalpGateWayadmin = "giniuser154"
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
-const kalpFoundation = "fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
+const kalpFoundation = "kalpAdmin" //"fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
 const GINI = "GINI"
 const env = "dev"
 const totalSupply = "2000000000000000000000000000"
@@ -42,7 +42,7 @@ const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
 const userRolePrefix = "ID~UserRoleMap"
 const UserRoleMap = "UserRoleMap"
-const BridgeContractAddress = "klp-6b616c70627269646765-cc"
+const BridgeContractAddress = "kalp-bridge" //"klp-6b616c70627269646765-cc"
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {
@@ -81,31 +81,21 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	role := UserRole{
-		Id:      kalpFoundation,
-		Role:    kalpFoundationRole,
-		DocType: "UserRoleMap",
+	if operator != kalpFoundation {
+		return false, fmt.Errorf("error with status code %v, only kalp foundation can intialize the contract: %v", http.StatusBadRequest, err)
 	}
-	roleJson, err := json.Marshal(role)
+	_, err = InitializeRoles(ctx, kalpFoundation, kalpFoundationRole)
 	if err != nil {
-		fmt.Println("Error marshaling struct:", err)
-		return false, fmt.Errorf("error marsheling user role")
+		return false, fmt.Errorf("error in initializing roles: %v", err)
 	}
-	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{role.Id, UserRoleMap})
+	_, err = InitializeRoles(ctx, intialgasfeesadmin, gasFeesAdminRole)
 	if err != nil {
-		return false, fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+		return false, fmt.Errorf("error in initializing roles: %v", err)
 	}
-	if err := ctx.PutStateWithoutKYC(key, roleJson); err != nil {
-		return false, fmt.Errorf("unable to put user role struct in statedb: %v", err)
-	}
-	userRole, err := s.GetUserRoles(ctx, operator)
+	_, err = InitializeRoles(ctx, intialkalpGateWayadmin, kalpGateWayAdmin)
 	if err != nil {
-		return false, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
+		return false, fmt.Errorf("error in initializing roles: %v", err)
 	}
-	if userRole != kalpFoundationRole {
-		return false, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
-	}
-
 	bytes, err := ctx.GetState(nameKey)
 	if err != nil {
 		return false, fmt.Errorf("failed to get Name: %v", err)
@@ -122,41 +112,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
-
-	gasFeesAdminRole := UserRole{
-		Id:      intialgasfeesadmin,
-		Role:    gasFeesAdminRole,
-		DocType: "UserRoleMap",
-	}
-	gasFeesAdminRoleJson, err := json.Marshal(gasFeesAdminRole)
-	if err != nil {
-		fmt.Printf("error marshaling struct: %v\n", err)
-		return false, fmt.Errorf("error marsheling user role")
-	}
-
-	_, err = s.SetUserRoles(ctx, string(gasFeesAdminRoleJson))
-	if err != nil {
-		fmt.Printf("error setting roles gini admin: %v", err)
-		return false, fmt.Errorf("error setting roles gini admin: %v", err)
-	}
-
-	kalpGateWayAdminRole := UserRole{
-		Id:      intialkalpGateWayadmin,
-		Role:    kalpGateWayAdmin,
-		DocType: "UserRoleMap",
-	}
-	kalpGateWayAdminRoleJson, err := json.Marshal(kalpGateWayAdminRole)
-	if err != nil {
-		fmt.Println("Error marshaling struct:", err)
-		return false, fmt.Errorf("error marsheling user role")
-	}
-
-	_, err = s.SetUserRoles(ctx, string(kalpGateWayAdminRoleJson))
-	if err != nil {
-		fmt.Printf("error setting roles gini admin: %v", err)
-		return false, fmt.Errorf("error setting roles gini admin: %v", err)
-	}
-
 	err = s.mint(ctx, BridgeContractAddress, totalSupply)
 	if err != nil {
 		return false, fmt.Errorf("error with status code %v,error in minting: %v", http.StatusInternalServerError, err)
@@ -247,26 +202,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
 	}
-
 	logger.Infof("MintToken Amount---->%v\n", amount)
-	balanceAfterMint, err := GetTotalUTXO(ctx, address)
-	if err != nil {
-		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusInternalServerError, err)
-	}
-	balanceAfterMintAmount, su := big.NewInt(0).SetString(balanceAfterMint, 10)
-	if !su {
-		logger.Infof("balanceAfterMint amount can't be converted to string ")
-		return fmt.Errorf("balanceAfterMint amount can't be converted to string ")
-	}
-	totalSupplyAmount, su := big.NewInt(0).SetString(totalSupply, 10)
-	if !su {
-		logger.Infof("totalSupplyAmount amount can't be converted to string ")
-		return fmt.Errorf("totalSupplyAmount amount can't be converted to string ")
-	}
-	if balanceAfterMintAmount.Cmp(totalSupplyAmount) != 0 {
-		return fmt.Errorf("error with status code %v,error: minitng failed", http.StatusInternalServerError)
-	}
-	logger.Infof("balanceAfterMint: %s", balanceAfterMint)
 	return nil
 
 }

@@ -544,13 +544,23 @@ func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, s
 	return EmitTransferSingle(sdk, transferSingleEvent)
 }
 
-// IsAdmin function determines whether or not a user is an administrator.
-func IsAdmin(sdk kalpsdk.TransactionContextInterface) error {
-	fmt.Println("IsAdmin invoked...")
-	//check if user is admin
-	err := InvokerAssertAttributeValue(sdk, attrRole, adminType)
-	if err != nil {
-		return fmt.Errorf("admin role check failed: %v", err)
+func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role string) (bool, error) {
+	userRole := UserRole{
+		Id:      id,
+		Role:    role,
+		DocType: "UserRoleMap",
 	}
-	return nil
+	roleJson, err := json.Marshal(role)
+	if err != nil {
+		fmt.Println("Error marshaling struct:", err)
+		return false, fmt.Errorf("error marsheling user role")
+	}
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{userRole.Id, UserRoleMap})
+	if err != nil {
+		return false, fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+	if err := ctx.PutStateWithoutKYC(key, roleJson); err != nil {
+		return false, fmt.Errorf("unable to put user role struct in statedb: %v", err)
+	}
+	return true, nil
 }
