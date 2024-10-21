@@ -28,24 +28,16 @@ import (
 // Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only GINI-ADMIN can set Gasfee)
 // Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only GINI-ADMIN can set Gasfee)
 const attrRole = "hf.Type"
-
-var gasfeeAdmins = []string{}
-var giniAdmins = []string{}
-var kalpGateWayAdmins = []string{}
-
-// const admintype = "client"
+const intialgasfeesadmin = ""
+const intialkalpGateWayadmin = ""
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
 const kalpFoundation = "fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
-const OwnerPrefix = "ownerId~assetId"
-const MailabRoleAttrName = "MailabUserRole"
-const PaymentRoleValue = "PaymentAdmin"
 const GINI = "GINI"
-const GINI_PAYMENT_TXN = "GINI_PAYMENT_TXN"
 const env = "dev"
 const totalSupply = "2000000000000000000000000000"
-const giniAdmin = "GINI-ADMIN"
+const giniAdmin = "KalpFoundation"
 const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
 const userRolePrefix = "ID~UserRoleMap"
@@ -84,11 +76,28 @@ func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) erro
 // Initializing smart contract
 func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string) (bool, error) {
 	//check contract options are not already set, client is not authorized to change them once intitialized
+
 	operator, err := GetUserId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-
+	role := UserRole{
+		Id:      kalpFoundation,
+		Role:    giniAdmin,
+		DocType: "UserRoleMap",
+	}
+	roleJson, err := json.Marshal(role)
+	if err != nil {
+		fmt.Println("Error marshaling struct:", err)
+		return false, fmt.Errorf("error marsheling user role")
+	}
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{role.Id, UserRoleMap})
+	if err != nil {
+		return false, fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+	if err := ctx.PutStateWithoutKYC(key, roleJson); err != nil {
+		return false, fmt.Errorf("unable to put user role struct in statedb: %v", err)
+	}
 	userRole, err := s.GetUserRoles(ctx, operator)
 	if err != nil {
 		return false, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
@@ -114,59 +123,38 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
 
-	for _, value := range giniAdmins {
-		role := UserRole{
-			Id:      value,
-			Role:    giniAdmin,
-			DocType: "UserRoleMap",
-		}
-		roleJson, err := json.Marshal(role)
-		if err != nil {
-			fmt.Println("Error marshaling struct:", err)
-			return false, fmt.Errorf("error marsheling user role")
-		}
-
-		_, err = s.SetUserRoles(ctx, string(roleJson))
-		if err != nil {
-			fmt.Printf("Error setting roles gini admin: %v", err)
-			return false, fmt.Errorf("error setting roles gini admin: %v", err)
-		}
+	gasFeesAdminRole := UserRole{
+		Id:      intialgasfeesadmin,
+		Role:    gasFeesAdminRole,
+		DocType: "UserRoleMap",
 	}
-	for _, value := range gasfeeAdmins {
-		role := UserRole{
-			Id:      value,
-			Role:    gasFeesAdminRole,
-			DocType: "UserRoleMap",
-		}
-		roleJson, err := json.Marshal(role)
-		if err != nil {
-			fmt.Printf("error marshaling struct: %v\n", err)
-			return false, fmt.Errorf("error marsheling user role")
-		}
-
-		_, err = s.SetUserRoles(ctx, string(roleJson))
-		if err != nil {
-			fmt.Printf("error setting roles gini admin: %v", err)
-			return false, fmt.Errorf("error setting roles gini admin: %v", err)
-		}
+	gasFeesAdminRoleJson, err := json.Marshal(gasFeesAdminRole)
+	if err != nil {
+		fmt.Printf("error marshaling struct: %v\n", err)
+		return false, fmt.Errorf("error marsheling user role")
 	}
-	for _, value := range kalpGateWayAdmins {
-		role := UserRole{
-			Id:      value,
-			Role:    kalpGateWayAdmin,
-			DocType: "UserRoleMap",
-		}
-		roleJson, err := json.Marshal(role)
-		if err != nil {
-			fmt.Println("Error marshaling struct:", err)
-			return false, fmt.Errorf("error marsheling user role")
-		}
 
-		_, err = s.SetUserRoles(ctx, string(roleJson))
-		if err != nil {
-			fmt.Printf("error setting roles gini admin: %v", err)
-			return false, fmt.Errorf("error setting roles gini admin: %v", err)
-		}
+	_, err = s.SetUserRoles(ctx, string(gasFeesAdminRoleJson))
+	if err != nil {
+		fmt.Printf("error setting roles gini admin: %v", err)
+		return false, fmt.Errorf("error setting roles gini admin: %v", err)
+	}
+
+	kalpGateWayAdminRole := UserRole{
+		Id:      intialkalpGateWayadmin,
+		Role:    kalpGateWayAdmin,
+		DocType: "UserRoleMap",
+	}
+	kalpGateWayAdminRoleJson, err := json.Marshal(kalpGateWayAdminRole)
+	if err != nil {
+		fmt.Println("Error marshaling struct:", err)
+		return false, fmt.Errorf("error marsheling user role")
+	}
+
+	_, err = s.SetUserRoles(ctx, string(kalpGateWayAdminRoleJson))
+	if err != nil {
+		fmt.Printf("error setting roles gini admin: %v", err)
+		return false, fmt.Errorf("error setting roles gini admin: %v", err)
 	}
 
 	err = s.mint(ctx, BridgeContractAddress, totalSupply)
