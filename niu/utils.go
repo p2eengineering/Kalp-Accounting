@@ -120,7 +120,7 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc bool, 
 	}
 	amount, err := CustomBigIntConvertor(iamount)
 	if err != nil {
-		return fmt.Errorf("error in CustomFloatConvertor %v", err)
+		return fmt.Errorf("error in CustomBigInt %v", err)
 	}
 	fmt.Printf("add amount: %v\n", amount)
 	fmt.Printf("utxoKey: %v\n", utxoKey)
@@ -152,7 +152,7 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc boo
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"},"use_index": "indexIdDocType"}`
 	amount, err := CustomBigIntConvertor(iamount)
 	if err != nil {
-		return fmt.Errorf("error in CustomFloatConvertor %v", err)
+		return fmt.Errorf("error in CustomBigInt %v", err)
 	}
 	fmt.Printf("queryString: %s\n", queryString)
 	resultsIterator, err := sdk.GetQueryResult(queryString)
@@ -214,18 +214,18 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc boo
 			}
 			utxoJSON, err := json.Marshal(utxo)
 			if err != nil {
-				return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", GINI, account, err)
+				return fmt.Errorf("failed to marshal owner with  and account address %s to JSON: %v", account, err)
 			}
 
 			if kyc {
 				err = sdk.PutStateWithKYC(utxoKey, utxoJSON)
 				if err != nil {
-					return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", GINI, account, err)
+					return fmt.Errorf("failed to put owner with  and account address %s to world state: %v", account, err)
 				}
 			} else {
 				err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
 				if err != nil {
-					return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", GINI, account, err)
+					return fmt.Errorf("failed to put owner with  and account address %s to world state: %v", account, err)
 				}
 			}
 		}
@@ -368,7 +368,7 @@ func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender stri
 
 	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
 	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with ID %s and account address %s: %v", owner, spender, err)
+		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
 	}
 
 	fmt.Println("owner->", owner)
@@ -421,12 +421,12 @@ func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender stri
 func Allowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
 	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
 	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for owner with ID %s and account address %s: %v", owner, spender, err)
+		return "", fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
 	}
 	// Get the current balance of the owner
 	approvalByte, err := sdk.GetState(approvalKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to read current balance of owner with ID %s and account address %s from world state: %v", owner, spender, err)
+		return "", fmt.Errorf("failed to read current balance of owner with address %s and account address %s from world state: %v", owner, spender, err)
 	}
 	var approval Allow
 	if approvalByte != nil {
@@ -442,12 +442,12 @@ func Allowance(sdk kalpsdk.TransactionContextInterface, owner string, spender st
 func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
 	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
 	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with ID %s and account address %s: %v", owner, spender, err)
+		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
 	}
 	// Get the current balance of the owner
 	approvalByte, err := sdk.GetState(approvalKey)
 	if err != nil {
-		return fmt.Errorf("failed to read current balance of owner with ID %s and account address %s from world state: %v", owner, spender, err)
+		return fmt.Errorf("failed to read current balance of owner with address %s and account address %s from world state: %v", owner, spender, err)
 	}
 	var approval Allow
 	if approvalByte != nil {
