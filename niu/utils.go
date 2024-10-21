@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
@@ -15,11 +16,6 @@ import (
 )
 
 const UTXO = "UTXO"
-const DocTypeNFT = "NFTM"
-const DocTypeAsset = "ASSET-R2CI"
-const DocTypeNIU = "NIU"
-const DocTypeLand = "LAND-PARCEL"
-const DocTypeSmartAsset = "SMART-ASSET"
 
 type Utxo struct {
 	Key     string `json:"_id,omitempty"`
@@ -58,7 +54,7 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 }
 
 // As of now, we are not supporting usecases where asset is owned by multiple owners.
-func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account []string, iamount interface{}, docType string) error {
+func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account []string, iamount interface{}) error {
 
 	amount, err := CustomBigIntConvertor(iamount)
 	if err != nil {
@@ -71,7 +67,7 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 			return fmt.Errorf("mint to the zero address")
 		}
 
-		if (docType == DocTypeNIU || docType == DocTypeNFT) && amount.Cmp(big.NewInt(0)) == 0 && amount.Cmp(big.NewInt(0)) == -1 {
+		if amount.Cmp(big.NewInt(0)) == 0 && amount.Cmp(big.NewInt(0)) == -1 {
 			return fmt.Errorf("mint amount must be a positive integer")
 		}
 
@@ -99,7 +95,7 @@ func MintUTXOHelper(sdk kalpsdk.TransactionContextInterface, account []string, i
 			return fmt.Errorf("mint to the zero address")
 		}
 
-		if (docType == DocTypeNIU || docType == DocTypeNFT) && amount.Cmp(big.NewInt(0)) == 0 && amount.Cmp(big.NewInt(0)) == -1 {
+		if amount.Cmp(big.NewInt(0)) == 0 && amount.Cmp(big.NewInt(0)) == -1 {
 			return fmt.Errorf("mint amount must be a positive integer")
 		}
 
@@ -564,4 +560,102 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 		return false, fmt.Errorf("unable to put user role struct in statedb: %v", err)
 	}
 	return true, nil
+}
+
+// SetUserRoles is a smart contract function which is used to setup a role for user.
+func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
+	//check if contract has been intilized first
+
+	fmt.Println("SetUserRoles", data)
+
+	// Parse input data into Role struct.
+	var userRole UserRole
+	errs := json.Unmarshal([]byte(data), &userRole)
+	if errs != nil {
+		return "", fmt.Errorf("failed to parse data: %v", errs)
+	}
+
+	userValid, err := s.ValidateUserRole(ctx, kalpFoundationRole)
+	if err != nil {
+		return "", fmt.Errorf("error in validating the role %v", err)
+	}
+	if !userValid {
+		return "", fmt.Errorf("error in setting role %s, only %s can set the roles", userRole.Role, kalpFoundationRole)
+	}
+
+	// Validate input data.
+	if userRole.Id == "" {
+		return "", fmt.Errorf("user Id can not be null")
+	}
+
+	if userRole.Role == "" {
+		return "", fmt.Errorf("role can not be null")
+	}
+
+	ValidRoles := []string{kalpFoundationRole, gasFeesAdminRole, kalpGateWayAdmin}
+	if !slices.Contains(ValidRoles, userRole.Role) {
+		return "", fmt.Errorf("invalid input role")
+	}
+
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{userRole.Id, UserRoleMap})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+	// Generate JSON representation of Role struct.
+	usrRoleJSON, err := json.Marshal(userRole)
+	if err != nil {
+		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
+	}
+	// Store the Role struct in the state database
+	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
+		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
+	}
+	return s.GetTransactionTimestamp(ctx)
+
+}
+
+func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
+
+	// Check if operator is authorized to create Role.
+	operator, err := GetUserId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get client id: %v", err)
+	}
+
+	fmt.Println("operator---------------", operator)
+	userRole, err1 := s.GetUserRoles(ctx, operator)
+	if err1 != nil {
+		return false, fmt.Errorf("error: %v", err1)
+	}
+
+	if userRole != Role {
+		return false, fmt.Errorf("this transaction can be performed by %v only", Role)
+	}
+	return true, nil
+}
+
+// GetUserRoles is a smart contract function which is used to get a role of a user.
+func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
+	// Get the asset from the ledger using id & check if asset exists
+	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{id, UserRoleMap})
+	if err != nil {
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+	}
+
+	userJSON, err := ctx.GetState(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if userJSON == nil {
+		return "", nil
+	}
+
+	// Unmarshal asset from JSON to struct
+	var userRole UserRole
+	err = json.Unmarshal(userJSON, &userRole)
+	if err != nil {
+		return "", fmt.Errorf("unable to unmarshal user role struct : %v", err)
+	}
+
+	return userRole.Role, nil
 }

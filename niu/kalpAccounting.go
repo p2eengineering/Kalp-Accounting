@@ -1,23 +1,15 @@
-// R2CI is an acronym for Right to Create Intellectual Property. It is a platform for maintaining the IP and showcasing those IP rights to others.
-//
-// This package provides the functions to create and maintain R2CI Assets and Token in the blokchain.
 package kalpAccounting
 
 import (
 	//Standard Libs
 
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
-	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
-	"golang.org/x/exp/slices"
 )
 
 // Deployment notes for GINI contract:
@@ -197,7 +189,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 	}
 
 	// Mint tokens
-	err := MintUtxoHelperWithoutKYC(ctx, []string{address}, accAmount, DocTypeNIU)
+	err := MintUtxoHelperWithoutKYC(ctx, []string{address}, accAmount)
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
 	}
@@ -541,57 +533,6 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	return amt, nil
 }
 
-// GetHistoryForAsset is a smart contract function which list the complete history of particular R2CI asset from blockchain ledger.
-func (s *SmartContract) GetHistoryForAsset(ctx contractapi.TransactionContextInterface, id string) (string, error) {
-	resultsIterator, err := ctx.GetStub().GetHistoryForKey(id)
-	if err != nil {
-		return "", err
-	}
-	defer resultsIterator.Close()
-
-	var buffer bytes.Buffer
-	buffer.WriteString("[")
-
-	bArrayMemberAlreadyWritten := false
-	for resultsIterator.HasNext() {
-		response, err := resultsIterator.Next()
-		if err != nil {
-			return "", err
-		}
-		if bArrayMemberAlreadyWritten {
-			buffer.WriteString(",")
-		}
-		buffer.WriteString("{\"TxId\":")
-		buffer.WriteString("\"")
-		buffer.WriteString(response.TxId)
-		buffer.WriteString("\"")
-
-		buffer.WriteString(", \"Value\":")
-
-		if response.IsDelete {
-			buffer.WriteString("null")
-		} else {
-			buffer.WriteString(string(response.Value))
-		}
-
-		buffer.WriteString(", \"Timestamp\":")
-		buffer.WriteString("\"")
-		buffer.WriteString(time.Unix(response.Timestamp.Seconds, int64(response.Timestamp.Nanos)).String())
-		buffer.WriteString("\"")
-
-		buffer.WriteString(", \"IsDelete\":")
-		buffer.WriteString("\"")
-		buffer.WriteString(strconv.FormatBool(response.IsDelete))
-		buffer.WriteString("\"")
-
-		buffer.WriteString("}")
-		bArrayMemberAlreadyWritten = true
-	}
-	buffer.WriteString("]")
-
-	return buffer.String(), nil
-}
-
 // GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
 func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	timestamp, err := ctx.GetTxTimestamp()
@@ -642,102 +583,4 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 
 func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	return totalSupply, nil
-}
-
-// SetUserRoles is a smart contract function which is used to setup a role for user.
-func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
-	//check if contract has been intilized first
-
-	fmt.Println("SetUserRoles", data)
-
-	// Parse input data into Role struct.
-	var userRole UserRole
-	errs := json.Unmarshal([]byte(data), &userRole)
-	if errs != nil {
-		return "", fmt.Errorf("failed to parse data: %v", errs)
-	}
-
-	userValid, err := s.ValidateUserRole(ctx, kalpFoundationRole)
-	if err != nil {
-		return "", fmt.Errorf("error in validating the role %v", err)
-	}
-	if !userValid {
-		return "", fmt.Errorf("error in setting role %s, only %s can set the roles", userRole.Role, kalpFoundationRole)
-	}
-
-	// Validate input data.
-	if userRole.Id == "" {
-		return "", fmt.Errorf("user Id can not be null")
-	}
-
-	if userRole.Role == "" {
-		return "", fmt.Errorf("role can not be null")
-	}
-
-	ValidRoles := []string{kalpFoundationRole, gasFeesAdminRole, kalpGateWayAdmin}
-	if !slices.Contains(ValidRoles, userRole.Role) {
-		return "", fmt.Errorf("invalid input role")
-	}
-
-	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{userRole.Id, UserRoleMap})
-	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
-	}
-	// Generate JSON representation of Role struct.
-	usrRoleJSON, err := json.Marshal(userRole)
-	if err != nil {
-		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
-	}
-	// Store the Role struct in the state database
-	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
-		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
-	}
-	return s.GetTransactionTimestamp(ctx)
-
-}
-
-func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
-
-	// Check if operator is authorized to create Role.
-	operator, err := GetUserId(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to get client id: %v", err)
-	}
-
-	fmt.Println("operator---------------", operator)
-	userRole, err1 := s.GetUserRoles(ctx, operator)
-	if err1 != nil {
-		return false, fmt.Errorf("error: %v", err1)
-	}
-
-	if userRole != Role {
-		return false, fmt.Errorf("this transaction can be performed by %v only", Role)
-	}
-	return true, nil
-}
-
-// GetUserRoles is a smart contract function which is used to get a role of a user.
-func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
-	// Get the asset from the ledger using id & check if asset exists
-	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{id, UserRoleMap})
-	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
-	}
-
-	userJSON, err := ctx.GetState(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to read from world state: %v", err)
-	}
-	if userJSON == nil {
-		return "", nil
-	}
-
-	// Unmarshal asset from JSON to struct
-	var userRole UserRole
-	err = json.Unmarshal(userJSON, &userRole)
-	if err != nil {
-		return "", fmt.Errorf("unable to unmarshal user role struct : %v", err)
-	}
-
-	return userRole.Role, nil
 }
