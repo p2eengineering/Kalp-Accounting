@@ -92,10 +92,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if userRole != giniAdmin {
 		return false, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
 	}
-	_, err = s.mint(ctx, BridgeContractAddress, totalSupply)
-	if err != nil {
-		return false, fmt.Errorf("error with status code %v,error in minting: %v", http.StatusInternalServerError, err)
-	}
+
 	bytes, err := ctx.GetState(nameKey)
 	if err != nil {
 		return false, fmt.Errorf("failed to get Name: %v", err)
@@ -103,7 +100,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if bytes != nil {
 		return false, fmt.Errorf("contract options are already set, client is not authorized to change them")
 	}
-
 	err = ctx.PutStateWithoutKYC(nameKey, []byte(name))
 	if err != nil {
 		return false, fmt.Errorf("failed to set token name: %v", err)
@@ -112,6 +108,10 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	err = ctx.PutStateWithoutKYC(symbolKey, []byte(symbol))
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
+	}
+	_, err = s.mint(ctx, BridgeContractAddress, totalSupply)
+	if err != nil {
+		return false, fmt.Errorf("error with status code %v,error in minting: %v", http.StatusInternalServerError, err)
 	}
 	return true, nil
 }
@@ -344,6 +344,10 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) (bool, error) {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("Transfer---->%s", env)
+	address = strings.Trim(address, " ")
+	if address == "" {
+		return false, fmt.Errorf("invalid input address")
+	}
 	sender, err := ctx.GetUserID()
 	if err != nil {
 		return false, fmt.Errorf("error in getting user id: %v", err)
