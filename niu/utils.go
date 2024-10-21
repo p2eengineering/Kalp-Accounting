@@ -549,7 +549,7 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 		Role:    role,
 		DocType: "UserRoleMap",
 	}
-	roleJson, err := json.Marshal(role)
+	roleJson, err := json.Marshal(userRole)
 	if err != nil {
 		fmt.Println("Error marshaling struct:", err)
 		return false, fmt.Errorf("error marsheling user role")
