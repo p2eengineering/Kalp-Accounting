@@ -278,7 +278,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 	if balanceAfterMintAmount.Cmp(totalSupplyAmount) != 0 {
 		return fmt.Errorf("error with status code %v,error: minitng failed", http.StatusInternalServerError)
 	}
-	logger.Infof("balance: %s", balance)
+	logger.Infof("balanceAfterMint: %s", balanceAfterMint)
 	return nil
 
 }
@@ -720,20 +720,15 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 	if errs != nil {
 		return "", fmt.Errorf("failed to parse data: %v", errs)
 	}
-	if userRole.Role == giniAdmin {
-		err := IsAdmin(ctx)
-		if err != nil {
-			return "", fmt.Errorf("user role GINI-ADMIN can be defined by blockchain admin only")
-		}
-	} else {
-		userValid, err := s.ValidateUserRole(ctx, giniAdmin)
-		if err != nil {
-			return "", fmt.Errorf("error in validating the role %v", err)
-		}
-		if !userValid {
-			return "", fmt.Errorf("error in setting role %s, only GINI-ADMIN can set the roles", userRole.Role)
-		}
+
+	userValid, err := s.ValidateUserRole(ctx, giniAdmin)
+	if err != nil {
+		return "", fmt.Errorf("error in validating the role %v", err)
 	}
+	if !userValid {
+		return "", fmt.Errorf("error in setting role %s, only GINI-ADMIN can set the roles", userRole.Role)
+	}
+
 	// Validate input data.
 	if userRole.Id == "" {
 		return "", fmt.Errorf("user Id can not be null")
