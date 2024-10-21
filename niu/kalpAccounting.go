@@ -29,6 +29,10 @@ import (
 // Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only GINI-ADMIN can set Gasfee)
 const attrRole = "hf.Type"
 
+var gasfeeAdmins = []string{}
+var giniAdmins = []string{}
+var kalpGateWayAdmins = []string{}
+
 // const admintype = "client"
 const nameKey = "name"
 const symbolKey = "symbol"
@@ -109,7 +113,63 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
-	_, err = s.mint(ctx, BridgeContractAddress, totalSupply)
+
+	for _, value := range giniAdmins {
+		role := UserRole{
+			Id:      value,
+			Role:    giniAdmin,
+			DocType: "UserRoleMap",
+		}
+		roleJson, err := json.Marshal(role)
+		if err != nil {
+			fmt.Println("Error marshaling struct:", err)
+			return false, fmt.Errorf("error marsheling user role")
+		}
+
+		_, err = s.SetUserRoles(ctx, string(roleJson))
+		if err != nil {
+			fmt.Println("Error setting roles gini admin: %v", err)
+			return false, fmt.Errorf("Error setting roles gini admin: %v", err)
+		}
+	}
+	for _, value := range gasfeeAdmins {
+		role := UserRole{
+			Id:      value,
+			Role:    gasFeesAdminRole,
+			DocType: "UserRoleMap",
+		}
+		roleJson, err := json.Marshal(role)
+		if err != nil {
+			fmt.Println("Error marshaling struct:", err)
+			return false, fmt.Errorf("error marsheling user role")
+		}
+
+		_, err = s.SetUserRoles(ctx, string(roleJson))
+		if err != nil {
+			fmt.Println("Error setting roles gini admin: %v", err)
+			return false, fmt.Errorf("Error setting roles gini admin: %v", err)
+		}
+	}
+	for _, value := range kalpGateWayAdmins {
+		role := UserRole{
+			Id:      value,
+			Role:    kalpGateWayAdmin,
+			DocType: "UserRoleMap",
+		}
+		roleJson, err := json.Marshal(role)
+		if err != nil {
+			fmt.Println("Error marshaling struct:", err)
+			return false, fmt.Errorf("error marsheling user role")
+		}
+
+		_, err = s.SetUserRoles(ctx, string(roleJson))
+		if err != nil {
+			fmt.Println("Error setting roles gini admin: %v", err)
+			return false, fmt.Errorf("Error setting roles gini admin: %v", err)
+		}
+	}
+
+	err = s.mint(ctx, BridgeContractAddress, totalSupply)
 	if err != nil {
 		return false, fmt.Errorf("error with status code %v,error in minting: %v", http.StatusInternalServerError, err)
 	}
@@ -171,77 +231,52 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 	return nil
 }
 
-func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address string, amount string) (Response, error) {
+func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
 	logger := kalpsdk.NewLogger()
 	logger.Infof("Mint---->")
 
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
-		return Response{
-			Message:    fmt.Sprintf("can't convert amount to big int %s", amount),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusConflict,
-		}, fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
+		fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
 	}
 	if accAmount.Cmp(big.NewInt(0)) == -1 || accAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
-		return Response{
-			Message:    "amount can't be less then 0",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
+		fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
 	}
 
-	balance, _ := GetTotalUTXO(ctx, GINI, address)
+	balance, _ := GetTotalUTXO(ctx, address)
 	logger.Infof("balance: %s", balance)
 	balanceAmount, su := big.NewInt(0).SetString(balance, 10)
 	if !su {
 		logger.Infof("amount can't be converted to string ")
-		return Response{
-			Message:    "amount can't be converted to string:",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("amount can't be converted to string: ")
+		fmt.Errorf("amount can't be converted to string: ")
 	}
 	if balanceAmount.Cmp(big.NewInt(0)) == 1 {
-		return Response{
-			Message:    "can't call mint request twice twice",
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
+		fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
 	}
 
 	// Mint tokens
-	err := MintUtxoHelperWithoutKYC(ctx, []string{address}, GINI, accAmount, DocTypeNIU)
+	err := MintUtxoHelperWithoutKYC(ctx, []string{address}, accAmount, DocTypeNIU)
 	if err != nil {
-		return Response{
-			Message:    fmt.Sprintf("failed to mint tokens: %v", err),
-			Success:    false,
-			Status:     "Failure",
-			StatusCode: http.StatusBadRequest,
-		}, fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
+		fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
 	}
 
 	logger.Infof("MintToken Amount---->%v\n", amount)
-
-	funcName, _ := ctx.GetFunctionAndParameters()
-	response := map[string]interface{}{
-		"txId":            ctx.GetTxID(),
-		"txFcn":           funcName,
-		"txType":          "Invoke",
-		"transactionData": address,
+	balanceAfterMint, err := GetTotalUTXO(ctx, address)
+	balanceAfterMintAmount, su := big.NewInt(0).SetString(balanceAfterMint, 10)
+	if !su {
+		logger.Infof("balanceAfterMint amount can't be converted to string ")
+		fmt.Errorf("balanceAfterMint amount can't be converted to string ")
 	}
-
-	return Response{
-		Message:    "Added funds successfully",
-		Success:    true,
-		Status:     "Success",
-		StatusCode: http.StatusCreated,
-		Response:   response,
-	}, nil
+	totalSupplyAmount, su := big.NewInt(0).SetString(totalSupply, 10)
+	if !su {
+		logger.Infof("totalSupplyAmount amount can't be converted to string ")
+		fmt.Errorf("totalSupplyAmount amount can't be converted to string ")
+	}
+	if balanceAfterMintAmount.Cmp(totalSupplyAmount) != 0 {
+		fmt.Errorf("error with status code %v,error: minitng failed", http.StatusInternalServerError)
+	}
+	logger.Infof("balance: %s", balance)
+	return nil
 
 }
 
@@ -557,8 +592,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	if owner == "" {
 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
 	}
-	id := GINI
-	amt, err := GetTotalUTXO(ctx, id, owner)
+	amt, err := GetTotalUTXO(ctx, owner)
 	if err != nil {
 		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
 	}
@@ -635,7 +669,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 		return false, err
 	}
 
-	err = Approve(ctx, owner, spender, GINI, value)
+	err = Approve(ctx, owner, spender, value)
 	if err != nil {
 		fmt.Printf("error unable to approve funds: %v", err)
 		return false, err
@@ -650,7 +684,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 	if err != nil {
 		return false, fmt.Errorf("error iin getting spender's id: %v", err)
 	}
-	err = TransferUTXOFrom(ctx, []string{from}, []string{spender}, to, GINI, value, UTXO)
+	err = TransferUTXOFrom(ctx, []string{from}, []string{spender}, to, value, UTXO)
 	if err != nil {
 		logger.Infof("err: %v\n", err)
 		return false, fmt.Errorf("error: unable to transfer funds: %v", err)

@@ -59,7 +59,7 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 }
 
 // As of now, we are not supporting usecases where asset is owned by multiple owners.
-func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account []string, id string, iamount interface{}, docType string) error {
+func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account []string, iamount interface{}, docType string) error {
 
 	amount, err := CustomBigIntConvertor(iamount)
 	if err != nil {
@@ -87,7 +87,7 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 	return nil
 }
 
-func MintUTXOHelper(sdk kalpsdk.TransactionContextInterface, account []string, id string, iamount interface{}, docType string) error {
+func MintUTXOHelper(sdk kalpsdk.TransactionContextInterface, account []string, iamount interface{}, docType string) error {
 
 	amount, err := CustomBigIntConvertor(iamount)
 	if err != nil {
@@ -319,9 +319,9 @@ func IsCallerKalpBridge(sdk kalpsdk.TransactionContextInterface, KalpBridgeContr
 	return strings.Contains(string(paystring), KalpBridgeContractName), nil
 }
 
-func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, id string, account string) (string, error) {
+func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, account string) (string, error) {
 	logger := kalpsdk.NewLogger()
-	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `","id":"` + id + `"}}`
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"}}`
 	logger.Infof("queryString: %s\n", queryString)
 	resultsIterator, err := sdk.GetQueryResult(queryString)
 	if err != nil {
@@ -354,7 +354,7 @@ func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, id string, account st
 	return amt.String(), nil
 }
 
-func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender string, id string, amount string) error {
+func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender string, amount string) error {
 	// Emit the Approval event
 	operator, err := GetUserId(sdk)
 	if err != nil {
@@ -372,7 +372,7 @@ func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender stri
 
 	fmt.Println("owner->", owner)
 	// Get the current balance of the owner
-	balance, err := GetTotalUTXO(sdk, id, owner)
+	balance, err := GetTotalUTXO(sdk, owner)
 	if err != nil {
 		return fmt.Errorf("failed to get balance %v", err)
 	}
@@ -483,7 +483,7 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 	return nil
 }
 
-func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, spender []string, receiver string, id string, iamount interface{}, docType string) error {
+func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, spender []string, receiver string, iamount interface{}, docType string) error {
 
 	// Get ID of submitting client identity
 	operator, err := GetUserId(sdk)
