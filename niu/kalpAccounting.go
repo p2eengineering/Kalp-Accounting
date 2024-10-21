@@ -27,8 +27,8 @@ import (
 // Admin user to invoke setuserrole with enrollment id of user and KalpFoundation role,   (only blockchain Admin can set KalpFoundation)
 // Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only KalpFoundation can set Gasfee)
 // Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only KalpFoundation can set Gasfee)
-const intialgasfeesadmin = "giniuser201"
-const intialkalpGateWayadmin = "giniuser154"
+const intialgasfeesadmin = ""
+const intialkalpGateWayadmin = ""
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
