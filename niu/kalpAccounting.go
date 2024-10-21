@@ -27,13 +27,12 @@ import (
 // Admin user to invoke setuserrole with enrollment id of user and KalpFoundation role,   (only blockchain Admin can set KalpFoundation)
 // Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only KalpFoundation can set Gasfee)
 // Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only KalpFoundation can set Gasfee)
-const attrRole = "hf.Type"
 const intialgasfeesadmin = "giniuser201"
 const intialkalpGateWayadmin = "giniuser154"
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
-const kalpFoundation = "kalpAdmin" //"fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
+const kalpFoundation = "fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
 const GINI = "GINI"
 const env = "dev"
 const totalSupply = "2000000000000000000000000000"
@@ -42,7 +41,7 @@ const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
 const userRolePrefix = "ID~UserRoleMap"
 const UserRoleMap = "UserRoleMap"
-const BridgeContractAddress = "kalp-bridge" //"klp-6b616c70627269646765-cc"
+const BridgeContractAddress = "klp-6b616c70627269646765-cc"
 
 // const legalPrefix = "legal~tokenId"
 type SmartContract struct {

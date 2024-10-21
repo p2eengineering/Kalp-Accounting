@@ -14,7 +14,6 @@ import (
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
-const adminType = "admin"
 const UTXO = "UTXO"
 const DocTypeNFT = "NFTM"
 const DocTypeAsset = "ASSET-R2CI"
