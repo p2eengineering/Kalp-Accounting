@@ -122,6 +122,7 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc bool, 
 	if err != nil {
 		return fmt.Errorf("error in CustomFloatConvertor %v", err)
 	}
+	fmt.Printf("add amount: %v\n", amount)
 	fmt.Printf("utxoKey: %v\n", utxoKey)
 	utxo := Utxo{
 		DocType: UTXO,
@@ -183,7 +184,8 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc boo
 			break
 		}
 	}
-	fmt.Printf("total balance%v\n", amt)
+	fmt.Printf("amount: %v\n", amount)
+	fmt.Printf("total balance: %v\n", amt)
 	if amount.Cmp(amt) == 1 {
 		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, GINI, amount, amt)
 	}
