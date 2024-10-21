@@ -533,19 +533,24 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Infof("Amount can't be converted to string")
 			return false, fmt.Errorf("error with status code %v,Amount can't be converted to string", http.StatusConflict)
 		}
-		fmt.Printf("transferAmount %v\n", transferAmount)
-		fmt.Printf("gasFeesAmount %v\n", gasFeesAmount)
-
+		logger.Infof("transferAmount %v\n", transferAmount)
+		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
+		removeAmount := transferAmount.Add(transferAmount, gasFeesAmount)
+		logger.Infof("remove amount %v\n", removeAmount)
 		// Withdraw the funds from the sender address
-		err = RemoveUtxo(ctx, sender, false, transferAmount)
+		err = RemoveUtxo(ctx, sender, false, removeAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
 		}
-		recieverAmount := transferAmount.Add(transferAmount, gasFeesAmount)
-		fmt.Printf("recieverAmount amount %v\n", recieverAmount)
+		addAmount, su := big.NewInt(0).SetString(amount, 10)
+		if !su {
+			logger.Infof("transfer Amount can't be converted to string ")
+			return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferAmount)
+		}
+		logger.Infof("Add amount %v\n", addAmount)
 		// Deposit the fund to the recipient address
-		err = AddUtxo(ctx, address, false, recieverAmount)
+		err = AddUtxo(ctx, address, false, addAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
