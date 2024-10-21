@@ -23,10 +23,10 @@ import (
 // Deployment notes for GINI contract:
 // Initialize with name and symbol as GINI, GINI
 // Create Admin user (admin privilege role will be given during NGL register/enroll)
-// Create 3 users for GINI-ADMIN, GasFeeAdmin, GatewayAdmin (using Kalp wallet)
-// Admin user to invoke setuserrole with enrollment id of user and GINI-ADMIN role,   (only blockchain Admin can set GINI-ADMIN)
-// Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only GINI-ADMIN can set Gasfee)
-// Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only GINI-ADMIN can set Gasfee)
+// Create 3 users for KalpFoundation, GasFeeAdmin, GatewayAdmin (using Kalp wallet)
+// Admin user to invoke setuserrole with enrollment id of user and KalpFoundation role,   (only blockchain Admin can set KalpFoundation)
+// Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only KalpFoundation can set Gasfee)
+// Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only KalpFoundation can set Gasfee)
 const attrRole = "hf.Type"
 const intialgasfeesadmin = ""
 const intialkalpGateWayadmin = ""
@@ -37,7 +37,7 @@ const kalpFoundation = "fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
 const GINI = "GINI"
 const env = "dev"
 const totalSupply = "2000000000000000000000000000"
-const giniAdmin = "KalpFoundation"
+const kalpFoundationRole = "KalpFoundation"
 const gasFeesAdminRole = "GasFeesAdmin"
 const kalpGateWayAdmin = "KalpGatewayAdmin"
 const userRolePrefix = "ID~UserRoleMap"
@@ -83,7 +83,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 	role := UserRole{
 		Id:      kalpFoundation,
-		Role:    giniAdmin,
+		Role:    kalpFoundationRole,
 		DocType: "UserRoleMap",
 	}
 	roleJson, err := json.Marshal(role)
@@ -102,7 +102,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("error with status code %v,error checking sponsor's role: %v", http.StatusBadRequest, err)
 	}
-	if userRole != giniAdmin {
+	if userRole != kalpFoundationRole {
 		return false, fmt.Errorf("error with status code %v, error:only gini admin is allowed to mint", http.StatusInternalServerError)
 	}
 
@@ -703,12 +703,12 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("failed to parse data: %v", errs)
 	}
 
-	userValid, err := s.ValidateUserRole(ctx, giniAdmin)
+	userValid, err := s.ValidateUserRole(ctx, kalpFoundationRole)
 	if err != nil {
 		return "", fmt.Errorf("error in validating the role %v", err)
 	}
 	if !userValid {
-		return "", fmt.Errorf("error in setting role %s, only GINI-ADMIN can set the roles", userRole.Role)
+		return "", fmt.Errorf("error in setting role %s, only %s can set the roles", userRole.Role, kalpFoundationRole)
 	}
 
 	// Validate input data.
@@ -720,7 +720,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("role can not be null")
 	}
 
-	ValidRoles := []string{giniAdmin, gasFeesAdminRole, kalpGateWayAdmin}
+	ValidRoles := []string{kalpFoundationRole, gasFeesAdminRole, kalpGateWayAdmin}
 	if !slices.Contains(ValidRoles, userRole.Role) {
 		return "", fmt.Errorf("invalid input role")
 	}
