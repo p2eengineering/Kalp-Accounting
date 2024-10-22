@@ -74,12 +74,20 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 
 	}
 	fmt.Println("owners in mintutxohelper -", account)
+	multiplier := big.NewInt(4)
+	divisor := big.NewInt(1000)
 
-	err = AddUtxo(sdk, account[0], false, amount)
+	result := new(big.Int).Mul(amount, multiplier)
+	kalpFoundationAmount := result.Div(result, divisor)
+	bridgeAmount := amount.Sub(amount, kalpFoundationAmount)
+	err = AddUtxo(sdk, account[0], false, bridgeAmount)
 	if err != nil {
 		return err
 	}
-
+	err = AddUtxo(sdk, kalpFoundation, false, kalpFoundationAmount)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

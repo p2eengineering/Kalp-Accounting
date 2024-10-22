@@ -21,6 +21,7 @@ import (
 // Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only KalpFoundation can set Gasfee)
 const intialgasfeesadmin = ""
 const intialkalpGateWayadmin = ""
+const initialGasFees = "10000000000000000"
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
@@ -102,6 +103,10 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	err = ctx.PutStateWithoutKYC(symbolKey, []byte(symbol))
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
+	}
+	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(initialGasFees))
+	if err != nil {
+		return false, fmt.Errorf("failed to set gasfees: %v", err)
 	}
 	err = s.mint(ctx, BridgeContractAddress, totalSupply)
 	if err != nil {
