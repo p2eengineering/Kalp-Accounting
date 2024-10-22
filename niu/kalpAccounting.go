@@ -408,7 +408,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			subAmmount = subAmmount.Sub(subAmmount, gasFeesAmount)
+			subAmmount = subAmmount.Add(subAmmount, gasFeesAmount)
 			err = RemoveUtxo(ctx, sender, false, subAmmount)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
