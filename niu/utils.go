@@ -83,33 +83,6 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 	return nil
 }
 
-func MintUTXOHelper(sdk kalpsdk.TransactionContextInterface, account []string, iamount interface{}, docType string) error {
-
-	amount, err := CustomBigIntConvertor(iamount)
-	if err != nil {
-		return fmt.Errorf("error in CustomFloatConvertor %v", err)
-	}
-	for i := 0; i < len(account); i++ {
-		fmt.Println(account)
-
-		if account[i] == "0x0" {
-			return fmt.Errorf("mint to the zero address")
-		}
-
-		if amount.Cmp(big.NewInt(0)) == 0 && amount.Cmp(big.NewInt(0)) == -1 {
-			return fmt.Errorf("mint amount must be a positive integer")
-		}
-
-		fmt.Println("owners in minterhelper -", account)
-	}
-
-	err = AddUtxo(sdk, account[0], true, amount)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc bool, iamount interface{}) error {
 	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
