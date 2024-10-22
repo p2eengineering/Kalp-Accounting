@@ -229,18 +229,6 @@ func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
 	return userId, nil
 }
 
-// Checks that contract options have been already initialized
-func CheckInitialized(sdk kalpsdk.TransactionContextInterface) (bool, error) {
-	tokenName, err := sdk.GetState(nameKey)
-	if err != nil {
-		return false, fmt.Errorf("failed to get token name: %v", err)
-	}
-	if tokenName == nil {
-		return false, nil
-	}
-	return true, nil
-}
-
 func EmitTransferSingle(sdk kalpsdk.TransactionContextInterface, transferSingleEvent TransferSingle) error {
 	transferSingleEventJSON, err := json.Marshal(transferSingleEvent)
 	if err != nil {
@@ -252,14 +240,6 @@ func EmitTransferSingle(sdk kalpsdk.TransactionContextInterface, transferSingleE
 		return fmt.Errorf("failed to set event: %v", err)
 	}
 
-	return nil
-}
-
-func InvokerAssertAttributeValue(sdk kalpsdk.TransactionContextInterface, attrName, attrValue string) error {
-	err := sdk.GetClientIdentity().AssertAttributeValue(attrName, attrValue)
-	if err != nil {
-		return fmt.Errorf("AssertAttributeValue error: %v", err)
-	}
 	return nil
 }
 
