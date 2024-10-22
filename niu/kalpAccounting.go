@@ -23,15 +23,12 @@ const intialgasfeesadmin = ""
 const intialkalpGateWayadmin = ""
 
 const intialBridgeContractBalance = "1992000000000000000000000000"
-const intialFoundationBalance = "7999000000000000000000000"
-const intialBridgeAdminBalance = "1000000000000000000000"
-
+const intialFoundationBalance = "8000000000000000000000000"
 const initialGasFees = "1000000000000000"
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
 const kalpFoundation = "fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
-const bridgeAdmin = "7aaf07011bf81043918b214b3b592ed067dd6f21"
 const GINI = "GINI"
 const env = "dev"
 const totalSupply = "2000000000000000000000000000"
@@ -110,6 +107,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err != nil {
 		return false, fmt.Errorf("failed to set symbol: %v", err)
 	}
+	//setting initial gas fees
 	err = ctx.PutStateWithoutKYC(gasFeesKey, []byte(initialGasFees))
 	if err != nil {
 		return false, fmt.Errorf("failed to set gasfees: %v", err)

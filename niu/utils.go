@@ -82,19 +82,12 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 	if !su {
 		return fmt.Errorf("amount can't be converted to string: ")
 	}
-	bridgeAdminAmount, su := big.NewInt(0).SetString(intialBridgeAdminBalance, 10)
-	if !su {
-		return fmt.Errorf("amount can't be converted to string: ")
-	}
+
 	err = AddUtxo(sdk, account[0], false, intialBridgeContractAmount)
 	if err != nil {
 		return err
 	}
 	err = AddUtxo(sdk, kalpFoundation, false, kalpFoundationAmount)
-	if err != nil {
-		return err
-	}
-	err = AddUtxo(sdk, bridgeAdmin, false, bridgeAdminAmount)
 	if err != nil {
 		return err
 	}
