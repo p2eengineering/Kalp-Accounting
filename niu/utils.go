@@ -74,17 +74,27 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 
 	}
 	fmt.Println("owners in mintutxohelper -", account)
-	multiplier := big.NewInt(4)
-	divisor := big.NewInt(1000)
-
-	result := new(big.Int).Mul(amount, multiplier)
-	kalpFoundationAmount := result.Div(result, divisor)
-	bridgeAmount := amount.Sub(amount, kalpFoundationAmount)
-	err = AddUtxo(sdk, account[0], false, bridgeAmount)
+	intialBridgeContractAmount, su := big.NewInt(0).SetString(intialBridgeContractBalance, 10)
+	if !su {
+		return fmt.Errorf("amount can't be converted to string: ")
+	}
+	kalpFoundationAmount, su := big.NewInt(0).SetString(intialFoundationBalance, 10)
+	if !su {
+		return fmt.Errorf("amount can't be converted to string: ")
+	}
+	bridgeAdminAmount, su := big.NewInt(0).SetString(intialBridgeAdminBalance, 10)
+	if !su {
+		return fmt.Errorf("amount can't be converted to string: ")
+	}
+	err = AddUtxo(sdk, account[0], false, intialBridgeContractAmount)
 	if err != nil {
 		return err
 	}
 	err = AddUtxo(sdk, kalpFoundation, false, kalpFoundationAmount)
+	if err != nil {
+		return err
+	}
+	err = AddUtxo(sdk, bridgeAdmin, false, bridgeAdminAmount)
 	if err != nil {
 		return err
 	}

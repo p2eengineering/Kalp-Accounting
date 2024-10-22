@@ -21,11 +21,17 @@ import (
 // Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only KalpFoundation can set Gasfee)
 const intialgasfeesadmin = ""
 const intialkalpGateWayadmin = ""
-const initialGasFees = "10000000000000000"
+
+const intialBridgeContractBalance = "1992000000000000000000000000"
+const intialFoundationBalance = "7999000000000000000000000"
+const intialBridgeAdminBalance = "1000000000000000000000"
+
+const initialGasFees = "1000000000000000"
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
 const kalpFoundation = "fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
+const bridgeAdmin = "7aaf07011bf81043918b214b3b592ed067dd6f21"
 const GINI = "GINI"
 const env = "dev"
 const totalSupply = "2000000000000000000000000000"
@@ -413,7 +419,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
+			addAmount = addAmount.Sub(addAmount, gasFeesAmount)
 			err = AddUtxo(ctx, address, false, addAmount)
+			if err != nil {
+				logger.Infof("err: %v\n", err)
+				return false, fmt.Errorf("transfer add err: %v", err)
+			}
+			err = AddUtxo(ctx, kalpFoundation, false, gasFeesAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
