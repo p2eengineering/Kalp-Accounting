@@ -14,13 +14,9 @@ import (
 
 // Deployment notes for GINI contract:
 // Initialize with name and symbol as GINI, GINI
-// Create Admin user (admin privilege role will be given during NGL register/enroll)
-// Create 3 users for KalpFoundation, GasFeeAdmin, GatewayAdmin (using Kalp wallet)
-// Admin user to invoke setuserrole with enrollment id of user and KalpFoundation role,   (only blockchain Admin can set KalpFoundation)
-// Admin user to invoke setuserrole with enrollment id of user and GasFeeAdmin role   (only KalpFoundation can set Gasfee)
-// Admin user to invoke setuserrole with enrollment id of user and GatewayAdmin role  (only KalpFoundation can set Gasfee)
-const intialgasfeesadmin = ""
-const intialkalpGateWayadmin = ""
+const kalpFoundation = "0b87970433b22494faff1cc7a819e71bddc7880c"
+const intialgasfeesadmin = "fb2305a2373fd9fa5b5bf5acc6fdbf22ecbde930"
+const intialkalpGateWayadmin = "67c30fcb223182fef1c471a26527bfc4c50d093c"
 
 const intialBridgeContractBalance = "1992000000000000000000000000"
 const intialFoundationBalance = "8000000000000000000000000"
@@ -28,7 +24,7 @@ const initialGasFees = "1000000000000000"
 const nameKey = "name"
 const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
-const kalpFoundation = "fb9185edc0e4bdf6ce9b46093dc3fcf4eea61c40"
+
 const GINI = "GINI"
 const env = "dev"
 const totalSupply = "2000000000000000000000000000"
