@@ -39,7 +39,6 @@ const userRolePrefix = "ID~UserRoleMap"
 const UserRoleMap = "UserRoleMap"
 const BridgeContractAddress = "klp-6b616c70627269646765-cc"
 
-// const legalPrefix = "legal~tokenId"
 type SmartContract struct {
 	kalpsdk.Contract
 }
