@@ -330,8 +330,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		return false, fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
 	}
 	logger.Infof("useRole: %s\n", userRole)
-	// In this scenario sender is kalp gateway we will credit amount to kalp foundation as gas fees, we will handle HandleBridgeToken function call in this
-	//scenario
+	// Covers below 2 scenarios where gateway deducts gas fees and transfers to kalp foundation:
+	// 1. when Dapp/users sends non-GINI transactions via gateway
+	// 2. when HandleBridgeToken from bridge contract is called by Bridge Admin
 	if userRole == kalpGateWayAdmin {
 		var send Sender
 		errs := json.Unmarshal([]byte(address), &send)
