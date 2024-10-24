@@ -324,7 +324,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	validateAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
 		logger.Infof("Amount can't be converted to string")
-		return false, fmt.Errorf("error with status code %v,Amount can't be converted to string", http.StatusConflict)
+		return false, fmt.Errorf("error with status code %v,Invalid Amount %v", http.StatusConflict, amount)
 	}
 	if validateAmount.Cmp(big.NewInt(0)) == -1 || validateAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
 		return false, fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
@@ -372,13 +372,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		// will credit amount to kalp foundation and remove amount from sender without gas fees
 		if sender == kalpFoundation {
 			sender = BridgeContractAddress
-			subAmmount, su := big.NewInt(0).SetString(amount, 10)
+			subAmount, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 
-			err = RemoveUtxo(ctx, sender, false, subAmmount)
+			err = RemoveUtxo(ctx, sender, false, subAmount)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
