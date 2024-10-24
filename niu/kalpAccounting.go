@@ -489,10 +489,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		logger.Infof("transferAmount %v\n", transferAmount)
 		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
-		removeAmount := transferAmount.Add(transferAmount, gasFeesAmount)
-		logger.Infof("remove amount %v\n", removeAmount)
 		// Withdraw the funds from the sender address
-		err = RemoveUtxo(ctx, sender, false, removeAmount)
+		err = RemoveUtxo(ctx, sender, false, transferAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
@@ -503,8 +501,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferAmount)
 		}
 		logger.Infof("Add amount %v\n", addAmount)
+		addAmounts := addAmount.Sub(addAmount, gasFeesAmount)
 		// Deposit the fund to the recipient address
-		err = AddUtxo(ctx, address, false, addAmount)
+		err = AddUtxo(ctx, address, false, addAmounts)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
