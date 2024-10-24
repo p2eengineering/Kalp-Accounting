@@ -55,7 +55,7 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 }
 
 // As of now, we are not supporting usecases where asset is owned by multiple owners.
-func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account []string, iamount interface{}) error {
+func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
 
 	amount, err := CustomBigIntConvertor(iamount)
 	if err != nil {
@@ -64,7 +64,7 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 
 	fmt.Println(account)
 	for i := 0; i < len(account); i++ {
-		if account[i] == "0x0" {
+		if account == "0x0" {
 			return fmt.Errorf("mint to the zero address")
 		}
 
@@ -83,18 +83,18 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account [
 		return fmt.Errorf("amount can't be converted to string: ")
 	}
 
-	err = AddUtxo(sdk, account[0], false, intialBridgeContractAmount)
+	err = AddUtxo(sdk, account, intialBridgeContractAmount)
 	if err != nil {
 		return err
 	}
-	err = AddUtxo(sdk, kalpFoundation, false, kalpFoundationAmount)
+	err = AddUtxo(sdk, kalpFoundation, kalpFoundationAmount)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc bool, iamount interface{}) error {
+func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
 	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
@@ -124,7 +124,7 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc bool, 
 	}
 	return nil
 }
-func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc bool, iamount interface{}) error {
+func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
 
 	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
@@ -198,17 +198,11 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, kyc boo
 				return fmt.Errorf("failed to marshal owner with  and account address %s to JSON: %v", account, err)
 			}
 
-			if kyc {
-				err = sdk.PutStateWithKYC(utxoKey, utxoJSON)
-				if err != nil {
-					return fmt.Errorf("failed to put owner with  and account address %s to world state: %v", account, err)
-				}
-			} else {
-				err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
-				if err != nil {
-					return fmt.Errorf("failed to put owner with  and account address %s to world state: %v", account, err)
-				}
+			err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
+			if err != nil {
+				return fmt.Errorf("failed to put owner with  and account address %s to world state: %v", account, err)
 			}
+
 		}
 	}
 
@@ -482,7 +476,7 @@ func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, s
 	}
 	fmt.Printf("spender check")
 
-	err = RemoveUtxo(sdk, owner[0], true, amount)
+	err = RemoveUtxo(sdk, owner[0], amount)
 	if err != nil {
 		return err
 	}
@@ -492,7 +486,7 @@ func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, s
 	}
 
 	// Deposit the fund to the recipient address
-	err = AddUtxo(sdk, receiver, true, amount)
+	err = AddUtxo(sdk, receiver, amount)
 	if err != nil {
 		return err
 	}
@@ -510,7 +504,7 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	userRole := UserRole{
 		Id:      id,
 		Role:    role,
-		DocType: "UserRoleMap",
+		DocType: UserRoleMap,
 	}
 	roleJson, err := json.Marshal(userRole)
 	if err != nil {
