@@ -414,6 +414,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 			bridgedAmount := addAmount.Sub(addAmount, gasFeesAmount)
+			logger.Infof("bridgedAmount :%v", bridgedAmount)
 			err = AddUtxo(ctx, address, bridgedAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
