@@ -398,13 +398,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			// In this scenario sender is Kalp Bridge we will credit gas fees to kalp foundation and remove amount from bridge contract
 			// address. Reciver will recieve amount after gas fees deduction
 			sender = BridgeContractAddress
-			subAmount, su := big.NewInt(0).SetString(amount, 10)
+			removeAmount, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			subAmount = subAmount.Add(subAmount, gasFeesAmount)
-			err = RemoveUtxo(ctx, sender, subAmount)
+			err = RemoveUtxo(ctx, sender, removeAmount)
 			if err != nil {
 				logger.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
@@ -414,7 +413,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			err = AddUtxo(ctx, address, addAmount)
+			bridgedAmount := addAmount.Sub(addAmount, gasFeesAmount)
+			err = AddUtxo(ctx, address, bridgedAmount)
 			if err != nil {
 				logger.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
