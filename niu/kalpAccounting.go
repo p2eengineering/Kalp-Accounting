@@ -330,7 +330,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		return false, fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
 	}
 	logger.Infof("useRole: %s\n", userRole)
-	// In this scenario sender is kalp gateway we will credit amount to kalp foundation as gas fees
+	// In this scenario sender is kalp gateway we will credit amount to kalp foundation as gas fees, we will handle HandleBridgeToken function call in this
+	//scenario
 	if userRole == kalpGateWayAdmin {
 		var send Sender
 		errs := json.Unmarshal([]byte(address), &send)
@@ -364,9 +365,10 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Infof("foundation transfer : %s\n", userRole)
 		}
 	} else if b, err := IsCallerKalpBridge(ctx, BridgeContractAddress); b && err == nil {
-		// In this scenario sender is Kalp Bridge we will credit amount to kalp foundation and remove amount from sender
+		// In this scenario transfer function is invoked fron Withdraw token funtion from bridge contract address
 		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
-		// In this scenario sender is kalp foundation is bridgeing will credit amount to kalp foundation and remove amount from sender without gas fees
+		// In this scenario sender is kalp foundation is bridgeing from WithdrawToken Function,
+		// will credit amount to kalp foundation and remove amount from sender without gas fees
 		if sender == kalpFoundation {
 			sender = BridgeContractAddress
 			subAmmount, su := big.NewInt(0).SetString(amount, 10)
