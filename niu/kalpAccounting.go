@@ -461,20 +461,16 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Infof("removeAmount can't be converted to string ")
 			return false, fmt.Errorf("removeAmount can't be converted to string: %v ", err)
 		}
-		removeAmount = removeAmount.Add(removeAmount, gasFeesAmount)
 		err := RemoveUtxo(ctx, sender, removeAmount)
 		if err != nil {
 			logger.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
 		}
-		logger.Infof("addAmount: %v\n", removeAmount)
 		addAmount, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
 			logger.Infof("amount can't be converted to string ")
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
-		addAmount.Add(addAmount, gasFeesAmount)
-		logger.Infof("addAmount: %v\n", addAmount)
 		err = AddUtxo(ctx, address, addAmount)
 		if err != nil {
 			logger.Infof("err: %v\n", err)
