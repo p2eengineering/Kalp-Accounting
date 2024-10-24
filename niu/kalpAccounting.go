@@ -192,7 +192,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 	}
 
 	// Mint tokens
-	err := MintUtxoHelperWithoutKYC(ctx, address, accAmount)
+	err := MintUtxoHelperWithoutKYC(ctx, address)
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
 	}
