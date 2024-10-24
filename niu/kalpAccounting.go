@@ -26,7 +26,6 @@ const symbolKey = "symbol"
 const gasFeesKey = "gasFees"
 
 const GINI = "GINI"
-const env = "dev"
 const totalSupply = "2000000000000000000000000000"
 const kalpFoundationRole = "KalpFoundation"
 const gasFeesAdminRole = "GasFeesAdmin"
@@ -300,7 +299,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) (bool, error) {
 	logger := kalpsdk.NewLogger()
-	logger.Infof("Transfer---->%s", env)
+	logger.Info("Transfer---->")
 	address = strings.Trim(address, " ")
 	if address == "" {
 		return false, fmt.Errorf("invalid input address")
@@ -568,7 +567,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 
 func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, from string, to string, value string) (bool, error) {
 	logger := kalpsdk.NewLogger()
-	logger.Infof("TransferFrom---->%s", env)
+	logger.Info("TransferFrom---->")
 	spender, err := ctx.GetUserID()
 	if err != nil {
 		return false, fmt.Errorf("error iin getting spender's id: %v", err)
