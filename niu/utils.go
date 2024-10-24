@@ -57,22 +57,6 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 // As of now, we are not supporting usecases where asset is owned by multiple owners.
 func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
 
-	amount, err := CustomBigIntConvertor(iamount)
-	if err != nil {
-		return fmt.Errorf("error in CustomFloatConvertor %v", err)
-	}
-
-	fmt.Println(account)
-	for i := 0; i < len(account); i++ {
-		if account == "0x0" {
-			return fmt.Errorf("mint to the zero address")
-		}
-
-		if amount.Cmp(big.NewInt(0)) == 0 && amount.Cmp(big.NewInt(0)) == -1 {
-			return fmt.Errorf("mint amount must be a positive integer")
-		}
-
-	}
 	fmt.Println("owners in mintutxohelper -", account)
 	intialBridgeContractAmount, su := big.NewInt(0).SetString(intialBridgeContractBalance, 10)
 	if !su {
@@ -83,7 +67,7 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account s
 		return fmt.Errorf("amount can't be converted to string: ")
 	}
 
-	err = AddUtxo(sdk, account, intialBridgeContractAmount)
+	err := AddUtxo(sdk, account, intialBridgeContractAmount)
 	if err != nil {
 		return err
 	}
