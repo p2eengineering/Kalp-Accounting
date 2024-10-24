@@ -481,7 +481,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		}
 		logger.Infof("foundation transfer to user : %s\n", userRole)
 	} else {
-		//This is normal scenario where gas fees+ amount will be deducted from sender and amount will credited to address and gas fees will be credited to kalp foundation
+		//This is normal scenario where amount will be deducted from sender and amount-gas fess will credited to address and gas fees will be credited to kalp foundation
 		logger.Infof("operator-->", sender)
 		logger.Info("transfer transferAmount")
 		transferAmount, su := big.NewInt(0).SetString(amount, 10)
