@@ -324,10 +324,10 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	validateAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
 		logger.Infof("Amount can't be converted to string")
-		return false, fmt.Errorf("error with status code %v,invalid Amount %v", http.StatusConflict, amount)
+		return false, fmt.Errorf("error with status code %v, invalid Amount %v", http.StatusBadRequest, amount)
 	}
 	if validateAmount.Cmp(big.NewInt(0)) == -1 || validateAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
-		return false, fmt.Errorf("error with status code %v,amount can't be less then 0", http.StatusBadRequest)
+		return false, fmt.Errorf("error with status code %v, invalid Amount %v", http.StatusBadRequest, amount)
 	}
 	logger.Infof("useRole: %s\n", userRole)
 	// Covers below 2 scenarios where gateway deducts gas fees and transfers to kalp foundation:
