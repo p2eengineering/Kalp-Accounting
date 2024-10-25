@@ -413,6 +413,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
+			if addAmount.Cmp(gasFeesAmount) == -1 {
+				return false, fmt.Errorf("error with status code %v, error:transfer amount can not be less than gas fee", http.StatusBadRequest)
+			}
 			bridgedAmount := addAmount.Sub(addAmount, gasFeesAmount)
 			logger.Infof("bridgedAmount :%v", bridgedAmount)
 			err = AddUtxo(ctx, address, bridgedAmount)
