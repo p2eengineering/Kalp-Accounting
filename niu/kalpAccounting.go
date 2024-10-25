@@ -403,8 +403,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			if removeAmount.Cmp(gasFeesAmount) == -1 {
-				return false, fmt.Errorf("error with status code %v, error:bridge amount can not be less than gas fee", http.StatusBadRequest)
+			if removeAmount.Cmp(gasFeesAmount) == -1 || removeAmount.Cmp(gasFeesAmount) == 0 {
+				return false, fmt.Errorf("error with status code %v, error:bridge amount can not be less than equal to gas fee", http.StatusBadRequest)
 			}
 			err = RemoveUtxo(ctx, sender, removeAmount)
 			if err != nil {
@@ -491,8 +491,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Infof("Amount can't be converted to string")
 			return false, fmt.Errorf("error with status code %v,Amount can't be converted to string", http.StatusConflict)
 		}
-		if transferAmount.Cmp(gasFeesAmount) == -1 {
-			return false, fmt.Errorf("error with status code %v, error:transfer amount can not be less than gas fee", http.StatusBadRequest)
+		if transferAmount.Cmp(gasFeesAmount) == -1 || transferAmount.Cmp(gasFeesAmount) == 0 {
+			return false, fmt.Errorf("error with status code %v, error:transfer amount can not be less than  eqaul to gas fee", http.StatusBadRequest)
 		}
 		logger.Infof("transferAmount %v\n", transferAmount)
 		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
