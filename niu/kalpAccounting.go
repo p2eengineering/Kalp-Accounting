@@ -304,6 +304,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	if address == "" {
 		return false, fmt.Errorf("invalid input address")
 	}
+	if len(address) < 8 || len(address) > 60 {
+		return false, fmt.Errorf("address must be at least 8 characters long and shorter than 60 characters")
+	}
+	if strings.ContainsAny(address, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+		return false, fmt.Errorf("invalid address")
+	}
 	sender, err := ctx.GetUserID()
 	if err != nil {
 		return false, fmt.Errorf("error in getting user id: %v", err)
