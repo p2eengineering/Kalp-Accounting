@@ -314,7 +314,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Infof("error checking user's role: %v", err)
 		return false, fmt.Errorf("error checking user's role:: %v", err)
 	}
-	if len(address) < 8 || len(address) > 60 && userRole != kalpGateWayAdmin {
+	if len(address) != 40 && userRole != kalpGateWayAdmin {
 		return false, fmt.Errorf("address must be at least 8 characters long and shorter than 60 characters")
 	}
 	if strings.ContainsAny(address, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && userRole != kalpGateWayAdmin {
@@ -544,7 +544,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	if owner == "" {
 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
 	}
-	if len(owner) < 8 || len(owner) > 60 {
+	if len(owner) != 40 {
 		return big.NewInt(0).String(), fmt.Errorf("address must be at least 8 characters long and shorter than 60 characters")
 	}
 	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
