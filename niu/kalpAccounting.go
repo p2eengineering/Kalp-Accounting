@@ -347,6 +347,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Info("internal error: error in parsing sender data")
 			return false, fmt.Errorf("internal error: error in parsing sender data")
 		}
+		if len(send.Sender) != 40 {
+			return false, fmt.Errorf("address must be 40 characters long")
+		}
+		if strings.ContainsAny(send.Sender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+			return false, fmt.Errorf("invalid address")
+		}
 		if send.Sender != kalpFoundation {
 			gRemoveAmount, su := big.NewInt(0).SetString(amount, 10)
 			if !su {
