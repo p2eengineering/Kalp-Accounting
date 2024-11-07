@@ -550,10 +550,10 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	if owner == "" {
 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
 	}
-	if len(owner) != 40 {
+	if len(owner) != 40 && owner != BridgeContractAddress {
 		return big.NewInt(0).String(), fmt.Errorf("address must be 40 characters long")
 	}
-	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && owner != BridgeContractAddress {
 		return big.NewInt(0).String(), fmt.Errorf("invalid address")
 	}
 	amt, err := GetTotalUTXO(ctx, owner)
