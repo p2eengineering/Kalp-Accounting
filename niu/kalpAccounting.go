@@ -499,6 +499,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		//This is normal scenario where amount will be deducted from sender and amount-gas fess will credited to address and gas fees will be credited to kalp foundation
 		logger.Infof("operator-->", sender)
 		logger.Info("transfer transferAmount")
+		if sender == address {
+			return false, fmt.Errorf("transfer to self not alllowed")
+		}
 		transferAmount, su := big.NewInt(0).SetString(amount, 10)
 		if !su {
 			logger.Infof("Amount can't be converted to string")
@@ -550,10 +553,10 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	if owner == "" {
 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
 	}
-	if len(owner) != 40 {
+	if len(owner) != 40 && owner != BridgeContractAddress {
 		return big.NewInt(0).String(), fmt.Errorf("address must be 40 characters long")
 	}
-	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && owner != BridgeContractAddress {
 		return big.NewInt(0).String(), fmt.Errorf("invalid address")
 	}
 	amt, err := GetTotalUTXO(ctx, owner)
