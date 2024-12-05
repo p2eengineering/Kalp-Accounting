@@ -1,6 +1,8 @@
-package kalpAccounting
+package utils
 
 import (
+	"KAPS-NIU/niu/constants"
+	"KAPS-NIU/niu/models"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -15,30 +17,6 @@ import (
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 	"golang.org/x/exp/slices"
 )
-
-const UTXO = "UTXO"
-
-type Utxo struct {
-	Key     string `json:"_id,omitempty"`
-	Account string `json:"account"`
-	DocType string `json:"docType"`
-	Amount  string `json:"amount"`
-}
-
-type Allow struct {
-	Owner   string `json:"id"`
-	Amount  string `json:"amount"`
-	DocType string `json:"docType"`
-	Spender string `json:"account"`
-}
-
-type TransferSingle struct {
-	Operator string      `json:"address"`
-	From     string      `json:"from"`
-	To       string      `json:"to"`
-	ID       string      `json:"id"`
-	Value    interface{} `json:"value"`
-}
 
 func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 	switch v := value.(type) {
@@ -55,7 +33,7 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 }
 
 func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
-	addressDenyKey, err := ctx.CreateCompositeKey(denyListKey, []string{address})
+	addressDenyKey, err := ctx.CreateCompositeKey(constants.DenyListKey, []string{address})
 	if err != nil {
 		return fmt.Errorf("failed to create composite key for deny list: %v", err)
 	}
@@ -65,7 +43,7 @@ func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error 
 	return nil
 }
 func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
-	addressDenyKey, err := ctx.CreateCompositeKey(denyListKey, []string{address})
+	addressDenyKey, err := ctx.CreateCompositeKey(constants.DenyListKey, []string{address})
 	if err != nil {
 		return fmt.Errorf("failed to create composite key for deny list: %v", err)
 	}
@@ -76,7 +54,7 @@ func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error
 }
 
 func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, error) {
-	addressDenyKey, err := ctx.CreateCompositeKey(denyListKey, []string{address})
+	addressDenyKey, err := ctx.CreateCompositeKey(constants.DenyListKey, []string{address})
 	if err != nil {
 		return false, fmt.Errorf("failed to create composite key for deny list: %v", err)
 	}
@@ -105,7 +83,7 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account s
 }
 
 func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
-	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{account, sdk.GetTxID()})
+	utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
 	}
@@ -115,32 +93,32 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount in
 	}
 	fmt.Printf("add amount: %v\n", amount)
 	fmt.Printf("utxoKey: %v\n", utxoKey)
-	utxo := Utxo{
-		DocType: UTXO,
+	utxo := models.Utxo{
+		DocType: constants.UTXO,
 		Account: account,
 		Amount:  amount.String(),
 	}
 
 	utxoJSON, err := json.Marshal(utxo)
 	if err != nil {
-		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", GINI, account, err)
+		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
 	}
 	fmt.Printf("utxoJSON: %s\n", utxoJSON)
 
 	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
 	if err != nil {
-		return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", GINI, account, err)
+		return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", constants.GINI, account, err)
 
 	}
 	return nil
 }
 func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
 
-	utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{account, sdk.GetTxID()})
+	utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
 	}
-	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"},"use_index": "indexIdDocType"}`
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"use_index": "indexIdDocType"}`
 	amount, err := CustomBigIntConvertor(iamount)
 	if err != nil {
 		return fmt.Errorf("error in CustomBigInt %v", err)
@@ -150,10 +128,10 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 	if err != nil {
 		return fmt.Errorf("failed to read from world state: %v", err)
 	}
-	var utxo []Utxo
+	var utxo []models.Utxo
 	amt := big.NewInt(0)
 	for resultsIterator.HasNext() {
-		var u Utxo
+		var u models.Utxo
 		queryResult, err := resultsIterator.Next()
 		if err != nil {
 			return err
@@ -178,7 +156,7 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 	fmt.Printf("amount: %v\n", amount)
 	fmt.Printf("total balance: %v\n", amt)
 	if amount.Cmp(amt) == 1 {
-		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, GINI, amount, amt)
+		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, constants.GINI, amount, amt)
 	}
 
 	for i := 0; i < len(utxo); i++ {
@@ -198,8 +176,8 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 				return fmt.Errorf("%v", err)
 			}
 			// Create a new utxo object
-			utxo := Utxo{
-				DocType: UTXO,
+			utxo := models.Utxo{
+				DocType: constants.UTXO,
 				Account: account,
 				Amount:  am.Sub(am, amount).String(),
 			}
@@ -236,13 +214,13 @@ func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
 	return userId, nil
 }
 
-func EmitTransferSingle(sdk kalpsdk.TransactionContextInterface, transferSingleEvent TransferSingle) error {
+func EmitTransferSingle(sdk kalpsdk.TransactionContextInterface, transferSingleEvent models.TransferSingle) error {
 	transferSingleEventJSON, err := json.Marshal(transferSingleEvent)
 	if err != nil {
 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
 
-	err = sdk.SetEvent("TransferSingle", transferSingleEventJSON)
+	err = sdk.SetEvent("models.TransferSingle", transferSingleEventJSON)
 	if err != nil {
 		return fmt.Errorf("failed to set event: %v", err)
 	}
@@ -287,7 +265,7 @@ func IsCallerKalpBridge(sdk kalpsdk.TransactionContextInterface, KalpBridgeContr
 
 func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, account string) (string, error) {
 	logger := kalpsdk.NewLogger()
-	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"}}`
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"}}`
 	logger.Infof("queryString: %s\n", queryString)
 	resultsIterator, err := sdk.GetQueryResult(queryString)
 	if err != nil {
@@ -356,7 +334,7 @@ func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender stri
 	if balanceAmount.Cmp(amt) == -1 {
 		return fmt.Errorf("approval amount can not be greater than balance")
 	}
-	var approval = Allow{
+	var approval = models.Allow{
 		Owner:   owner,
 		Amount:  amount,
 		DocType: "Allowance",
@@ -393,7 +371,7 @@ func Allowance(sdk kalpsdk.TransactionContextInterface, owner string, spender st
 	if err != nil {
 		return "", fmt.Errorf("failed to read current balance of owner with address %s and account address %s from world state: %v", owner, spender, err)
 	}
-	var approval Allow
+	var approval models.Allow
 	if approvalByte != nil {
 		err = json.Unmarshal(approvalByte, &approval)
 		if err != nil {
@@ -414,7 +392,7 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 	if err != nil {
 		return fmt.Errorf("failed to read current balance of owner with address %s and account address %s from world state: %v", owner, spender, err)
 	}
-	var approval Allow
+	var approval models.Allow
 	if approvalByte != nil {
 		err = json.Unmarshal(approvalByte, &approval)
 		if err != nil {
@@ -505,25 +483,25 @@ func TransferUTXOFrom(sdk kalpsdk.TransactionContextInterface, owner []string, s
 	if err != nil {
 		return err
 	}
-	// Emit TransferSingle event
-	transferSingleEvent := TransferSingle{Operator: operator, From: owner[0], To: receiver, Value: amount}
+	// Emit models.TransferSingle event
+	transferSingleEvent := models.TransferSingle{Operator: operator, From: owner[0], To: receiver, Value: amount}
 	return EmitTransferSingle(sdk, transferSingleEvent)
 }
 
 func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role string) (bool, error) {
-	userRole := UserRole{
+	userRole := models.UserRole{
 		Id:      id,
 		Role:    role,
-		DocType: UserRoleMap,
+		DocType: constants.UserRoleMap,
 	}
 	roleJson, err := json.Marshal(userRole)
 	if err != nil {
 		fmt.Println("Error marshaling struct:", err)
 		return false, fmt.Errorf("error marsheling user role")
 	}
-	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{userRole.Id, UserRoleMap})
+	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if err != nil {
-		return false, fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+		return false, fmt.Errorf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, err)
 	}
 	if err := ctx.PutStateWithoutKYC(key, roleJson); err != nil {
 		return false, fmt.Errorf("unable to put user role struct in statedb: %v", err)
@@ -532,24 +510,24 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 }
 
 // SetUserRoles is a smart contract function which is used to setup a role for user.
-func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
+func SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
 	//check if contract has been intilized first
 
 	fmt.Println("SetUserRoles", data)
 
 	// Parse input data into Role struct.
-	var userRole UserRole
+	var userRole models.UserRole
 	errs := json.Unmarshal([]byte(data), &userRole)
 	if errs != nil {
 		return "", fmt.Errorf("failed to parse data: %v", errs)
 	}
 
-	userValid, err := s.ValidateUserRole(ctx, kalpFoundationRole)
+	userValid, err := ValidateUserRole(ctx, constants.KalpFoundationRole)
 	if err != nil {
 		return "", fmt.Errorf("error in validating the role %v", err)
 	}
 	if !userValid {
-		return "", fmt.Errorf("error in setting role %s, only %s can set the roles", userRole.Role, kalpFoundationRole)
+		return "", fmt.Errorf("error in setting role %s, only %s can set the roles", userRole.Role, constants.KalpFoundationRole)
 	}
 
 	// Validate input data.
@@ -561,14 +539,14 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("role can not be null")
 	}
 
-	ValidRoles := []string{kalpFoundationRole, gasFeesAdminRole, kalpGateWayAdmin}
+	ValidRoles := []string{constants.KalpFoundationRole, constants.GasFeesAdminRole, constants.KalpGateWayAdmin}
 	if !slices.Contains(ValidRoles, userRole.Role) {
 		return "", fmt.Errorf("invalid input role")
 	}
 
-	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{userRole.Id, UserRoleMap})
+	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, err)
 	}
 	// Generate JSON representation of Role struct.
 	usrRoleJSON, err := json.Marshal(userRole)
@@ -579,11 +557,21 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
 		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
 	}
-	return s.GetTransactionTimestamp(ctx)
+	return GetTransactionTimestamp(ctx)
 
 }
 
-func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
+// GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
+func GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	timestamp, err := ctx.GetTxTimestamp()
+	if err != nil {
+		return "", err
+	}
+
+	return timestamp.AsTime().String(), nil
+}
+
+func ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
 
 	// Check if operator is authorized to create Role.
 	operator, err := GetUserId(ctx)
@@ -592,7 +580,7 @@ func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface
 	}
 
 	fmt.Println("operator---------------", operator)
-	userRole, err1 := s.GetUserRoles(ctx, operator)
+	userRole, err1 := GetUserRoles(ctx, operator)
 	if err1 != nil {
 		return false, fmt.Errorf("error: %v", err1)
 	}
@@ -604,11 +592,11 @@ func (s *SmartContract) ValidateUserRole(ctx kalpsdk.TransactionContextInterface
 }
 
 // GetUserRoles is a smart contract function which is used to get a role of a user.
-func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
+func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
 	// Get the asset from the ledger using id & check if asset exists
-	key, err := ctx.CreateCompositeKey(userRolePrefix, []string{id, UserRoleMap})
+	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{id, constants.UserRoleMap})
 	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", userRolePrefix, err)
+		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, err)
 	}
 
 	userJSON, err := ctx.GetState(key)
@@ -620,7 +608,7 @@ func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id
 	}
 
 	// Unmarshal asset from JSON to struct
-	var userRole UserRole
+	var userRole models.UserRole
 	err = json.Unmarshal(userJSON, &userRole)
 	if err != nil {
 		return "", fmt.Errorf("unable to unmarshal user role struct : %v", err)
