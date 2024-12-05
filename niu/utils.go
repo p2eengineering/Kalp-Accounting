@@ -54,30 +54,50 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 
 }
 
+func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
+	addressDenyKey, err := ctx.CreateCompositeKey(denyListKey, []string{address})
+	if err != nil {
+		return fmt.Errorf("failed to create composite key for deny list: %v", err)
+	}
+	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte{}); err != nil {
+		return fmt.Errorf("failed to put state in deny list: %v", err)
+	}
+	return nil
+}
+func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
+	addressDenyKey, err := ctx.CreateCompositeKey(denyListKey, []string{address})
+	if err != nil {
+		return fmt.Errorf("failed to create composite key for deny list: %v", err)
+	}
+	if err := ctx.DelStateWithoutKYC(addressDenyKey); err != nil {
+		return fmt.Errorf("failed to delete state from deny list: %v", err)
+	}
+	return nil
+}
+
+func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, error) {
+	addressDenyKey, err := ctx.CreateCompositeKey(denyListKey, []string{address})
+	if err != nil {
+		return false, fmt.Errorf("failed to create composite key for deny list: %v", err)
+	}
+	if bytes, err := ctx.GetState(addressDenyKey); err != nil {
+		return false, fmt.Errorf("failed to get state from deny list: %v", err)
+	} else if bytes == nil {
+		// GetState returns nil, nil when key is not found
+		return false, nil
+	}
+	return true, nil
+}
+
 // As of now, we are not supporting usecases where asset is owned by multiple owners.
-func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account string) error {
-
-	fmt.Println(account)
-
+func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account string, amount *big.Int) error {
 	if account == "0x0" {
 		return fmt.Errorf("mint to the zero address")
 	}
 
-	fmt.Println("owners in mintutxohelper -", account)
-	intialBridgeContractAmount, su := big.NewInt(0).SetString(intialBridgeContractBalance, 10)
-	if !su {
-		return fmt.Errorf("amount can't be converted to string: ")
-	}
-	kalpFoundationAmount, su := big.NewInt(0).SetString(intialFoundationBalance, 10)
-	if !su {
-		return fmt.Errorf("amount can't be converted to string: ")
-	}
+	fmt.Println("account & amount in mintutxohelper -", account, amount)
 
-	err := AddUtxo(sdk, account, intialBridgeContractAmount)
-	if err != nil {
-		return err
-	}
-	err = AddUtxo(sdk, kalpFoundation, kalpFoundationAmount)
+	err := AddUtxo(sdk, account, amount)
 	if err != nil {
 		return err
 	}
