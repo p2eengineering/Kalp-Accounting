@@ -6,6 +6,7 @@ import (
 	"KAPS-NIU/niu/logger"
 	"KAPS-NIU/niu/models"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -611,4 +612,25 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 	}
 
 	return userRole.Role, nil
+}
+
+func ValidateAddress(address string) bool {
+	// Check if the string is at least 40 characters hexadecimal
+	if len(address) >= 40 && isHexadecimal(address) {
+		return true
+	}
+
+	// Check if the string starts with "klp-" and ends with "-cc"
+	if strings.HasPrefix(address, "klp-") && strings.HasSuffix(address, "-cc") {
+		return true
+	}
+
+	// If neither condition is met, return false
+	return false
+}
+
+// Helper function to check if a string is hexadecimal
+func isHexadecimal(input string) bool {
+	_, err := hex.DecodeString(input)
+	return err == nil
 }

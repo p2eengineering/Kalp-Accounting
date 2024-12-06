@@ -1,5 +1,5 @@
 // TODO: call intialize for vesting contract address
-// TODO: emit 2 events
+// TODO: return if not KYC'd
 // TODO: Ask if FoundationAdmin or GatewayAdmin can be denied
 package kalpAccounting
 
@@ -52,6 +52,23 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, fmt.Errorf("contract already initialized")
 	}
 
+	if !utils.ValidateAddress(vestingContract) {
+		return false, ginierr.ErrIncorrectAddress
+	}
+
+	// Checking if kalp foundation & gateway admin are KYC'd
+	// TODO: return if not KYC'd
+	if kyced, err := ctx.GetKYC(constants.KalpFoundationAddress); err != nil {
+		logger.Log.Errorf("Error fetching KYC status of foundation: %v", err)
+	} else if !kyced {
+		logger.Log.Errorf("Foundation is not KYC'd")
+	}
+	if kyced, err := ctx.GetKYC(constants.InitialKalpGateWayAdmin); err != nil {
+		logger.Log.Errorf("Error fetching KYC status of Gateway Admin: %v", err)
+	} else if !kyced {
+		logger.Log.Errorf("Gateway Admin is not KYC'd")
+	}
+
 	// intializing roles for kalp foundation & gateway admin
 	if _, err := utils.InitializeRoles(ctx, constants.KalpFoundationAddress, constants.KalpFoundationRole); err != nil {
 		logger.Log.Errorf("error in initializing roles: %v\n", err)
@@ -71,7 +88,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		logger.Log.Errorf("error with status code %v,error in minting: %v\n", http.StatusInternalServerError, err)
 		return false, ginierr.ErrMinitingTokens
 	}
-	// TODO: emit 2 events
 
 	// storing name, symbol and initial gas fees
 	if err := ctx.PutStateWithoutKYC(constants.NameKey, []byte(name)); err != nil {
@@ -571,8 +587,8 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	if owner == "" {
 		return "0", fmt.Errorf("invalid input account is required")
 	}
-	if len(owner) != 40 {
-		return "0", fmt.Errorf("address must be 40 characters long")
+	if utils.ValidateAddress(owner) {
+		return "0", ginierr.ErrIncorrectAddress
 	}
 	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
 		return "0", fmt.Errorf("invalid address")

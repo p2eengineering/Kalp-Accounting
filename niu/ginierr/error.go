@@ -34,4 +34,5 @@ var (
 	ErrAlreadyAllowed          = fmt.Errorf("error with status code %v, address already allowed", http.StatusBadRequest)
 	ErrAlreadyDenied           = fmt.Errorf("error with status code %v, address already denied", http.StatusBadRequest)
 	ErrFailedToEmitEvent       = fmt.Errorf("failed to emit event")
+	ErrIncorrectAddress        = fmt.Errorf("incorrect address, please enter a valid address")
 )
