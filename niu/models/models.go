@@ -5,13 +5,13 @@ type Response struct {
 	StatusCode uint        `json:"statusCode"`
 	Success    bool        `json:"success"`
 	Message    string      `json:"message"`
-	Response   interface{} `json:"response" `
+	Response   interface{} `json:"response"`
 }
 type UserRole struct {
-	Id      string `json:"User"`
-	Role    string `json:"Role"`
-	DocType string `json:"DocType"`
-	Desc    string `json:"Desc"`
+	Id      string `json:"user"`
+	Role    string `json:"role"`
+	DocType string `json:"docType"`
+	Desc    string `json:"desc"`
 }
 
 type Sender struct {

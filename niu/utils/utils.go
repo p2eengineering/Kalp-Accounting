@@ -40,7 +40,7 @@ func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error 
 	if err != nil {
 		return fmt.Errorf("failed to create composite key for deny list: %v", err)
 	}
-	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte{}); err != nil {
+	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte("true")); err != nil {
 		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
 	if err := ctx.SetEvent(constants.Denied, []byte(address)); err != nil {
@@ -53,8 +53,8 @@ func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error
 	if err != nil {
 		return fmt.Errorf("failed to create composite key for deny list: %v", err)
 	}
-	if err := ctx.DelStateWithoutKYC(addressDenyKey); err != nil {
-		return fmt.Errorf("failed to delete state from deny list: %v", err)
+	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte("false")); err != nil {
+		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
 	if err := ctx.SetEvent(constants.Approved, []byte(address)); err != nil {
 		return ginierr.ErrFailedToEmitEvent
@@ -71,6 +71,8 @@ func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, er
 		return false, fmt.Errorf("failed to get state from deny list: %v", err)
 	} else if bytes == nil {
 		// GetState() returns nil, nil when key is not found
+		return false, nil
+	} else if string(bytes) == "false" {
 		return false, nil
 	}
 	return true, nil
@@ -615,6 +617,7 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 }
 
 func IsValidAddress(address string) bool {
+	// return true
 	return IsHexAddress(address) || IsKalpAddress(address)
 }
 

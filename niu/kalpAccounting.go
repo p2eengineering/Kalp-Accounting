@@ -49,6 +49,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, err)
 		return false, ginierr.ErrFailedToGetName
 	} else if bytes != nil {
+		logger.Log.Errorf("Found name key: %v", string(bytes))
 		return false, fmt.Errorf("contract already initialized")
 	}
 
@@ -635,3 +636,36 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	return constants.TotalSupply, nil
 }
+
+// TODO: needs to be deleted just for testing purposes
+// func (s *SmartContract) DeleteDocTypes(ctx kalpsdk.TransactionContextInterface, queryString string) (string, error) {
+
+// 	logger := kalpsdk.NewLogger()
+
+// 	// queryString := `{"selector":{"DocType":"` + docType + `","Id":"GINI"}}`
+
+// 	logger.Infof("queryString: %s\n", queryString)
+// 	resultsIterator, err := ctx.GetQueryResult(queryString)
+// 	if err != nil {
+// 		return "fail", fmt.Errorf("err:failed to fetch UTXO tokens for: %v", err)
+// 	}
+// 	if !resultsIterator.HasNext() {
+// 		return "fail", fmt.Errorf("error with status code %v, err:no records to delete", http.StatusInternalServerError)
+
+// 	}
+
+// 	for resultsIterator.HasNext() {
+// 		queryResult, err := resultsIterator.Next()
+// 		if err != nil {
+// 			return "fail", fmt.Errorf("error with status code %v, err:failed to fetch unlocked tokens: %v ", http.StatusInternalServerError, err)
+// 		}
+
+// 		logger.Infof("deleting %s\n", queryResult.Key)
+
+// 		if err = ctx.DelStateWithoutKYC(queryResult.Key); err != nil {
+// 			logger.Errorf("Error in deleting %s\n", err.Error())
+// 		}
+// 	}
+// 	return "success", nil
+
+// }

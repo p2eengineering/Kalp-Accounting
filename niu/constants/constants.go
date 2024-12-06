@@ -2,7 +2,8 @@
 package constants
 
 const (
-	KalpFoundationAddress         = "0b87970433b22494faff1cc7a819e71bddc7880c"
+	KalpFoundationAddress = "0b87970433b22494faff1cc7a819e71bddc7880c"
+	// KalpFoundationAddress         = "user1"
 	InitialKalpGateWayAdmin       = "67c30fcb223182fef1c471a26527bfc4c50d093c"
 	InitialVestingContractBalance = "1988800000000000000000000000"
 	InitialFoundationBalance      = "11200000000000000000000000"
