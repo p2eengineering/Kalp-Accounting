@@ -2,6 +2,7 @@ package utils
 
 import (
 	"KAPS-NIU/niu/constants"
+	"KAPS-NIU/niu/ginierr"
 	"KAPS-NIU/niu/models"
 	"encoding/base64"
 	"encoding/json"
@@ -40,6 +41,9 @@ func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error 
 	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte{}); err != nil {
 		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
+	if err := ctx.SetEvent(constants.Denied, []byte(address)); err != nil {
+		return ginierr.ErrFailedToEmitEvent
+	}
 	return nil
 }
 func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
@@ -49,6 +53,9 @@ func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error
 	}
 	if err := ctx.DelStateWithoutKYC(addressDenyKey); err != nil {
 		return fmt.Errorf("failed to delete state from deny list: %v", err)
+	}
+	if err := ctx.SetEvent(constants.Approved, []byte(address)); err != nil {
+		return ginierr.ErrFailedToEmitEvent
 	}
 	return nil
 }
@@ -61,7 +68,7 @@ func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, er
 	if bytes, err := ctx.GetState(addressDenyKey); err != nil {
 		return false, fmt.Errorf("failed to get state from deny list: %v", err)
 	} else if bytes == nil {
-		// GetState returns nil, nil when key is not found
+		// GetState() returns nil, nil when key is not found
 		return false, nil
 	}
 	return true, nil
@@ -78,6 +85,18 @@ func MintUtxoHelperWithoutKYC(sdk kalpsdk.TransactionContextInterface, account s
 	err := AddUtxo(sdk, account, amount)
 	if err != nil {
 		return err
+	}
+	utxo := models.Utxo{
+		DocType: constants.UTXO,
+		Account: account,
+		Amount:  amount.String(),
+	}
+	utxoJSON, err := json.Marshal(utxo)
+	if err != nil {
+		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
+	}
+	if err := sdk.SetEvent("Mint", utxoJSON); err != nil {
+		return ginierr.ErrFailedToEmitEvent
 	}
 	return nil
 }
@@ -298,46 +317,22 @@ func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, account string) (stri
 	return amt.String(), nil
 }
 
-func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender string, amount string) error {
+func Approve(sdk kalpsdk.TransactionContextInterface, spender string, amount string) error {
 	// Emit the Approval event
-	operator, err := GetUserId(sdk)
+	owner, err := GetUserId(sdk)
 	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
-	}
-	//bridge contract will be  providing approval for bridge admin as a usecase where owner != calling user.
-	if owner != operator {
-		return fmt.Errorf("caller is not owner")
+		return ginierr.ErrFailedToGetClientID
 	}
 
-	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
+	approvalKey, err := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
 	}
 
-	fmt.Println("owner->", owner)
-	// Get the current balance of the owner
-	balance, err := GetTotalUTXO(sdk, owner)
-	if err != nil {
-		return fmt.Errorf("failed to get balance %v", err)
-	}
-	fmt.Println("owner Balance->", owner)
-	balanceAmount, s := big.NewInt(0).SetString(balance, 10)
-	if !s {
-		return fmt.Errorf("failed to convert balance to big int")
-	}
-	fmt.Printf("balanceAmount:%v\n", balanceAmount)
-	amt, s := big.NewInt(0).SetString(amount, 10)
-	if !s {
-		return fmt.Errorf("failed to conver amount to big int ")
-	}
-	fmt.Printf("amt:%v\n", amt)
-	if balanceAmount.Cmp(amt) == -1 {
-		return fmt.Errorf("approval amount can not be greater than balance")
-	}
 	var approval = models.Allow{
 		Owner:   owner,
 		Amount:  amount,
-		DocType: "Allowance",
+		DocType: constants.Allowance,
 		Spender: spender,
 	}
 	approvalJSON, err := json.Marshal(approval)
@@ -350,9 +345,9 @@ func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender stri
 		return fmt.Errorf("failed to update state of smart contract for key %s: %v", sdk.GetTxID(), err)
 	}
 
-	err = sdk.SetEvent("Approval", approvalJSON)
+	err = sdk.SetEvent(constants.Approval, approvalJSON)
 	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
+		return ginierr.ErrFailedToEmitEvent
 	}
 
 	fmt.Printf("client %s approved a withdrawal allowance of %s for spender %s", owner, amount, spender)
@@ -362,7 +357,7 @@ func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender stri
 
 // Allowance returns the amount still available for the spender to withdraw from the owner
 func Allowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
-	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
+	approvalKey, err := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
 	if err != nil {
 		return "", fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
 	}
@@ -383,7 +378,7 @@ func Allowance(sdk kalpsdk.TransactionContextInterface, owner string, spender st
 }
 
 func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
-	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
+	approvalKey, err := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
 	}
@@ -420,7 +415,7 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 	if err != nil {
 		return fmt.Errorf("failed to update state of smart contract for key %s: %v", approvalKey, err)
 	}
-	err = sdk.SetEvent("Approval", approvalJSON)
+	err = sdk.SetEvent(constants.Approval, approvalJSON)
 	if err != nil {
 		return fmt.Errorf("failed to set event: %v", err)
 	}
