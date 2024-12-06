@@ -3,6 +3,7 @@ package utils
 import (
 	"KAPS-NIU/niu/constants"
 	"KAPS-NIU/niu/ginierr"
+	"KAPS-NIU/niu/logger"
 	"KAPS-NIU/niu/models"
 	"encoding/base64"
 	"encoding/json"
@@ -283,9 +284,9 @@ func IsCallerKalpBridge(sdk kalpsdk.TransactionContextInterface, KalpBridgeContr
 }
 
 func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, account string) (string, error) {
-	logger := kalpsdk.NewLogger()
+
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"}}`
-	logger.Infof("queryString: %s\n", queryString)
+	logger.Log.Infof("queryString: %s\n", queryString)
 	resultsIterator, err := sdk.GetQueryResult(queryString)
 	if err != nil {
 		return "", fmt.Errorf("failed to read from world state: %v", err)
@@ -297,11 +298,11 @@ func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, account string) (stri
 		if err != nil {
 			return "", err
 		}
-		logger.Infof("query Value %s\n", string(queryResult.Value))
-		logger.Infof("query key %s\n", queryResult.Key)
+		logger.Log.Infof("query Value %s\n", string(queryResult.Value))
+		logger.Log.Infof("query key %s\n", queryResult.Key)
 		err = json.Unmarshal(queryResult.Value, &u)
 		if err != nil {
-			logger.Infof("%v", err)
+			logger.Log.Infof("%v", err)
 			return amt.String(), err
 		}
 		fmt.Printf("%v\n", u["amount"])
