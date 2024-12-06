@@ -614,18 +614,23 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 	return userRole.Role, nil
 }
 
-func ValidateAddress(address string) bool {
-	// Check if the string is at least 40 characters hexadecimal
-	if len(address) >= 40 && isHexadecimal(address) {
-		return true
-	}
+func IsValidAddress(address string) bool {
+	return IsHexAddress(address) || IsKalpAddress(address)
+}
 
+func IsKalpAddress(address string) bool {
 	// Check if the string starts with "klp-" and ends with "-cc"
 	if strings.HasPrefix(address, "klp-") && strings.HasSuffix(address, "-cc") {
 		return true
 	}
+	return false
+}
 
-	// If neither condition is met, return false
+func IsHexAddress(address string) bool {
+	// Check if the string is at least 40 characters hexadecimal
+	if len(address) >= 40 && isHexadecimal(address) {
+		return true
+	}
 	return false
 }
 

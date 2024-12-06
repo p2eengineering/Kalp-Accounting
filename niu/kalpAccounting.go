@@ -52,7 +52,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, fmt.Errorf("contract already initialized")
 	}
 
-	if !utils.ValidateAddress(vestingContract) {
+	if !utils.IsValidAddress(vestingContract) {
 		return false, ginierr.ErrIncorrectAddress
 	}
 
@@ -587,11 +587,8 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	if owner == "" {
 		return "0", fmt.Errorf("invalid input account is required")
 	}
-	if utils.ValidateAddress(owner) {
+	if !utils.IsValidAddress(owner) {
 		return "0", ginierr.ErrIncorrectAddress
-	}
-	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
-		return "0", fmt.Errorf("invalid address")
 	}
 	amt, err := utils.GetTotalUTXO(ctx, owner)
 	if err != nil {
