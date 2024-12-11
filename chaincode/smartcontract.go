@@ -1,7 +1,4 @@
-// TODO: call intialize for vesting contract address
-// TODO: return if not KYC'd
-// TODO: Ask if FoundationAdmin or GatewayAdmin can be denied
-package kalpAccounting
+package chaincode
 
 import (
 	//Standard Libs
@@ -10,7 +7,7 @@ import (
 	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
-	"gini-contract/chaincode/helper"
+	"gini-contract/chaincode/internal"
 	"gini-contract/chaincode/logger"
 	"gini-contract/chaincode/models"
 	"math/big"
@@ -30,77 +27,85 @@ func (s *SmartContract) InitLedger(ctx kalpsdk.TransactionContextInterface) erro
 	return nil
 }
 
-// Initializing smart contract
+// Initialize initializes smart contract
 func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, vestingContract string) (bool, error) {
 	//check contract name & symbol are not already set, client is not authorized to change them once intitialized
 
 	logger.Log.Infoln("Initializing smart contract")
 
 	// checking if signer is kalp foundation else return error
-	if signer, err := helper.GetUserId(ctx); err != nil {
-		logger.Log.Errorf("Error getting user ID: %v", err)
+	if signer, e := ctx.GetUserID(); e != nil {
+		logger.Log.Errorf("Error getting user ID: %v", e)
 		return false, ginierr.ErrFailedToGetClientID
 	} else if signer != constants.KalpFoundationAddress {
 		return false, ginierr.ErrOnlyFoundationHasAccess
 	}
 
 	// checking if contract is already initialized
-	if bytes, err := ctx.GetState(constants.NameKey); err != nil {
-		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, err)
+	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
+		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, e)
 		return false, ginierr.ErrFailedToGetName
 	} else if bytes != nil {
-		logger.Log.Errorf("Found name key: %v", string(bytes))
-		return false, fmt.Errorf("contract already initialized")
+		logger.Log.Errorf("Found name key: %v, cannot initialize again", string(bytes))
+		return false, ginierr.New("contract already initialized", http.StatusBadRequest)
 	}
 
-	if !helper.IsValidAddress(vestingContract) {
+	if !internal.IsValidAddress(vestingContract) {
 		return false, ginierr.ErrIncorrectAddress
 	}
 
 	// Checking if kalp foundation & gateway admin are KYC'd
-	// TODO: return if not KYC'd
-	if kyced, err := ctx.GetKYC(constants.KalpFoundationAddress); err != nil {
-		logger.Log.Errorf("Error fetching KYC status of foundation: %v", err)
+	if kyced, e := ctx.GetKYC(constants.KalpFoundationAddress); e != nil {
+		err := ginierr.NewWithError(e, "Error fetching KYC status of foundation", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
 	} else if !kyced {
-		logger.Log.Errorf("Foundation is not KYC'd")
+		return false, ginierr.New("Foundation is not KYC'd", http.StatusBadRequest)
 	}
-	if kyced, err := ctx.GetKYC(constants.InitialKalpGateWayAdmin); err != nil {
-		logger.Log.Errorf("Error fetching KYC status of Gateway Admin: %v", err)
+	if kyced, e := ctx.GetKYC(constants.KalpGateWayAdminAddress); e != nil {
+		err := ginierr.NewWithError(e, "Error fetching KYC status of Gateway Admin", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
 	} else if !kyced {
-		logger.Log.Errorf("Gateway Admin is not KYC'd")
+		return false, ginierr.New("Gateway Admin is not KYC'd", http.StatusBadRequest)
 	}
 
 	// intializing roles for kalp foundation & gateway admin
-	if _, err := helper.InitializeRoles(ctx, constants.KalpFoundationAddress, constants.KalpFoundationRole); err != nil {
+	if _, err := internal.InitializeRoles(ctx, constants.KalpFoundationAddress, constants.KalpFoundationRole); err != nil {
 		logger.Log.Errorf("error in initializing roles: %v\n", err)
 		return false, ginierr.ErrInitializingRoles
 	}
-	if _, err := helper.InitializeRoles(ctx, constants.InitialKalpGateWayAdmin, constants.KalpGateWayAdmin); err != nil {
+	if _, err := internal.InitializeRoles(ctx, constants.KalpGateWayAdminAddress, constants.KalpGateWayAdminRole); err != nil {
 		logger.Log.Errorf("error in initializing roles: %v\n", err)
 		return false, ginierr.ErrInitializingRoles
 	}
 
 	// minting initial tokens
-	if err := s.mint(ctx, constants.KalpFoundationAddress, constants.InitialFoundationBalance); err != nil {
+	if err := internal.Mint(ctx, constants.KalpFoundationAddress, constants.InitialFoundationBalance); err != nil {
 		logger.Log.Errorf("error with status code %v,error in minting: %v\n", http.StatusInternalServerError, err)
 		return false, ginierr.ErrMinitingTokens
 	}
-	if err := s.mint(ctx, vestingContract, constants.InitialVestingContractBalance); err != nil {
+	if err := internal.Mint(ctx, vestingContract, constants.InitialVestingContractBalance); err != nil {
 		logger.Log.Errorf("error with status code %v,error in minting: %v\n", http.StatusInternalServerError, err)
 		return false, ginierr.ErrMinitingTokens
 	}
 
 	// storing name, symbol and initial gas fees
-	if err := ctx.PutStateWithoutKYC(constants.NameKey, []byte(name)); err != nil {
-		return false, fmt.Errorf("failed to set token name: %v", err)
+	if e := ctx.PutStateWithoutKYC(constants.NameKey, []byte(name)); e != nil {
+		err := ginierr.NewWithError(e, "failed to set token name", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
 	}
-	if err := ctx.PutStateWithoutKYC(constants.SymbolKey, []byte(symbol)); err != nil {
-		return false, fmt.Errorf("failed to set symbol: %v", err)
+	if e := ctx.PutStateWithoutKYC(constants.SymbolKey, []byte(symbol)); e != nil {
+		err := ginierr.NewWithError(e, "failed to set symbol", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
 	}
-	if err := ctx.PutStateWithoutKYC(constants.GasFeesKey, []byte(constants.InitialGasFees)); err != nil {
-		return false, fmt.Errorf("failed to set gasfees: %v", err)
+	if e := ctx.PutStateWithoutKYC(constants.GasFeesKey, []byte(constants.InitialGasFees)); e != nil {
+		err := ginierr.NewWithError(e, "failed to set gas fees", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
 	}
-	// TODO: call intialize for vesting contract address
 	logger.Log.Infoln("Initializing complete")
 	return true, nil
 }
@@ -109,7 +114,7 @@ func (s *SmartContract) Allow(ctx kalpsdk.TransactionContextInterface, address s
 
 	logger.Log.Infof("Allow invoked for address: %s", address)
 
-	signer, err := helper.GetUserId(ctx)
+	signer, err := ctx.GetUserID()
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
@@ -117,13 +122,13 @@ func (s *SmartContract) Allow(ctx kalpsdk.TransactionContextInterface, address s
 		return ginierr.ErrOnlyFoundationHasAccess
 	}
 
-	if denied, err := helper.IsDenied(ctx, address); err != nil {
+	if denied, err := internal.IsDenied(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error checking if address already allowed: %v", http.StatusInternalServerError, err)
 	} else if !denied {
 		return ginierr.ErrAlreadyAllowed
 	}
 
-	if err := helper.AllowAddress(ctx, address); err != nil {
+	if err := internal.AllowAddress(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error allowing address: %v", http.StatusInternalServerError, err)
 	}
 	return nil
@@ -133,7 +138,7 @@ func (s *SmartContract) Deny(ctx kalpsdk.TransactionContextInterface, address st
 
 	logger.Log.Infof("Deny invoked for address: %s", address)
 
-	signer, err := helper.GetUserId(ctx)
+	signer, err := ctx.GetUserID()
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
@@ -141,12 +146,12 @@ func (s *SmartContract) Deny(ctx kalpsdk.TransactionContextInterface, address st
 		return ginierr.ErrOnlyFoundationHasAccess
 	}
 	// TODO: Ask if FoundationAdmin or GatewayAdmin can be denied
-	if denied, err := helper.IsDenied(ctx, address); err != nil {
+	if denied, err := internal.IsDenied(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error checking if address already denied: %v", http.StatusInternalServerError, err)
 	} else if denied {
 		return ginierr.ErrAlreadyDenied
 	}
-	if err := helper.DenyAddress(ctx, address); err != nil {
+	if err := internal.DenyAddress(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error denying address: %v", http.StatusInternalServerError, err)
 	}
 	return nil
@@ -187,11 +192,11 @@ func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) (str
 
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
 
-	operator, err := helper.GetUserId(ctx)
+	operator, err := ctx.GetUserID()
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
-	userRole, err := helper.GetUserRoles(ctx, operator)
+	userRole, err := internal.GetUserRoles(ctx, operator)
 	if err != nil {
 		logger.Log.Infof("error checking operator's role: %v", err)
 		return fmt.Errorf("error checking operator's role: %v", err)
@@ -205,35 +210,6 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 		return fmt.Errorf("failed to set gasfees: %v", err)
 	}
 	return nil
-}
-
-func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
-
-	logger.Log.Infof("Mint---->")
-
-	accAmount, ok := big.NewInt(0).SetString(amount, 10)
-	if !ok {
-		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
-	}
-	if accAmount.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
-		return fmt.Errorf("error with status code %v, invalid amount %v", http.StatusBadRequest, amount)
-	}
-
-	// checking if contract is already initialized
-	if bytes, err := ctx.GetState(constants.NameKey); err != nil {
-		return ginierr.ErrFailedToGetName
-	} else if bytes != nil {
-		return fmt.Errorf("contract already initialized, minting not allowed")
-	}
-
-	// Mint tokens
-	err := helper.MintUtxoHelperWithoutKYC(ctx, address, accAmount)
-	if err != nil {
-		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
-	}
-	logger.Log.Infof("MintToken Amount---->%v\n", amount)
-	return nil
-
 }
 
 // func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address string) (Response, error) {
@@ -344,15 +320,15 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	if err != nil {
 		return false, fmt.Errorf("error in getting user id: %v", err)
 	}
-	userRole, err := helper.GetUserRoles(ctx, sender)
+	userRole, err := internal.GetUserRoles(ctx, sender)
 	if err != nil {
 		logger.Log.Infof("error checking user's role: %v", err)
 		return false, fmt.Errorf("error checking user's role:: %v", err)
 	}
-	if len(address) != 40 && userRole != constants.KalpGateWayAdmin {
+	if len(address) != 40 && userRole != constants.KalpGateWayAdminRole {
 		return false, fmt.Errorf("address must be 40 characters long")
 	}
-	if strings.ContainsAny(address, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && userRole != constants.KalpGateWayAdmin {
+	if strings.ContainsAny(address, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && userRole != constants.KalpGateWayAdminRole {
 		return false, fmt.Errorf("invalid address")
 	}
 	gasFees, err := s.GetGasFees(ctx)
@@ -375,7 +351,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 	// Covers below 2 scenarios where gateway deducts gas fees and transfers to kalp foundation:
 	// 1. when Dapp/users sends non-GINI transactions via gateway
 	// 2. when HandleBridgeToken from bridge contract is called by Bridge Admin
-	if userRole == constants.KalpGateWayAdmin {
+	if userRole == constants.KalpGateWayAdminRole {
 		var send models.Sender
 		errs := json.Unmarshal([]byte(address), &send)
 		if errs != nil {
@@ -395,7 +371,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			err = helper.RemoveUtxo(ctx, send.Sender, gRemoveAmount)
+			err = internal.RemoveUtxo(ctx, send.Sender, gRemoveAmount)
 			if err != nil {
 				logger.Log.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
@@ -406,14 +382,14 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			err = helper.AddUtxo(ctx, constants.KalpFoundationAddress, gAddAmount)
+			err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gAddAmount)
 			if err != nil {
 				logger.Log.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
 			}
 			logger.Log.Infof("foundation transfer : %s\n", userRole)
 		}
-	} else if b, err := helper.IsCallerKalpBridge(ctx, constants.BridgeContractAddress); b && err == nil {
+	} else if b, err := internal.IsCallerKalpBridge(ctx, constants.BridgeContractAddress); b && err == nil {
 		// In this scenario transfer function is invoked fron Withdraw token funtion from bridge contract address
 		logger.Log.Infof("sender address changed to Bridge contract addres: \n", constants.BridgeContractAddress)
 		// In this scenario sender is kalp foundation is bridgeing from WithdrawToken Function,
@@ -426,7 +402,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
 
-			err = helper.RemoveUtxo(ctx, sender, subAmount)
+			err = internal.RemoveUtxo(ctx, sender, subAmount)
 			if err != nil {
 				logger.Log.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
@@ -436,7 +412,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 				logger.Log.Infof("amount can't be converted to string ")
 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 			}
-			err = helper.AddUtxo(ctx, constants.KalpFoundationAddress, addAmount)
+			err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, addAmount)
 			if err != nil {
 				logger.Log.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -454,7 +430,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			if removeAmount.Cmp(gasFeesAmount) == -1 || removeAmount.Cmp(gasFeesAmount) == 0 {
 				return false, fmt.Errorf("error with status code %v, error:bridge amount can not be less than equal to gas fee", http.StatusBadRequest)
 			}
-			err = helper.RemoveUtxo(ctx, sender, removeAmount)
+			err = internal.RemoveUtxo(ctx, sender, removeAmount)
 			if err != nil {
 				logger.Log.Infof("transfer remove err: %v", err)
 				return false, fmt.Errorf("transfer remove err: %v", err)
@@ -467,12 +443,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 			bridgedAmount := addAmount.Sub(addAmount, gasFeesAmount)
 			logger.Log.Infof("bridgedAmount :%v", bridgedAmount)
-			err = helper.AddUtxo(ctx, address, bridgedAmount)
+			err = internal.AddUtxo(ctx, address, bridgedAmount)
 			if err != nil {
 				logger.Log.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
 			}
-			err = helper.AddUtxo(ctx, constants.KalpFoundationAddress, gasFeesAmount)
+			err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFeesAmount)
 			if err != nil {
 				logger.Log.Infof("err: %v\n", err)
 				return false, fmt.Errorf("transfer add err: %v", err)
@@ -490,7 +466,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Log.Infof("amount can't be converted to string ")
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
-		err := helper.RemoveUtxo(ctx, sender, subAmount)
+		err := internal.RemoveUtxo(ctx, sender, subAmount)
 		if err != nil {
 			logger.Log.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
@@ -500,7 +476,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Log.Infof("amount can't be converted to string ")
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
-		err = helper.AddUtxo(ctx, address, addAmount)
+		err = internal.AddUtxo(ctx, address, addAmount)
 		if err != nil {
 			logger.Log.Infof("err: %v\n", err)
 			return false, fmt.Errorf("transfer add err: %v", err)
@@ -514,7 +490,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Log.Infof("removeAmount can't be converted to string ")
 			return false, fmt.Errorf("removeAmount can't be converted to string: %v ", err)
 		}
-		err := helper.RemoveUtxo(ctx, sender, removeAmount)
+		err := internal.RemoveUtxo(ctx, sender, removeAmount)
 		if err != nil {
 			logger.Log.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("transfer remove err: %v", err)
@@ -524,7 +500,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 			logger.Log.Infof("amount can't be converted to string ")
 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
 		}
-		err = helper.AddUtxo(ctx, address, addAmount)
+		err = internal.AddUtxo(ctx, address, addAmount)
 		if err != nil {
 			logger.Log.Infof("err: %v\n", err)
 			return false, fmt.Errorf("transfer add err: %v", err)
@@ -548,7 +524,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Log.Infof("transferAmount %v\n", transferAmount)
 		logger.Log.Infof("gasFeesAmount %v\n", gasFeesAmount)
 		// Withdraw the funds from the sender address
-		err = helper.RemoveUtxo(ctx, sender, transferAmount)
+		err = internal.RemoveUtxo(ctx, sender, transferAmount)
 		if err != nil {
 			logger.Log.Infof("transfer remove err: %v", err)
 			return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
@@ -561,20 +537,20 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 		logger.Log.Infof("Add amount %v\n", addAmount)
 		addAmounts := addAmount.Sub(addAmount, gasFeesAmount)
 		// Deposit the fund to the recipient address
-		err = helper.AddUtxo(ctx, address, addAmounts)
+		err = internal.AddUtxo(ctx, address, addAmounts)
 		if err != nil {
 			logger.Log.Infof("err: %v\n", err)
 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		}
 		logger.Log.Infof("gasFeesAmount %v\n", gasFeesAmount)
-		err = helper.AddUtxo(ctx, constants.KalpFoundationAddress, gasFeesAmount)
+		err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFeesAmount)
 		if err != nil {
 			logger.Log.Infof("err: %v\n", err)
 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 		}
 	}
 	transferSingleEvent := models.TransferSingle{Operator: sender, From: sender, To: address, Value: amount}
-	if err := helper.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
+	if err := internal.EmitTransferSingle(ctx, transferSingleEvent); err != nil {
 		logger.Log.Infof("err: %v\n", err)
 		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
 	}
@@ -588,10 +564,10 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	if owner == "" {
 		return "0", fmt.Errorf("invalid input account is required")
 	}
-	if !helper.IsValidAddress(owner) {
+	if !internal.IsValidAddress(owner) {
 		return "0", ginierr.ErrIncorrectAddress
 	}
-	amt, err := helper.GetTotalUTXO(ctx, owner)
+	amt, err := internal.GetTotalUTXO(ctx, owner)
 	if err != nil {
 		return "0", fmt.Errorf("error fetching balance: %v", err)
 	}
@@ -602,7 +578,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 
 func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, value string) (bool, error) {
 
-	if err := helper.Approve(ctx, spender, value); err != nil {
+	if err := internal.Approve(ctx, spender, value); err != nil {
 		logger.Log.Infof("error unable to approve funds: %v\n", err)
 		return false, err
 	}
@@ -616,7 +592,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 	if err != nil {
 		return false, fmt.Errorf("error iin getting spender's id: %v", err)
 	}
-	err = helper.TransferUTXOFrom(ctx, []string{from}, []string{spender}, to, value, constants.UTXO)
+	err = internal.TransferUTXOFrom(ctx, []string{from}, []string{spender}, to, value, constants.UTXO)
 	if err != nil {
 		logger.Log.Infof("err: %v\n", err)
 		return false, fmt.Errorf("error: unable to transfer funds: %v", err)
@@ -626,7 +602,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, fr
 
 func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
 
-	allowance, err := helper.Allowance(ctx, owner, spender)
+	allowance, err := internal.Allowance(ctx, owner, spender)
 	if err != nil {
 		return "", fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err) //big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}

@@ -1,4 +1,4 @@
-package kalpAccounting_test
+package chaincode_test
 
 import (
 	"testing"

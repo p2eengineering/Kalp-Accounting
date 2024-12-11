@@ -7,7 +7,7 @@ package main
 import (
 	"log"
 
-	kalpAccounting "gini-contract/chaincode"
+	"gini-contract/chaincode"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
@@ -15,7 +15,7 @@ import (
 func main() {
 	contract := kalpsdk.Contract{IsPayableContract: false}
 	contract.Logger = kalpsdk.NewLogger()
-	nftChaincode, err := kalpsdk.NewChaincode(&kalpAccounting.SmartContract{Contract: contract})
+	nftChaincode, err := kalpsdk.NewChaincode(&chaincode.SmartContract{Contract: contract})
 	if err != nil {
 		log.Panicf("Error creating nft chaincode: %v", err)
 	}
