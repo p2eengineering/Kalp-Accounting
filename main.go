@@ -7,7 +7,7 @@ package main
 import (
 	"log"
 
-	kalpAccounting "KAPS-NIU/niu"
+	kalpAccounting "gini-contract/chaincode"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )

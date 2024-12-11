@@ -8,18 +8,31 @@ import (
 
 // TODO: use GiniError instead of error
 type GiniError struct {
-	StatusCode int
-	Message    string
+	StatusCode  int
+	Message     string
+	internalErr error
 }
 
 func (e *GiniError) Error() string {
 	return fmt.Sprintf("%s, status code:%d", e.Message, e.StatusCode)
 }
 
+func (e *GiniError) FullError() string {
+	return fmt.Sprintf("%s, status code:%d, internal err: %v", e.Message, e.StatusCode, e.internalErr)
+}
+
 func NewGiniError(statusCode int, message string) *GiniError {
 	return &GiniError{
 		StatusCode: statusCode,
 		Message:    message,
+	}
+}
+
+func NewGiniErrorWithError(err error, statusCode int, message string) *GiniError {
+	return &GiniError{
+		StatusCode:  statusCode,
+		Message:     message,
+		internalErr: err,
 	}
 }
 

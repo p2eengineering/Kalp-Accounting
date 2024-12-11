@@ -1,14 +1,14 @@
-package utils
+package helper
 
 import (
-	"KAPS-NIU/niu/constants"
-	"KAPS-NIU/niu/ginierr"
-	"KAPS-NIU/niu/logger"
-	"KAPS-NIU/niu/models"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/logger"
+	"gini-contract/chaincode/models"
 	"math/big"
 	"reflect"
 
@@ -496,7 +496,7 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	roleJson, err := json.Marshal(userRole)
 	if err != nil {
 		fmt.Println("Error marshaling struct:", err)
-		return false, fmt.Errorf("error marsheling user role")
+		return false, fmt.Errorf("error marshaling user role")
 	}
 	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if err != nil {

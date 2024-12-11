@@ -1,4 +1,4 @@
-module KAPS-NIU
+module gini-contract
 
 go 1.19
 
