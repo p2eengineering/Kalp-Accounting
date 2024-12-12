@@ -45,5 +45,13 @@ var (
 	ErrAlreadyAllowed          = New("address already allowed", http.StatusBadRequest)
 	ErrAlreadyDenied           = New("address already denied", http.StatusBadRequest)
 	ErrFailedToEmitEvent       = New("failed to emit event", http.StatusInternalServerError)
-	ErrIncorrectAddress        = New("incorrect address, please enter a valid address", http.StatusBadRequest)
+	ErrInvalidAddress          = New("invalid address", http.StatusBadRequest)
 )
+
+func ErrInvalidAmount(amount string) *CustomError {
+	return New(fmt.Sprintf("invalid amount passed: %s", amount), http.StatusBadRequest)
+}
+
+func ErrIncorrectAddress(user string) *CustomError {
+	return New(fmt.Sprintf("%s address is not valid", user), http.StatusBadRequest)
+}

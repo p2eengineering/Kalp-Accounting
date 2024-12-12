@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/internal"
 	"gini-contract/chaincode/logger"
 	"gini-contract/chaincode/models"
@@ -51,7 +52,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 
 	if !internal.IsValidAddress(vestingContract) {
-		return false, ginierr.ErrIncorrectAddress
+		return false, ginierr.ErrIncorrectAddress("vesting contract")
 	}
 
 	// Checking if kalp foundation & gateway admin are KYC'd
@@ -565,7 +566,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 		return "0", fmt.Errorf("invalid input account is required")
 	}
 	if !internal.IsValidAddress(owner) {
-		return "0", ginierr.ErrIncorrectAddress
+		return "0", ginierr.ErrInvalidAddress
 	}
 	amt, err := internal.GetTotalUTXO(ctx, owner)
 	if err != nil {
@@ -574,6 +575,18 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	logger.Log.Infof("total balance%v owner:%s\n", amt, owner)
 
 	return amt, nil
+}
+
+func (s *SmartContract) balance(ctx kalpsdk.TransactionContextInterface, owner string) (*big.Int, error) {
+	if balanceStr, err := s.BalanceOf(ctx, owner); err != nil {
+		return big.NewInt(0), err
+	} else if senderBalance, ok := big.NewInt(0).SetString(balanceStr, 10); !ok {
+		err := ginierr.New("unable to convert balance to big int", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return big.NewInt(0), err
+	} else {
+		return senderBalance, nil
+	}
 }
 
 func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, value string) (bool, error) {
@@ -585,18 +598,315 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 	return true, nil
 }
 
-func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, from string, to string, value string) (bool, error) {
+func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, sender string, recipient string, value string) (bool, error) {
+	logger.Log.Info("TransferFrom operation initiated")
 
-	logger.Log.Info("TransferFrom---->")
-	spender, err := ctx.GetUserID()
-	if err != nil {
-		return false, fmt.Errorf("error iin getting spender's id: %v", err)
+	// Determine if the call is from a contract
+	isContractRequest := internal.CheckCallerIsContract(ctx)
+	logger.Log.Info("IsContractRequest: ", isContractRequest)
+
+	var spender, signer string
+	var e error
+
+	if isContractRequest {
+		spender = internal.GetCallingContractAddress(ctx)
+		if signer, e = ctx.GetUserID(); e != nil {
+			err := ginierr.NewWithError(e, "error getting signer", http.StatusInternalServerError)
+			logger.Log.Error(err)
+			return false, err
+		}
+	} else {
+		if spender, e = ctx.GetUserID(); e != nil {
+			err := ginierr.NewWithError(e, "error getting signer", http.StatusInternalServerError)
+			logger.Log.Error(err)
+			return false, err
+		}
+		signer = spender
 	}
-	err = internal.TransferUTXOFrom(ctx, []string{from}, []string{spender}, to, value, constants.UTXO)
-	if err != nil {
-		logger.Log.Infof("err: %v\n", err)
-		return false, fmt.Errorf("error: unable to transfer funds: %v", err)
+
+	// Input validation
+	if helper.IsContractAddress(signer) {
+		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
 	}
+	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
+		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
+	}
+	if !internal.IsValidAddress(sender) {
+		return false, ginierr.ErrIncorrectAddress("sender")
+	}
+	if !internal.IsValidAddress(recipient) {
+		return false, ginierr.ErrIncorrectAddress("recipient")
+	}
+
+	// Parse and validate amount
+	amount, ok := big.NewInt(0).SetString(value, 10)
+	if !ok || amount.Cmp(big.NewInt(0)) != 1 {
+		return false, ginierr.ErrInvalidAmount(value)
+	}
+
+	// Ensure KYC compliance
+	if kycSender, e := ctx.GetKYC(sender); e != nil {
+		err := ginierr.NewWithError(e, "error fetching KYC for sender", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return false, err
+	} else if !kycSender {
+		err := ginierr.New("sender is not KYCed", http.StatusForbidden)
+		logger.Log.Error(err)
+		return false, err
+	}
+	if kycSpender, e := ctx.GetKYC(spender); e != nil {
+		err := ginierr.NewWithError(e, "error fetching KYC for spender", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return false, err
+	} else if !kycSpender {
+		err := ginierr.New("spender is not KYCed", http.StatusForbidden)
+		logger.Log.Error(err)
+		return false, err
+	}
+	if kycSigner, e := ctx.GetKYC(signer); e != nil {
+		err := ginierr.NewWithError(e, "error fetching KYC for signer", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return false, err
+	} else if !kycSigner {
+		err := ginierr.New("signer is not KYCed", http.StatusForbidden)
+		logger.Log.Error(err)
+		return false, err
+	}
+
+	// Get balances
+	senderBalance, err := s.balance(ctx, sender)
+	if err != nil {
+		return false, err
+	}
+	signerBalance, err := s.balance(ctx, signer)
+	if err != nil {
+		return false, err
+	}
+	allowanceStr, err := internal.Allowance(ctx, sender, spender)
+	if err != nil {
+		return false, err
+	}
+	allowance, ok := big.NewInt(0).SetString(allowanceStr, 10)
+	if !ok {
+		err := ginierr.New("error converting allowance to big integer:"+allowanceStr, http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return false, err
+	}
+
+	var gasFees *big.Int
+	if gasFeesString, err := s.GetGasFees(ctx); err != nil {
+		return false, err
+	} else if val, ok := big.NewInt(0).SetString(gasFeesString, 10); !ok {
+		return false, ginierr.New("invalid gas fees found:"+gasFeesString, http.StatusInternalServerError)
+	} else {
+		gasFees = val
+	}
+
+	// Balance checks
+	if signer == sender {
+		if signerBalance.Cmp(new(big.Int).Add(amount, gasFees)) < 0 {
+			return false, ginierr.New("insufficient balance in sender's account for amount + gas fees", http.StatusBadRequest)
+		}
+	} else {
+		if senderBalance.Cmp(amount) < 0 {
+			return false, ginierr.New("insufficient balance in sender's account for amount", http.StatusBadRequest)
+		}
+		if signerBalance.Cmp(gasFees) < 0 {
+			return false, ginierr.New("insufficient balance in signer's account for gas fees", http.StatusBadRequest)
+		}
+	}
+
+	// Allowance check
+	if allowance.Cmp(amount) < 0 {
+		return false, ginierr.New("insufficient allowance for spender's account for the sender", http.StatusBadRequest)
+	}
+
+	// Transfer logic with UTXO updates
+	if signer == sender && signer == recipient {
+		if signer != constants.KalpFoundationAddress {
+			if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+				return false, ginierr.NewWithError(err, "error removing UTXO for gas fees", http.StatusInternalServerError)
+			}
+			if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				return false, ginierr.NewWithError(err, "error adding UTXO for gas fees", http.StatusInternalServerError)
+			}
+		}
+	} else if signer == sender && signer != recipient {
+		if signer == constants.KalpFoundationAddress {
+			if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+				return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+			}
+			if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+				return false, ginierr.NewWithError(err, "error adding UTXO to recipient", http.StatusInternalServerError)
+			}
+		} else {
+			if recipient == constants.KalpFoundationAddress {
+				if err = internal.RemoveUtxo(ctx, signer, new(big.Int).Add(amount, gasFees)); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from signer", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, recipient, new(big.Int).Add(amount, gasFees)); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to recipient", http.StatusInternalServerError)
+				}
+			} else {
+				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Add(amount, gasFees)); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to recipient", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to Foundation Admin", http.StatusInternalServerError)
+				}
+			}
+		}
+
+	} else if signer != sender && signer == recipient {
+		if signer == constants.KalpFoundationAddress {
+			if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+				return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+			}
+			if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+				return false, ginierr.NewWithError(err, "error adding UTXO to recipient", http.StatusInternalServerError)
+			}
+		} else if sender == constants.KalpFoundationAddress {
+			if amount.Cmp(gasFees) > 0 {
+				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(amount, gasFees)); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to signer", http.StatusInternalServerError)
+				}
+				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Sub(amount, gasFees)); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+			} else if amount.Cmp(gasFees) < 0 {
+				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(gasFees, amount)); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to signer", http.StatusInternalServerError)
+				}
+				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Sub(gasFees, amount)); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+			}
+		} else {
+			// TODO
+			if amount.Cmp(gasFees) > 0 {
+				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(amount, gasFees)); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to signer", http.StatusInternalServerError)
+				}
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to Foundation admin", http.StatusInternalServerError)
+				}
+			} else if amount.Cmp(gasFees) == 0 {
+				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(gasFees, amount)); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to signer", http.StatusInternalServerError)
+				}
+				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Sub(gasFees, amount)); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+			} else {
+				if err = internal.RemoveUtxo(ctx, signer, new(big.Int).Sub(gasFees, amount)); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to Foundation admin", http.StatusInternalServerError)
+				}
+			}
+		}
+
+	} else if signer != sender && signer != recipient {
+		if spender == recipient {
+			if sender == constants.KalpFoundationAddress {
+				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from signer", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to Foundation admin", http.StatusInternalServerError)
+				}
+			}
+		} else {
+			if signer == constants.KalpFoundationAddress {
+				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from signer", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to Foundation admin", http.StatusInternalServerError)
+				}
+			} else if sender == constants.KalpFoundationAddress {
+				if amount.Cmp(gasFees) > 0 {
+					if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(amount, gasFees)); err != nil {
+						return false, ginierr.NewWithError(err, "error adding UTXO to signer", http.StatusInternalServerError)
+					}
+					if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+						return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+					}
+					if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+						return false, ginierr.NewWithError(err, "error adding UTXO to Foundation admin", http.StatusInternalServerError)
+					}
+				} else if amount.Cmp(gasFees) == 0 {
+					if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(gasFees, amount)); err != nil {
+						return false, ginierr.NewWithError(err, "error adding UTXO to signer", http.StatusInternalServerError)
+					}
+					if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Sub(gasFees, amount)); err != nil {
+						return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+					}
+				} else {
+					if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+						return false, ginierr.NewWithError(err, "error removing UTXO from signer", http.StatusInternalServerError)
+					}
+					if err = internal.AddUtxo(ctx, sender, gasFees); err != nil {
+						return false, ginierr.NewWithError(err, "error adding UTXO to sender", http.StatusInternalServerError)
+					}
+					if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+						return false, ginierr.NewWithError(err, "error adding UTXO to Foundation admin", http.StatusInternalServerError)
+					}
+				}
+			} else if recipient == constants.KalpFoundationAddress {
+				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from signer", http.StatusInternalServerError)
+				}
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, recipient, new(big.Int).Add(amount, gasFees)); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to recipient", http.StatusInternalServerError)
+				}
+			} else {
+				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from signer", http.StatusInternalServerError)
+				}
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					return false, ginierr.NewWithError(err, "error removing UTXO from sender", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO from recipient", http.StatusInternalServerError)
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					return false, ginierr.NewWithError(err, "error adding UTXO to Foundation admin", http.StatusInternalServerError)
+				}
+			}
+		}
+	}
+
+	// Update allowance
+	err = internal.UpdateAllowance(ctx, sender, spender, amount.String())
+	if err != nil {
+		return false, ginierr.NewWithError(err, "error updating allowance", http.StatusInternalServerError)
+	}
+
+	logger.Log.Info("Transferred ", amount, " tokens from: ", sender, " to: ", recipient)
+
+	// Emit transfer event
+	eventPayload := map[string]interface{}{
+		"from":  sender,
+		"to":    recipient,
+		"value": amount.String(),
+	}
+	eventBytes, _ := json.Marshal(eventPayload)
+	_ = ctx.SetEvent("Transfer", eventBytes)
+
 	return true, nil
 }
 

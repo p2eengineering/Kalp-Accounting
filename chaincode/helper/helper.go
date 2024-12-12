@@ -19,3 +19,7 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 	}
 
 }
+
+func IsContractAddress(address string) bool {
+	return true
+}

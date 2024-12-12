@@ -21,6 +21,16 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// CheckCallerIsContract checks if the caller is a contract
+func CheckCallerIsContract(ctx kalpsdk.TransactionContextInterface) bool {
+	return true
+}
+
+// GetCallingContractAddress returns calling contract's address
+func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) string {
+	return ""
+}
+
 // DenyAddress adds the given address to the denylist
 func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
 	addressDenyKey, err := ctx.CreateCompositeKey(constants.DenyListKey, []string{address})
