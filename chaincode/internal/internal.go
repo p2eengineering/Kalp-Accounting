@@ -30,19 +30,19 @@ func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string,
 	signedProposal, e := ctx.GetSignedProposal()
 	if signedProposal == nil {
 		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 	if e != nil {
 		err := ginierr.NewWithError(e, "error in getting signed proposal", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 
 	data := signedProposal.GetProposalBytes()
 	if data == nil {
 		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 
@@ -50,7 +50,7 @@ func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string,
 	e = proto.Unmarshal(data, proposal)
 	if e != nil {
 		err := ginierr.NewWithError(e, "error in parsing signed proposal", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 
@@ -58,14 +58,14 @@ func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string,
 	e = proto.Unmarshal(proposal.Payload, payload)
 	if e != nil {
 		err := ginierr.NewWithError(e, "error in parsing payload", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 
 	paystring := payload.GetHeader().GetChannelHeader()
 	if len(paystring) == 0 {
 		err := ginierr.New("channel header is empty", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 
@@ -73,7 +73,7 @@ func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string,
 	contractAddress := helper.FindContractAddress(paystring)
 	if contractAddress == "" {
 		err := ginierr.New("contract address not found", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 
@@ -188,7 +188,7 @@ func AddUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount *bi
 	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
 	if e != nil {
 		err := ginierr.NewWithError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 
@@ -203,14 +203,14 @@ func AddUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount *bi
 	utxoJSON, e := json.Marshal(utxo)
 	if e != nil {
 		err := ginierr.NewWithError(e, "failed to marshal UTXO data while adding UTXO", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	logger.Log.Debugf("utxoJSON: %s\n", utxoJSON)
 
 	if e := ctx.PutStateWithoutKYC(utxoKey, utxoJSON); e != nil {
 		err := ginierr.ErrFailedToPutState(e)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	return nil
@@ -220,7 +220,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount 
 	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
 	if e != nil {
 		err := ginierr.NewWithError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"use_index": "indexIdDocType"}`
@@ -229,7 +229,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount 
 	resultsIterator, e := ctx.GetQueryResult(queryString)
 	if e != nil {
 		err := ginierr.NewWithError(e, "error creating iterator while removing UTXO", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	var utxo []models.Utxo
@@ -245,14 +245,14 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount 
 
 		if e := json.Unmarshal(queryResult.Value, &u); e != nil {
 			err := ginierr.NewWithError(e, "failed to unmarshal UTXO data while removing UTXO", http.StatusInternalServerError)
-			logger.Log.Error(err)
+			logger.Log.Error(err.FullError())
 			return err
 		}
 		u.Key = queryResult.Key // TODO:: check if this is needed
 		am, ok := big.NewInt(0).SetString(u.Amount, 10)
 		if !ok {
 			err := ginierr.New("failed to convert UTXO amount to big int while removing UTXO", http.StatusInternalServerError)
-			logger.Log.Error(err)
+			logger.Log.Error(err.FullError())
 			return err
 		}
 		currentBalance.Add(currentBalance, am)
@@ -270,7 +270,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount 
 		am, ok := big.NewInt(0).SetString(utxo[i].Amount, 10)
 		if !ok {
 			err := ginierr.New("failed to convert UTXO amount to big int while removing UTXO", http.StatusInternalServerError)
-			logger.Log.Error(err)
+			logger.Log.Error(err.FullError())
 			return err
 		}
 		if amount.Cmp(am) >= 0 { // >= utxo[i].Amount {
@@ -278,14 +278,14 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount 
 			amount = amount.Sub(amount, am)
 			if e := ctx.DelStateWithoutKYC(utxo[i].Key); e != nil {
 				err := ginierr.ErrFailedToDeleteState(e)
-				logger.Log.Error(err)
+				logger.Log.Error(err.FullError())
 				return err
 			}
 		} else if amount.Cmp(am) == -1 { // < utxo[i].Amount {
 			logger.Log.Debugf("amount<: %s\n", utxo[i].Amount)
 			if err := ctx.DelStateWithoutKYC(utxo[i].Key); err != nil {
 				err := ginierr.ErrFailedToDeleteState(e)
-				logger.Log.Error(err)
+				logger.Log.Error(err.FullError())
 				return err
 			}
 			// Create a new utxo object
@@ -297,13 +297,13 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount 
 			utxoJSON, e := json.Marshal(utxo)
 			if e != nil {
 				err := ginierr.NewWithError(e, "failed to marshal UTXO data while removing UTXO", http.StatusInternalServerError)
-				logger.Log.Error(err)
+				logger.Log.Error(err.FullError())
 				return err
 			}
 
 			if e := ctx.PutStateWithoutKYC(utxoKey, utxoJSON); e != nil {
 				err := ginierr.ErrFailedToPutState(e)
-				logger.Log.Error(err)
+				logger.Log.Error(err.FullError())
 				return err
 			}
 
@@ -461,7 +461,7 @@ func UpdateAllowance(ctx kalpsdk.TransactionContextInterface, owner string, spen
 	approvalKey, e := ctx.CreateCompositeKey(constants.Approval, []string{owner, spender})
 	if e != nil {
 		err := ginierr.ErrCreatingCompositeKey(e)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 
 	}
@@ -469,7 +469,7 @@ func UpdateAllowance(ctx kalpsdk.TransactionContextInterface, owner string, spen
 	approvalByte, e := ctx.GetState(approvalKey)
 	if e != nil {
 		err := ginierr.ErrFailedToGetState(e)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	var approval models.Allow
@@ -480,18 +480,18 @@ func UpdateAllowance(ctx kalpsdk.TransactionContextInterface, owner string, spen
 		approvalAmount, ok := big.NewInt(0).SetString(approval.Amount, 10)
 		if !ok {
 			err := ginierr.ErrConvertingStringToBigInt(approval.Amount)
-			logger.Log.Error(err)
+			logger.Log.Error(err.FullError())
 			return err
 		}
 		amountSpent, ok := big.NewInt(0).SetString(spent, 10)
 		if !ok {
 			err := ginierr.ErrConvertingStringToBigInt(spent)
-			logger.Log.Error(err)
+			logger.Log.Error(err.FullError())
 			return err
 		}
 		if amountSpent.Cmp(approvalAmount) == 1 { // amountToAdd > approvalAmount {
 			err := ginierr.New("amount spent cannot be greater than allowance", http.StatusInternalServerError)
-			logger.Log.Error(err)
+			logger.Log.Error(err.FullError())
 			return err
 		}
 		approval.Amount = fmt.Sprint(approvalAmount.Sub(approvalAmount, amountSpent))
@@ -499,18 +499,18 @@ func UpdateAllowance(ctx kalpsdk.TransactionContextInterface, owner string, spen
 	approvalJSON, e := json.Marshal(approval)
 	if e != nil {
 		err := ginierr.NewWithError(e, "failed to marshal approval data", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	// Update the state of the smart contract by adding the allowanceKey and value
 	if e = ctx.PutStateWithoutKYC(approvalKey, approvalJSON); e != nil {
 		err := ginierr.ErrFailedToPutState(e)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	if e := ctx.SetEvent(constants.Approval, approvalJSON); e != nil {
 		err := ginierr.ErrFailedToSetEvent(e, constants.Approval)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	return nil
