@@ -26,10 +26,10 @@ type Utxo struct {
 }
 
 type Allow struct {
-	Owner   string `json:"id"`
+	Owner   string `json:"owner"`
 	Amount  string `json:"amount"`
 	DocType string `json:"docType"`
-	Spender string `json:"account"`
+	Spender string `json:"spendor"`
 }
 
 type TransferSingle struct {
