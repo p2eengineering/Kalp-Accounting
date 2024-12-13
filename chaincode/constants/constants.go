@@ -21,6 +21,7 @@ const (
 	Approval                      = "Approval"
 	Denied                        = "Denied"
 	Approved                      = "Approved"
+	VestingContractKey            = "vestingContract"
 
 	// TODO: remove unused constants later
 	BridgeContractAddress = "0"

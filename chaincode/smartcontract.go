@@ -107,6 +107,11 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
+	if e := ctx.PutStateWithoutKYC(constants.VestingContractKey, []byte(vestingContract)); e != nil {
+		err := ginierr.NewWithError(e, "failed to set vesting Contract", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
+	}
 	logger.Log.Infoln("Initializing complete")
 	return true, nil
 }
@@ -170,6 +175,16 @@ func (s *SmartContract) Symbol(ctx kalpsdk.TransactionContextInterface) (string,
 	bytes, err := ctx.GetState(constants.SymbolKey)
 	if err != nil {
 		return "", ginierr.ErrFailedToGetSymbol
+	}
+	return string(bytes), nil
+}
+
+func (s *SmartContract) vestingContract(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	bytes, e := ctx.GetState(constants.VestingContractKey)
+	if e != nil {
+		err := ginierr.ErrFailedToGetState(e)
+		logger.Log.Error(err)
+		return "", err
 	}
 	return string(bytes), nil
 }
@@ -603,12 +618,23 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 
 	// Determine if the call is from a contract
 	callingContractAddress, err := internal.GetCallingContractAddress(ctx)
+	// TODO: check if error needs to be handled here
 	logger.Log.Info("callingContractAddress: ", callingContractAddress, err)
 
 	var spender, signer string
 	var e error
 
-	if callingContractAddress != "" && err == nil {
+	vestingContract, err := s.vestingContract(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if callingContractAddress != s.GetName() {
+		if callingContractAddress != constants.BridgeContractAddress && callingContractAddress != vestingContract {
+			err := ginierr.New("The calling contract is not bridge contract or vesting contract", http.StatusBadRequest)
+			logger.Log.Error(err.FullError())
+			return false, err
+		}
 		spender = callingContractAddress
 		if signer, e = ctx.GetUserID(); e != nil {
 			err := ginierr.NewWithError(e, "error getting signer", http.StatusInternalServerError)

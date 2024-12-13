@@ -14,6 +14,7 @@ import (
 
 func main() {
 	contract := kalpsdk.Contract{IsPayableContract: false}
+	contract.Contract.Name = "klp-6b616c70616373-cc"
 	contract.Logger = kalpsdk.NewLogger()
 	giniChaincode, err := kalpsdk.NewChaincode(&chaincode.SmartContract{Contract: contract})
 	if err != nil {
