@@ -777,15 +777,14 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 					return false, err
 				}
 			} else if amount.Cmp(gasFees) < 0 {
-				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(gasFees, amount)); err != nil {
+				if err = internal.RemoveUtxo(ctx, signer, new(big.Int).Sub(gasFees, amount)); err != nil {
 					return false, err
 				}
-				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Sub(gasFees, amount)); err != nil {
+				if err = internal.AddUtxo(ctx, sender, new(big.Int).Sub(gasFees, amount)); err != nil {
 					return false, err
 				}
 			}
 		} else {
-			// TODO
 			if amount.Cmp(gasFees) > 0 {
 				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(amount, gasFees)); err != nil {
 					return false, err
@@ -797,10 +796,10 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 					return false, err
 				}
 			} else if amount.Cmp(gasFees) == 0 {
-				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(gasFees, amount)); err != nil {
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
 					return false, err
 				}
-				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Sub(gasFees, amount)); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			} else {
@@ -817,7 +816,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		}
 
 	} else if signer != sender && signer != recipient {
-		if spender == recipient {
+		if sender == recipient {
 			if sender == constants.KalpFoundationAddress {
 				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 					return false, err
@@ -828,38 +827,38 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 			}
 		} else {
 			if signer == constants.KalpFoundationAddress {
-				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
 					return false, err
 				}
 			} else if sender == constants.KalpFoundationAddress {
 				if amount.Cmp(gasFees) > 0 {
-					if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(amount, gasFees)); err != nil {
+					if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 						return false, err
 					}
-					if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Sub(amount, gasFees)); err != nil {
 						return false, err
 					}
-					if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
 						return false, err
 					}
 				} else if amount.Cmp(gasFees) == 0 {
-					if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(gasFees, amount)); err != nil {
+					if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 						return false, err
 					}
-					if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Sub(gasFees, amount)); err != nil {
+					if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
 						return false, err
 					}
 				} else {
 					if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 						return false, err
 					}
-					if err = internal.AddUtxo(ctx, sender, gasFees); err != nil {
+					if err = internal.AddUtxo(ctx, sender, new(big.Int).Sub(gasFees, amount)); err != nil {
 						return false, err
 					}
-					if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
 						return false, err
 					}
 				}
