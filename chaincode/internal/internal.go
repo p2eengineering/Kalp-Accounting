@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
-	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/logger"
 	"gini-contract/chaincode/models"
 	"math/big"
@@ -135,98 +134,109 @@ func MintUtxoHelperWithoutKYC(ctx kalpsdk.TransactionContextInterface, account s
 	return nil
 }
 
-func AddUtxo(ctx kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
-	utxoKey, err := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
-	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
+func AddUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount *big.Int) error {
+	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
+	if e != nil {
+		err := ginierr.NewWithError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return err
 	}
-	amount, err := helper.CustomBigIntConvertor(iamount)
-	if err != nil {
-		return fmt.Errorf("error in CustomBigInt %v", err)
-	}
-	fmt.Printf("add amount: %v\n", amount)
-	fmt.Printf("utxoKey: %v\n", utxoKey)
+
+	logger.Log.Debugf("add amount: %v\n", amount)
+	logger.Log.Debugf("utxoKey: %v\n", utxoKey)
 	utxo := models.Utxo{
 		DocType: constants.UTXO,
 		Account: account,
 		Amount:  amount.String(),
 	}
 
-	utxoJSON, err := json.Marshal(utxo)
-	if err != nil {
-		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
+	utxoJSON, e := json.Marshal(utxo)
+	if e != nil {
+		err := ginierr.NewWithError(e, "failed to marshal UTXO data while adding UTXO", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return err
 	}
-	fmt.Printf("utxoJSON: %s\n", utxoJSON)
+	logger.Log.Debugf("utxoJSON: %s\n", utxoJSON)
 
-	err = ctx.PutStateWithoutKYC(utxoKey, utxoJSON)
-	if err != nil {
-		return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", constants.GINI, account, err)
-
+	if e := ctx.PutStateWithoutKYC(utxoKey, utxoJSON); e != nil {
+		err := ginierr.ErrFailedToPutState(e)
+		logger.Log.Error(err)
+		return err
 	}
 	return nil
 }
-func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
+func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amount *big.Int) error {
 
-	utxoKey, err := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
-	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
+	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
+	if e != nil {
+		err := ginierr.NewWithError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return err
 	}
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"use_index": "indexIdDocType"}`
-	amount, err := helper.CustomBigIntConvertor(iamount)
-	if err != nil {
-		return fmt.Errorf("error in CustomBigInt %v", err)
-	}
-	fmt.Printf("queryString: %s\n", queryString)
-	resultsIterator, err := ctx.GetQueryResult(queryString)
-	if err != nil {
-		return fmt.Errorf("failed to read from world state: %v", err)
+
+	logger.Log.Debugf("queryString: %s\n", queryString)
+	resultsIterator, e := ctx.GetQueryResult(queryString)
+	if e != nil {
+		err := ginierr.NewWithError(e, "error creating iterator while removing UTXO", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return err
 	}
 	var utxo []models.Utxo
-	amt := big.NewInt(0)
+	currentBalance := big.NewInt(0)
 	for resultsIterator.HasNext() {
 		var u models.Utxo
 		queryResult, err := resultsIterator.Next()
 		if err != nil {
 			return err
 		}
-		fmt.Printf("query Value %s\n", queryResult.Value)
-		fmt.Printf("query key %s\n", queryResult.Key)
-		err = json.Unmarshal(queryResult.Value, &u)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal value %v", err)
+		logger.Log.Debugf("query Value %s\n", queryResult.Value)
+		logger.Log.Debugf("query key %s\n", queryResult.Key)
+
+		if e := json.Unmarshal(queryResult.Value, &u); e != nil {
+			err := ginierr.NewWithError(e, "failed to unmarshal UTXO data while removing UTXO", http.StatusInternalServerError)
+			logger.Log.Error(err)
+			return err
 		}
-		u.Key = queryResult.Key
-		am, s := big.NewInt(0).SetString(u.Amount, 10)
-		if !s {
-			return fmt.Errorf("failed to set string")
+		u.Key = queryResult.Key // TODO:: check if this is needed
+		am, ok := big.NewInt(0).SetString(u.Amount, 10)
+		if !ok {
+			err := ginierr.New("failed to convert UTXO amount to big int while removing UTXO", http.StatusInternalServerError)
+			logger.Log.Error(err)
+			return err
 		}
-		amt.Add(amt, am)
+		currentBalance.Add(currentBalance, am)
 		utxo = append(utxo, u)
-		if amt.Cmp(amount) == 0 || amt.Cmp(amount) == 1 { // >= amount {
+		if currentBalance.Cmp(amount) >= 0 { // >= amount {
 			break
 		}
 	}
-	fmt.Printf("amount: %v\n", amount)
-	fmt.Printf("total balance: %v\n", amt)
-	if amount.Cmp(amt) == 1 {
-		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, constants.GINI, amount, amt)
+	logger.Log.Debugf("amount: %v, total balance: %v\n", amount, currentBalance)
+	if amount.Cmp(currentBalance) == 1 {
+		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, constants.GINI, amount, currentBalance)
 	}
 
 	for i := 0; i < len(utxo); i++ {
-		am, s := big.NewInt(0).SetString(utxo[i].Amount, 10)
-		if !s {
-			return fmt.Errorf("failed to set string")
+		am, ok := big.NewInt(0).SetString(utxo[i].Amount, 10)
+		if !ok {
+			err := ginierr.New("failed to convert UTXO amount to big int while removing UTXO", http.StatusInternalServerError)
+			logger.Log.Error(err)
+			return err
 		}
-		if amount.Cmp(am) == 0 || amount.Cmp(am) == 1 { // >= utxo[i].Amount {
-			fmt.Printf("amount> delete: %s\n", utxo[i].Amount)
+		if amount.Cmp(am) >= 0 { // >= utxo[i].Amount {
+			logger.Log.Debugf("amount> delete: %s\n", utxo[i].Amount)
 			amount = amount.Sub(amount, am)
-			if err := ctx.DelStateWithoutKYC(utxo[i].Key); err != nil {
-				return fmt.Errorf("%v", err)
+			if e := ctx.DelStateWithoutKYC(utxo[i].Key); e != nil {
+				err := ginierr.ErrFailedToDeleteState(e)
+				logger.Log.Error(err)
+				return err
 			}
 		} else if amount.Cmp(am) == -1 { // < utxo[i].Amount {
-			fmt.Printf("amount<: %s\n", utxo[i].Amount)
+			logger.Log.Debugf("amount<: %s\n", utxo[i].Amount)
 			if err := ctx.DelStateWithoutKYC(utxo[i].Key); err != nil {
-				return fmt.Errorf("%v", err)
+				err := ginierr.ErrFailedToDeleteState(e)
+				logger.Log.Error(err)
+				return err
 			}
 			// Create a new utxo object
 			utxo := models.Utxo{
@@ -234,14 +244,17 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, iamount
 				Account: account,
 				Amount:  am.Sub(am, amount).String(),
 			}
-			utxoJSON, err := json.Marshal(utxo)
-			if err != nil {
-				return fmt.Errorf("failed to marshal owner with  and account address %s to JSON: %v", account, err)
+			utxoJSON, e := json.Marshal(utxo)
+			if e != nil {
+				err := ginierr.NewWithError(e, "failed to marshal UTXO data while removing UTXO", http.StatusInternalServerError)
+				logger.Log.Error(err)
+				return err
 			}
 
-			err = ctx.PutStateWithoutKYC(utxoKey, utxoJSON)
-			if err != nil {
-				return fmt.Errorf("failed to put owner with  and account address %s to world state: %v", account, err)
+			if e := ctx.PutStateWithoutKYC(utxoKey, utxoJSON); e != nil {
+				err := ginierr.ErrFailedToPutState(e)
+				logger.Log.Error(err)
+				return err
 			}
 
 		}
@@ -321,7 +334,7 @@ func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (stri
 			logger.Log.Infof("%v", err)
 			return amt.String(), err
 		}
-		fmt.Printf("%v\n", u["amount"])
+		logger.Log.Debugf("%v\n", u["amount"])
 		amount := new(big.Int)
 		if uamount, ok := u["amount"].(string); ok {
 			amount.SetString(uamount, 10)
@@ -367,7 +380,7 @@ func Approve(ctx kalpsdk.TransactionContextInterface, spender string, amount str
 		return ginierr.ErrFailedToEmitEvent
 	}
 
-	fmt.Printf("client %s approved a withdrawal allowance of %s for spender %s", owner, amount, spender)
+	logger.Log.Debugf("client %s approved a withdrawal allowance of %s for spender %s", owner, amount, spender)
 
 	return nil
 }
@@ -446,8 +459,8 @@ func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, s
 	if err != nil {
 		return fmt.Errorf("failed to get client id: %v", err)
 	}
-	fmt.Printf("owner: %v\n", owner[0])
-	fmt.Printf("spender: %v\n", spender[0])
+	logger.Log.Debugf("owner: %v\n", owner[0])
+	logger.Log.Debugf("spender: %v\n", spender[0])
 	approved, err := Allowance(ctx, owner[0], spender[0])
 	if err != nil {
 		return fmt.Errorf("error in getting allowance: %v", err)
@@ -459,7 +472,7 @@ func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, s
 	var am string
 	if a, ok := iamount.(string); ok {
 		am = a
-		fmt.Printf("String found: %s\n", am)
+		logger.Log.Debugf("String found: %s\n", am)
 	}
 	amount, s := big.NewInt(0).SetString(am, 10)
 	if !s {
@@ -467,20 +480,20 @@ func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, s
 	}
 
 	if approvedAmount.Cmp(amount) == -1 { //approvedAmount < amount {
-		fmt.Printf("approvedAmount: %f\n", approvedAmount)
-		fmt.Printf("amount: %f\n", amount)
+		logger.Log.Debugf("approvedAmount: %f\n", approvedAmount)
+		logger.Log.Debugf("amount: %f\n", amount)
 		return fmt.Errorf("transfer amount can not be greater than allowed amount")
 	}
 	if spender[0] == owner[0] {
 		return fmt.Errorf("owner and spender can not be same account")
 	}
-	fmt.Printf("spender check")
+	logger.Log.Debugf("spender check")
 
 	err = RemoveUtxo(ctx, owner[0], amount)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("removed utxo")
+	logger.Log.Debugf("removed utxo")
 	if receiver == "0x0" {
 		return fmt.Errorf("transfer to the zero address")
 	}

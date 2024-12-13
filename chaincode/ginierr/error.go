@@ -55,3 +55,11 @@ func ErrInvalidAmount(amount string) *CustomError {
 func ErrIncorrectAddress(user string) *CustomError {
 	return New(fmt.Sprintf("%s address is not valid", user), http.StatusBadRequest)
 }
+
+func ErrFailedToDeleteState(e error) *CustomError {
+	return NewWithError(e, "failed to delete data from world state while removing UTXO", http.StatusInternalServerError)
+}
+
+func ErrFailedToPutState(e error) *CustomError {
+	return NewWithError(e, "failed to put data in world state while removing UTXO", http.StatusInternalServerError)
+}
