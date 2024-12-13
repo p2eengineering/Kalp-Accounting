@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
@@ -78,6 +79,16 @@ func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string,
 	}
 
 	return contractAddress, nil
+}
+
+// GetGatewayAdminAddress returns calling gateway admin's address
+func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) string {
+	return ""
+}
+
+// GetKalpFoundationAdminAddress returns calling kalp foundation admin's address
+func GetKalpFoundationAdminAddress(ctx kalpsdk.TransactionContextInterface) string {
+	return ""
 }
 
 // DenyAddress adds the given address to the denylist
@@ -709,4 +720,43 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 	}
 
 	return userRole.Role, nil
+}
+
+func IsValidAddress(address string) bool {
+	// return true
+	return IsHexAddress(address) || IsKalpAddress(address)
+}
+
+func IsKalpAddress(address string) bool {
+	// Check if the string starts with "klp-" and ends with "-cc"
+	if strings.HasPrefix(address, "klp-") && strings.HasSuffix(address, "-cc") {
+		return true
+	}
+	return false
+}
+
+func IsHexAddress(address string) bool {
+	// Check if the string is at least 40 characters hexadecimal
+	if len(address) >= 40 && isHexadecimal(address) {
+		return true
+	}
+	return false
+}
+
+// Helper function to check if a string is hexadecimal
+func isHexadecimal(input string) bool {
+	_, err := hex.DecodeString(input)
+	return err == nil
+}
+
+func IsAmountProper(amount string) bool {
+	// Parse the amount as a big.Int
+	bigAmount, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		// Return false if amount cannot be converted to big.Int
+		return false
+	}
+
+	// Check if the amount is less than 0
+	return bigAmount.Sign() < 0
 }

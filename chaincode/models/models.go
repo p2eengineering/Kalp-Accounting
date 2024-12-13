@@ -39,3 +39,7 @@ type TransferSingle struct {
 	ID       string      `json:"id"`
 	Value    interface{} `json:"value"`
 }
+
+type Account struct {
+	Recipient string `json:"recipient"`
+}

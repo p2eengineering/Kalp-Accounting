@@ -1,12 +1,15 @@
 package helper
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
 	"regexp"
 	"strings"
+
+	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
 func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
@@ -64,4 +67,20 @@ func FindContractAddress(data []byte) string {
 		return string(matches)
 	}
 	return ""
+}
+
+func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
+	b64ID, err := sdk.GetClientIdentity().GetID()
+	if err != nil {
+		return "", fmt.Errorf("failed to read clientID: %v", err)
+	}
+
+	decodeID, err := base64.StdEncoding.DecodeString(b64ID)
+	if err != nil {
+		return "", fmt.Errorf("failed to base64 decode clientID: %v", err)
+	}
+
+	completeId := string(decodeID)
+	userId := completeId[(strings.Index(completeId, "x509::CN=") + 9):strings.Index(completeId, ",")]
+	return userId, nil
 }
