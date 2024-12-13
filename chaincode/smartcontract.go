@@ -51,7 +51,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, ginierr.New("contract already initialized", http.StatusBadRequest)
 	}
 
-	if !internal.IsValidAddress(vestingContract) {
+	if !helper.IsValidAddress(vestingContract) {
 		return false, ginierr.ErrIncorrectAddress("vesting contract")
 	}
 
@@ -565,7 +565,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner
 	if owner == "" {
 		return "0", fmt.Errorf("invalid input account is required")
 	}
-	if !internal.IsValidAddress(owner) {
+	if !helper.IsValidAddress(owner) {
 		return "0", ginierr.ErrInvalidAddress
 	}
 	amt, err := internal.GetTotalUTXO(ctx, owner)
@@ -602,14 +602,14 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	logger.Log.Info("TransferFrom operation initiated")
 
 	// Determine if the call is from a contract
-	isContractRequest := internal.CheckCallerIsContract(ctx)
-	logger.Log.Info("IsContractRequest: ", isContractRequest)
+	callingContractAddress, err := internal.GetCallingContractAddress(ctx)
+	logger.Log.Info("callingContractAddress: ", callingContractAddress, err)
 
 	var spender, signer string
 	var e error
 
-	if isContractRequest {
-		spender = internal.GetCallingContractAddress(ctx)
+	if callingContractAddress != "" && err == nil {
+		spender = callingContractAddress
 		if signer, e = ctx.GetUserID(); e != nil {
 			err := ginierr.NewWithError(e, "error getting signer", http.StatusInternalServerError)
 			logger.Log.Error(err)
@@ -631,10 +631,10 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
-	if !internal.IsValidAddress(sender) {
+	if !helper.IsValidAddress(sender) {
 		return false, ginierr.ErrIncorrectAddress("sender")
 	}
-	if !internal.IsValidAddress(recipient) {
+	if !helper.IsValidAddress(recipient) {
 		return false, ginierr.ErrIncorrectAddress("recipient")
 	}
 

@@ -1,11 +1,11 @@
 package internal
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/logger"
 	"gini-contract/chaincode/models"
 	"math/big"
@@ -26,8 +26,58 @@ func CheckCallerIsContract(ctx kalpsdk.TransactionContextInterface) bool {
 }
 
 // GetCallingContractAddress returns calling contract's address
-func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) string {
-	return ""
+func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	signedProposal, e := ctx.GetSignedProposal()
+	if signedProposal == nil {
+		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return "", err
+	}
+	if e != nil {
+		err := ginierr.NewWithError(e, "error in getting signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return "", err
+	}
+
+	data := signedProposal.GetProposalBytes()
+	if data == nil {
+		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return "", err
+	}
+
+	proposal := &peer.Proposal{}
+	e = proto.Unmarshal(data, proposal)
+	if e != nil {
+		err := ginierr.NewWithError(e, "error in parsing signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return "", err
+	}
+
+	payload := &common.Payload{}
+	e = proto.Unmarshal(proposal.Payload, payload)
+	if e != nil {
+		err := ginierr.NewWithError(e, "error in parsing payload", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return "", err
+	}
+
+	paystring := payload.GetHeader().GetChannelHeader()
+	if len(paystring) == 0 {
+		err := ginierr.New("channel header is empty", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return "", err
+	}
+
+	logger.Log.Debug("Calling contract address:", paystring)
+	contractAddress := helper.FindContractAddress(paystring)
+	if contractAddress == "" {
+		err := ginierr.New("contract address not found", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return "", err
+	}
+
+	return contractAddress, nil
 }
 
 // DenyAddress adds the given address to the denylist
@@ -659,31 +709,4 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 	}
 
 	return userRole.Role, nil
-}
-
-func IsValidAddress(address string) bool {
-	// return true
-	return IsHexAddress(address) || IsKalpAddress(address)
-}
-
-func IsKalpAddress(address string) bool {
-	// Check if the string starts with "klp-" and ends with "-cc"
-	if strings.HasPrefix(address, "klp-") && strings.HasSuffix(address, "-cc") {
-		return true
-	}
-	return false
-}
-
-func IsHexAddress(address string) bool {
-	// Check if the string is at least 40 characters hexadecimal
-	if len(address) >= 40 && isHexadecimal(address) {
-		return true
-	}
-	return false
-}
-
-// Helper function to check if a string is hexadecimal
-func isHexadecimal(input string) bool {
-	_, err := hex.DecodeString(input)
-	return err == nil
 }
