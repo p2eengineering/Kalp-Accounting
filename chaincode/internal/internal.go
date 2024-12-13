@@ -83,12 +83,12 @@ func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string,
 
 // GetGatewayAdminAddress returns calling gateway admin's address
 func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) string {
-	return ""
+	return constants.KalpGateWayAdminAddress
 }
 
 // GetKalpFoundationAdminAddress returns calling kalp foundation admin's address
 func GetKalpFoundationAdminAddress(ctx kalpsdk.TransactionContextInterface) string {
-	return ""
+	return constants.KalpFoundationAddress
 }
 
 // DenyAddress adds the given address to the denylist

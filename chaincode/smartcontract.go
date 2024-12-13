@@ -642,7 +642,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	var e error
 
 	if isContractRequest {
-		spender = internal.GetCallingContractAddress(ctx)
+		spender, e = internal.GetCallingContractAddress(ctx)
 	} else {
 		if spender, e = ctx.GetUserID(); e != nil {
 			err := ginierr.NewWithError(e, "error getting signer", http.StatusInternalServerError)
