@@ -16,7 +16,7 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 	case int64:
 		return big.NewInt(v), nil
 	case *big.Int:
-		return v, nil
+		return new(big.Int).Set(v), nil
 	default:
 		return nil, fmt.Errorf("unsupported type: %s", reflect.TypeOf(value))
 	}
