@@ -408,46 +408,60 @@ func Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender st
 }
 
 func UpdateAllowance(ctx kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
-	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{owner, spender})
-	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
+	approvalKey, e := ctx.CreateCompositeKey(constants.Approval, []string{owner, spender})
+	if e != nil {
+		err := ginierr.ErrCreatingCompositeKey(e)
+		logger.Log.Error(err)
+		return err
+
 	}
 	// Get the current balance of the owner
-	approvalByte, err := ctx.GetState(approvalKey)
-	if err != nil {
-		return fmt.Errorf("failed to read current balance of owner with address %s and account address %s from world state: %v", owner, spender, err)
+	approvalByte, e := ctx.GetState(approvalKey)
+	if e != nil {
+		err := ginierr.ErrFailedToGetState(e)
+		logger.Log.Error(err)
+		return err
 	}
 	var approval models.Allow
 	if approvalByte != nil {
-		err = json.Unmarshal(approvalByte, &approval)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", owner, spender, err)
+		if e := json.Unmarshal(approvalByte, &approval); e != nil {
+			return fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", owner, spender, e)
 		}
-		approvalAmount, s := big.NewInt(0).SetString(approval.Amount, 10)
-		if !s {
-			return fmt.Errorf("failed to convert approvalAmount to big int")
+		approvalAmount, ok := big.NewInt(0).SetString(approval.Amount, 10)
+		if !ok {
+			err := ginierr.ErrConvertingStringToBigInt(approval.Amount)
+			logger.Log.Error(err)
+			return err
 		}
-		amountSpent, s := big.NewInt(0).SetString(spent, 10)
-		if !s {
-			return fmt.Errorf("failed to convert approvalAmount to big int")
+		amountSpent, ok := big.NewInt(0).SetString(spent, 10)
+		if !ok {
+			err := ginierr.ErrConvertingStringToBigInt(spent)
+			logger.Log.Error(err)
+			return err
 		}
 		if amountSpent.Cmp(approvalAmount) == 1 { // amountToAdd > approvalAmount {
-			return fmt.Errorf("failed to convert approvalAmount to float64")
+			err := ginierr.New("amount spent cannot be greater than allowance", http.StatusInternalServerError)
+			logger.Log.Error(err)
+			return err
 		}
 		approval.Amount = fmt.Sprint(approvalAmount.Sub(approvalAmount, amountSpent))
 	}
-	approvalJSON, err := json.Marshal(approval)
-	if err != nil {
-		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+	approvalJSON, e := json.Marshal(approval)
+	if e != nil {
+		err := ginierr.NewWithError(e, "failed to marshal approval data", http.StatusInternalServerError)
+		logger.Log.Error(err)
+		return err
 	}
 	// Update the state of the smart contract by adding the allowanceKey and value
-	err = ctx.PutStateWithoutKYC(approvalKey, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to update state of smart contract for key %s: %v", approvalKey, err)
+	if e = ctx.PutStateWithoutKYC(approvalKey, approvalJSON); e != nil {
+		err := ginierr.ErrFailedToPutState(e)
+		logger.Log.Error(err)
+		return err
 	}
-	err = ctx.SetEvent(constants.Approval, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
+	if e := ctx.SetEvent(constants.Approval, approvalJSON); e != nil {
+		err := ginierr.ErrFailedToSetEvent(e, constants.Approval)
+		logger.Log.Error(err)
+		return err
 	}
 	return nil
 }
@@ -513,7 +527,7 @@ func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, s
 	return EmitTransferSingle(ctx, transferSingleEvent)
 }
 
-func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role string) (bool, *ginierr.CustomError) {
+func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role string) (bool, error) {
 	userRole := models.UserRole{
 		Id:      id,
 		Role:    role,

@@ -57,9 +57,25 @@ func ErrIncorrectAddress(user string) *CustomError {
 }
 
 func ErrFailedToDeleteState(e error) *CustomError {
-	return NewWithError(e, "failed to delete data from world state while removing UTXO", http.StatusInternalServerError)
+	return NewWithError(e, "failed to delete data from world state", http.StatusInternalServerError)
 }
 
 func ErrFailedToPutState(e error) *CustomError {
-	return NewWithError(e, "failed to put data in world state while removing UTXO", http.StatusInternalServerError)
+	return NewWithError(e, "failed to put data in world state", http.StatusInternalServerError)
+}
+
+func ErrFailedToGetState(e error) *CustomError {
+	return NewWithError(e, "failed to get data from world state", http.StatusInternalServerError)
+}
+
+func ErrCreatingCompositeKey(e error) *CustomError {
+	return NewWithError(e, "failed to create the composite key", http.StatusInternalServerError)
+}
+
+func ErrFailedToSetEvent(e error, event string) *CustomError {
+	return NewWithError(e, "failed to set event: "+event, http.StatusInternalServerError)
+}
+
+func ErrConvertingStringToBigInt(number string) *CustomError {
+	return New(fmt.Sprintf("failed to covert number %s to big int", number), http.StatusInternalServerError)
 }
