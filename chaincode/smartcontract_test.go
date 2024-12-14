@@ -7,9 +7,11 @@ import (
 	"gini-contract/chaincode/internal"
 	"gini-contract/chaincode/mocks"
 	"math/big"
+	"math/rand"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
@@ -124,9 +126,19 @@ func TestCase1(t *testing.T) {
 		}
 		return nil, nil
 	}
-	transactionContext.DelStateWithKYCStub = func(s string) error {
+	transactionContext.DelStateWithoutKYCStub = func(s string) error {
 		delete(worldState, s)
 		return nil
+	}
+	transactionContext.GetTxIDStub = func() string {
+		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+		length := 10
+		rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+		result := make([]byte, length)
+		for i := range result {
+			result[i] = charset[rand.Intn(len(charset))]
+		}
+		return string(result)
 	}
 	// ****************END define helper functions*********************
 
@@ -143,6 +155,14 @@ func TestCase1(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
+
+	balance, err := giniContract.BalanceOf(transactionContext, admin)
+	require.NoError(t, err)
+	require.Equal(t, constants.InitialFoundationBalance, balance)
+
+	balance, err = giniContract.BalanceOf(transactionContext, "klp-6b616c70627269646775-cc")
+	require.NoError(t, err)
+	require.Equal(t, constants.InitialVestingContractBalance, balance)
 
 	// Approve
 	// admin approves userM 100
@@ -167,9 +187,9 @@ func TestCase1(t *testing.T) {
 	// Checking balances for admin, userM, userC
 	// Test case 3: Check Balance
 
-	balance, err := giniContract.BalanceOf(transactionContext, userM)
+	balance, err = giniContract.BalanceOf(transactionContext, userM)
 	require.NoError(t, err)
-	require.Equal(t, "400", balance)
+	require.Equal(t, "0", balance)
 
 	balance, err = giniContract.BalanceOf(transactionContext, userC)
 	require.NoError(t, err)
@@ -177,5 +197,5 @@ func TestCase1(t *testing.T) {
 
 	balance, err = giniContract.BalanceOf(transactionContext, admin)
 	require.NoError(t, err)
-	require.Equal(t, "400", balance)
+	require.Equal(t, "11200000000999999999999900", balance)
 }
