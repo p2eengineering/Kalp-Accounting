@@ -450,12 +450,15 @@ func Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender st
 			return "", fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", owner, spender, err)
 		}
 	}
+	if approval.Amount == "" {
+		return "0", nil
+	}
 
 	return approval.Amount, nil
 }
 
 func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
-	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
+	approvalKey, err := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
 	}
@@ -492,7 +495,7 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 	if err != nil {
 		return fmt.Errorf("failed to update state of smart contract for key %s: %v", approvalKey, err)
 	}
-	err = sdk.SetEvent("Approval", approvalJSON)
+	err = sdk.SetEvent(constants.Approval, approvalJSON)
 	if err != nil {
 		return fmt.Errorf("failed to set event: %v", err)
 	}
@@ -730,5 +733,5 @@ func IsAmountProper(amount string) bool {
 	}
 
 	// Check if the amount is less than 0
-	return bigAmount.Sign() > 0
+	return bigAmount.Sign() >= 0
 }

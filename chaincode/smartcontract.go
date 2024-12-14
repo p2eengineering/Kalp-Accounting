@@ -952,7 +952,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 
 	// Allowance check
 	if allowance.Cmp(amount) < 0 {
-		return false, ginierr.New("insufficient allowance for spender's account for the sender", http.StatusBadRequest)
+		return false, ginierr.New("insufficient allowance for spender's account for the sender", http.StatusForbidden)
 	}
 
 	// Transfer logic with UTXO updates
