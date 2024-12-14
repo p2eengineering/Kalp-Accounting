@@ -2,7 +2,6 @@ package helper
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -31,30 +30,28 @@ func IsValidAddress(address string) bool {
 }
 
 func IsContractAddress(address string) bool {
-	// Check if the string starts with "klp-" and ends with "-cc"
-	if strings.HasPrefix(address, "klp-") && strings.HasSuffix(address, "-cc") {
-		return true
+	// Example validation logic (you can modify this to fit your use case)
+	if address == "" {
+		return false
 	}
-	return false
+	// Assuming contract addresses should start with "0x" and have 42 characters
+	isValid, _ := regexp.MatchString(`^klp.*cc$`, address)
+	return isValid
 }
 
 func IsHexAddress(address string) bool {
-	// Check if the string is at least 40 characters hexadecimal
-	if len(address) >= 40 && isHexadecimal(address) {
-		return true
+	// Example validation logic (you can modify this to fit your use case)
+	if address == "" {
+		return false
 	}
-	return false
-}
-
-// Helper function to check if a string is hexadecimal
-func isHexadecimal(input string) bool {
-	_, err := hex.DecodeString(input)
-	return err == nil
+	// Assuming user addresses have the same structure as contract addresses
+	isValid, _ := regexp.MatchString(`^0x[0-9a-fA-F]{40}$`, address)
+	return isValid
 }
 
 func FindContractAddress(data []byte) string {
 	// Define the regex pattern
-	pattern := `kpl-.*?-cc`
+	pattern := `klp-.*?-cc`
 
 	// Compile the regex
 	re := regexp.MustCompile(pattern)

@@ -22,8 +22,5 @@ const (
 	Denied                        = "Denied"
 	Approved                      = "Approved"
 	VestingContractKey            = "vestingContract"
-
-	// TODO: remove unused constants later
-	BridgeContractAddress = "0"
-	GasFeesAdminRole      = "gasFeesAdminRole"
+	BridgeContractAddress         = "klp-6b616c70627269646765-cc"
 )

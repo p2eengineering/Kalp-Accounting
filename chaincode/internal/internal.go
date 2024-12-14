@@ -619,7 +619,7 @@ func SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string,
 		return "", fmt.Errorf("role can not be null")
 	}
 
-	ValidRoles := []string{constants.KalpFoundationRole, constants.GasFeesAdminRole, constants.KalpGateWayAdminRole}
+	ValidRoles := []string{constants.KalpFoundationRole, constants.KalpGateWayAdminRole}
 	if !slices.Contains(ValidRoles, userRole.Role) {
 		return "", fmt.Errorf("invalid input role")
 	}

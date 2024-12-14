@@ -35,15 +35,12 @@ func NewWithError(err error, message string, statusCode int) *CustomError {
 }
 
 var (
-	// ErrFailedToGetClientID = NewGiniError(http.StatusInternalServerError, "failed to get client id")
-	ErrFailedToGetClientID     = New("failed to get client id", http.StatusInternalServerError)
+	ErrFailedToGetClientID     = New("failed to get public address", http.StatusInternalServerError)
 	ErrOnlyFoundationHasAccess = New("only kalp foundation has access to perform this action", http.StatusUnauthorized)
-	ErrFailedToGetName         = New("failed to get state name", http.StatusInternalServerError)
-	ErrFailedToGetSymbol       = New("failed to get state symbol", http.StatusInternalServerError)
+	ErrFailedToGetName         = New("failed to get name", http.StatusInternalServerError)
+	ErrFailedToGetSymbol       = New("failed to get symbol", http.StatusInternalServerError)
 	ErrInitializingRoles       = New("error while initializing roles", http.StatusInternalServerError)
-	ErrMinitingTokens          = New("error while minting", http.StatusInternalServerError)
-	ErrAlreadyAllowed          = New("address already allowed", http.StatusBadRequest)
-	ErrAlreadyDenied           = New("address already denied", http.StatusBadRequest)
+	ErrMinitingTokens          = New("error while minting tokens", http.StatusInternalServerError)
 	ErrFailedToEmitEvent       = New("failed to emit event", http.StatusInternalServerError)
 	ErrInvalidAddress          = New("invalid address", http.StatusBadRequest)
 )
@@ -78,4 +75,16 @@ func ErrFailedToSetEvent(e error, event string) *CustomError {
 
 func ErrConvertingStringToBigInt(number string) *CustomError {
 	return New(fmt.Sprintf("failed to covert number %s to big int", number), http.StatusInternalServerError)
+}
+
+func AlreadyDenied(address string) *CustomError {
+	return New(fmt.Sprintf("AlreadyDenied : address : %s ", address), http.StatusConflict)
+}
+
+func NotDenied(address string) *CustomError {
+	return New(fmt.Sprintf("NotDenied : address : %s ", address), http.StatusConflict)
+}
+
+func DeniedAddress(address string) *CustomError {
+	return New(fmt.Sprintf("DeniedAddress : address : %s ", address), http.StatusForbidden)
 }

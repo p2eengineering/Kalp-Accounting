@@ -1,9 +1,9 @@
 # Gini Contract
 
 ## TODOs
-- TODO: remove unused constants later
 - TODO: call intialize for vesting contract address
-- TODO: Ask if FoundationAdmin or GatewayAdmin can be denied
+- TODO: Do we need to take bridge contract address as input in initialize
+- TODO: use deny list in transferFrom
 
 ## RemoveUtxo Implementation
 ```go

@@ -131,7 +131,7 @@ func (s *SmartContract) Allow(ctx kalpsdk.TransactionContextInterface, address s
 	if denied, err := internal.IsDenied(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error checking if address already allowed: %v", http.StatusInternalServerError, err)
 	} else if !denied {
-		return ginierr.ErrAlreadyAllowed
+		return ginierr.NotDenied(address)
 	}
 
 	if err := internal.AllowAddress(ctx, address); err != nil {
@@ -151,11 +151,13 @@ func (s *SmartContract) Deny(ctx kalpsdk.TransactionContextInterface, address st
 	if signer != constants.KalpFoundationAddress {
 		return ginierr.ErrOnlyFoundationHasAccess
 	}
-	// TODO: Ask if FoundationAdmin or GatewayAdmin can be denied
+	if address == constants.KalpFoundationAddress {
+		return ginierr.New("admin cannot be denied", http.StatusBadRequest)
+	}
 	if denied, err := internal.IsDenied(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error checking if address already denied: %v", http.StatusInternalServerError, err)
 	} else if denied {
-		return ginierr.ErrAlreadyDenied
+		return ginierr.AlreadyDenied(address)
 	}
 	if err := internal.DenyAddress(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error denying address: %v", http.StatusInternalServerError, err)
@@ -218,9 +220,9 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 		return fmt.Errorf("error checking operator's role: %v", err)
 	}
 	logger.Log.Infof("useRole: %s\n", userRole)
-	if userRole != constants.GasFeesAdminRole {
-		return fmt.Errorf("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError)
-	}
+	// if userRole != constants.GasFeesAdminRole {
+	// 	return fmt.Errorf("error with status code %v, error: only gas fees admin is allowed to update gas fees", http.StatusInternalServerError)
+	// }
 	err = ctx.PutStateWithoutKYC(constants.GasFeesKey, []byte(gasFees))
 	if err != nil {
 		return fmt.Errorf("failed to set gasfees: %v", err)
