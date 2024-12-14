@@ -616,7 +616,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, value string) (bool, error) {
 	logger.Log.Info("Transfer operation initiated")
 
-	signer, err := helper.GetUserId(ctx)
+	signer, err := ctx.GetUserID()
 	if err != nil {
 		err := ginierr.NewWithError(err, "error getting signer", http.StatusInternalServerError)
 		logger.Log.Error(err)

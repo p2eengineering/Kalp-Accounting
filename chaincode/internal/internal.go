@@ -730,5 +730,5 @@ func IsAmountProper(amount string) bool {
 	}
 
 	// Check if the amount is less than 0
-	return bigAmount.Sign() < 0
+	return bigAmount.Sign() > 0
 }
