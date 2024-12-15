@@ -881,30 +881,24 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	}
 
 	// Ensure KYC compliance
-	if kycSender, e := ctx.GetKYC(sender); e != nil {
+	var kycSender, kycSpender, kycSigner bool
+	if kycSender, e = ctx.GetKYC(sender); e != nil {
 		err := ginierr.NewWithError(e, "error fetching KYC for sender", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
-	} else if !kycSender {
-		err := ginierr.New("sender is not KYCed", http.StatusForbidden)
-		logger.Log.Error(err.FullError())
-		return false, err
 	}
-	if kycSpender, e := ctx.GetKYC(spender); e != nil {
+	if kycSpender, e = ctx.GetKYC(spender); e != nil {
 		err := ginierr.NewWithError(e, "error fetching KYC for spender", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
-	} else if !kycSpender {
-		err := ginierr.New("spender is not KYCed", http.StatusForbidden)
-		logger.Log.Error(err.FullError())
-		return false, err
 	}
-	if kycSigner, e := ctx.GetKYC(signer); e != nil {
+	if kycSigner, e = ctx.GetKYC(signer); e != nil {
 		err := ginierr.NewWithError(e, "error fetching KYC for signer", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
-	} else if !kycSigner {
-		err := ginierr.New("signer is not KYCed", http.StatusForbidden)
+	}
+	if !(kycSender || kycSpender || kycSigner) {
+		err := ginierr.New("sender, spender AND signer is not KYCed", http.StatusForbidden)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
