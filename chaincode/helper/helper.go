@@ -45,7 +45,7 @@ func IsHexAddress(address string) bool {
 		return false
 	}
 	// Assuming user addresses have the same structure as contract addresses
-	isValid, _ := regexp.MatchString(`^0x[0-9a-fA-F]{40}$`, address)
+	isValid, _ := regexp.MatchString(`^[0-9a-fA-F]{40}$`, address)
 	return isValid
 }
 

@@ -21,13 +21,15 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+var GetCallingContractAddress = getCallingContractAddressHelper
+
 // CheckCallerIsContract checks if the caller is a contract
 func CheckCallerIsContract(ctx kalpsdk.TransactionContextInterface) bool {
 	return true
 }
 
 // GetCallingContractAddress returns calling contract's address
-func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
+func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	signedProposal, e := ctx.GetSignedProposal()
 	if signedProposal == nil {
 		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
@@ -46,7 +48,6 @@ func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface) (string,
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
-
 	proposal := &peer.Proposal{}
 	e = proto.Unmarshal(data, proposal)
 	if e != nil {
