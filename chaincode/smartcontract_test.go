@@ -38,7 +38,7 @@ type stateQueryIterator interface {
 }
 
 func TestInitLedger(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 
 	giniContract := chaincode.SmartContract{}
@@ -49,7 +49,7 @@ func TestInitLedger(t *testing.T) {
 }
 
 func TestInitialize(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 
 	giniContract := chaincode.SmartContract{}
@@ -63,7 +63,7 @@ func TestInitialize(t *testing.T) {
 	require.Equal(t, true, ok)
 }
 func TestCase1(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
@@ -225,7 +225,7 @@ func TestCase1(t *testing.T) {
 }
 
 func TestCase2(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
@@ -381,7 +381,7 @@ func TestCase2(t *testing.T) {
 }
 
 func TestCase3(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
@@ -543,7 +543,7 @@ func TestCase3(t *testing.T) {
 }
 
 func TestCase4(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
@@ -705,7 +705,7 @@ func TestCase4(t *testing.T) {
 }
 
 func TestCase5(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
@@ -867,7 +867,7 @@ func TestCase5(t *testing.T) {
 }
 
 func TestCase7(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
@@ -1029,7 +1029,7 @@ func TestCase7(t *testing.T) {
 }
 
 func TestCase8(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
@@ -1191,7 +1191,7 @@ func TestCase8(t *testing.T) {
 }
 
 func TestCase9(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
@@ -1359,7 +1359,7 @@ func TestCase9(t *testing.T) {
 }
 
 func TestCase10(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
 
