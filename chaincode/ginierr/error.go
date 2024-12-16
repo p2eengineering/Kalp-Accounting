@@ -26,7 +26,7 @@ func New(message string, statusCode int) *CustomError {
 	}
 }
 
-func NewWithError(err error, message string, statusCode int) *CustomError {
+func NewWithInternalError(err error, message string, statusCode int) *CustomError {
 	return &CustomError{
 		StatusCode:  statusCode,
 		Message:     message,
@@ -54,23 +54,23 @@ func ErrIncorrectAddress(user string) *CustomError {
 }
 
 func ErrFailedToDeleteState(e error) *CustomError {
-	return NewWithError(e, "failed to delete data from world state", http.StatusInternalServerError)
+	return NewWithInternalError(e, "failed to delete data from world state", http.StatusInternalServerError)
 }
 
 func ErrFailedToPutState(e error) *CustomError {
-	return NewWithError(e, "failed to put data in world state", http.StatusInternalServerError)
+	return NewWithInternalError(e, "failed to put data in world state", http.StatusInternalServerError)
 }
 
 func ErrFailedToGetState(e error) *CustomError {
-	return NewWithError(e, "failed to get data from world state", http.StatusInternalServerError)
+	return NewWithInternalError(e, "failed to get data from world state", http.StatusInternalServerError)
 }
 
 func ErrCreatingCompositeKey(e error) *CustomError {
-	return NewWithError(e, "failed to create the composite key", http.StatusInternalServerError)
+	return NewWithInternalError(e, "failed to create the composite key", http.StatusInternalServerError)
 }
 
 func ErrFailedToSetEvent(e error, event string) *CustomError {
-	return NewWithError(e, "failed to set event: "+event, http.StatusInternalServerError)
+	return NewWithInternalError(e, "failed to set event: "+event, http.StatusInternalServerError)
 }
 
 func ErrConvertingStringToBigInt(number string) *CustomError {

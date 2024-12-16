@@ -57,14 +57,14 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 
 	// Checking if kalp foundation & gateway admin are KYC'd
 	if kyced, e := ctx.GetKYC(constants.KalpFoundationAddress); e != nil {
-		err := ginierr.NewWithError(e, "Error fetching KYC status of foundation", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "Error fetching KYC status of foundation", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	} else if !kyced {
 		return false, ginierr.New("Foundation is not KYC'd", http.StatusBadRequest)
 	}
 	if kyced, e := ctx.GetKYC(constants.KalpGateWayAdminAddress); e != nil {
-		err := ginierr.NewWithError(e, "Error fetching KYC status of Gateway Admin", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "Error fetching KYC status of Gateway Admin", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	} else if !kyced {
@@ -93,22 +93,22 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 
 	// storing name, symbol and initial gas fees
 	if e := ctx.PutStateWithoutKYC(constants.NameKey, []byte(name)); e != nil {
-		err := ginierr.NewWithError(e, "failed to set token name", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to set token name", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(constants.SymbolKey, []byte(symbol)); e != nil {
-		err := ginierr.NewWithError(e, "failed to set symbol", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to set symbol", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(constants.GasFeesKey, []byte(constants.InitialGasFees)); e != nil {
-		err := ginierr.NewWithError(e, "failed to set gas fees", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to set gas fees", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(constants.VestingContractKey, []byte(vestingContract)); e != nil {
-		err := ginierr.NewWithError(e, "failed to set vesting Contract", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to set vesting Contract", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
@@ -613,8 +613,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 
 	signer, err := ctx.GetUserID()
 	if err != nil {
-		err := ginierr.NewWithError(err, "error getting signer", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		err := ginierr.NewWithInternalError(err, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
 		return false, err
 	}
 
@@ -640,8 +640,8 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		spender, e = internal.GetCallingContractAddress(ctx)
 	} else {
 		if spender, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewWithError(e, "error getting signer", http.StatusInternalServerError)
-			logger.Log.Error(err)
+			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
+			logger.Log.Error(err.FullError())
 			return false, err
 		}
 		signer = spender
@@ -676,22 +676,22 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	}
 
 	if kycSender, e := ctx.GetKYC(sender); e != nil {
-		err := ginierr.NewWithError(e, "error fetching KYC for sender", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		err := ginierr.NewWithInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
 		return false, err
 	} else if !kycSender {
 		err := ginierr.New("sender is not KYCed", http.StatusForbidden)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return false, err
 	}
 
 	if kycSigner, e := ctx.GetKYC(signer); e != nil {
-		err := ginierr.NewWithError(e, "error fetching KYC for signer", http.StatusInternalServerError)
-		logger.Log.Error(err)
+		err := ginierr.NewWithInternalError(e, "error fetching KYC for signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
 		return false, err
 	} else if !kycSigner {
 		err := ginierr.New("signer is not KYCed", http.StatusForbidden)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return false, err
 	}
 
@@ -844,13 +844,13 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		}
 		spender = callingContractAddress
 		if signer, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewWithError(e, "error getting signer", http.StatusInternalServerError)
+			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}
 	} else {
 		if spender, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewWithError(e, "error getting signer", http.StatusInternalServerError)
+			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}
@@ -904,17 +904,17 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	// Ensure KYC compliance
 	var kycSender, kycSpender, kycSigner bool
 	if kycSender, e = ctx.GetKYC(sender); e != nil {
-		err := ginierr.NewWithError(e, "error fetching KYC for sender", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
 	if kycSpender, e = ctx.GetKYC(spender); e != nil {
-		err := ginierr.NewWithError(e, "error fetching KYC for spender", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "error fetching KYC for spender", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
 	if kycSigner, e = ctx.GetKYC(signer); e != nil {
-		err := ginierr.NewWithError(e, "error fetching KYC for signer", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "error fetching KYC for signer", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
@@ -1176,7 +1176,7 @@ func (s *SmartContract) GetBridgeContract(ctx kalpsdk.TransactionContextInterfac
 	bytes, e := ctx.GetState(constants.BridgeContractKey)
 	if e != nil {
 		err := ginierr.ErrFailedToGetState(e)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 	return string(bytes), nil
@@ -1194,7 +1194,7 @@ func (s *SmartContract) SetBridgeContract(ctx kalpsdk.TransactionContextInterfac
 	e := ctx.PutStateWithoutKYC(constants.BridgeContractKey, []byte(contract))
 	if e != nil {
 		err := ginierr.ErrFailedToGetState(e)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return err
 	}
 	return nil
@@ -1204,7 +1204,7 @@ func (s *SmartContract) GetVestingContract(ctx kalpsdk.TransactionContextInterfa
 	bytes, e := ctx.GetState(constants.VestingContractKey)
 	if e != nil {
 		err := ginierr.ErrFailedToGetState(e)
-		logger.Log.Error(err)
+		logger.Log.Error(err.FullError())
 		return "", err
 	}
 	return string(bytes), nil

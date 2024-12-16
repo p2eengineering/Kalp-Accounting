@@ -7,6 +7,7 @@
 - Emit event after Update Allowance?
 - Setting roles in intialize for Foundation admin and gateway admin but its not getting used
 - Write setter getter for UserRole struct if we are going to use it
+- Can a valid Transfer or TransferFrom request have amount = 0?
 
 ## RemoveUtxo Implementation
 ```go
@@ -15,7 +16,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountV
 
 	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
 	if e != nil {
-		err := ginierr.NewWithError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -24,7 +25,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountV
 	logger.Log.Debugf("queryString: %s\n", queryString)
 	resultsIterator, e := ctx.GetQueryResult(queryString)
 	if e != nil {
-		err := ginierr.NewWithError(e, "error creating iterator while removing UTXO", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "error creating iterator while removing UTXO", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -40,7 +41,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountV
 		logger.Log.Debugf("query key %s\n", queryResult.Key)
 
 		if e := json.Unmarshal(queryResult.Value, &u); e != nil {
-			err := ginierr.NewWithError(e, "failed to unmarshal UTXO data while removing UTXO", http.StatusInternalServerError)
+			err := ginierr.NewWithInternalError(e, "failed to unmarshal UTXO data while removing UTXO", http.StatusInternalServerError)
 			logger.Log.Error(err.FullError())
 			return err
 		}
@@ -92,7 +93,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountV
 			}
 			utxoJSON, e := json.Marshal(utxo)
 			if e != nil {
-				err := ginierr.NewWithError(e, "failed to marshal UTXO data while removing UTXO", http.StatusInternalServerError)
+				err := ginierr.NewWithInternalError(e, "failed to marshal UTXO data while removing UTXO", http.StatusInternalServerError)
 				logger.Log.Error(err.FullError())
 				return err
 			}
@@ -117,7 +118,7 @@ func AddUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountVal 
 
 	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
 	if e != nil {
-		err := ginierr.NewWithError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -132,7 +133,7 @@ func AddUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountVal 
 
 	utxoJSON, e := json.Marshal(utxo)
 	if e != nil {
-		err := ginierr.NewWithError(e, "failed to marshal UTXO data while adding UTXO", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to marshal UTXO data while adding UTXO", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -191,7 +192,7 @@ func UpdateAllowance(ctx kalpsdk.TransactionContextInterface, owner string, spen
 	}
 	approvalJSON, e := json.Marshal(approval)
 	if e != nil {
-		err := ginierr.NewWithError(e, "failed to marshal approval data", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to marshal approval data", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}

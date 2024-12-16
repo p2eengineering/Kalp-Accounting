@@ -36,7 +36,7 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 		return "", err
 	}
 	if e != nil {
-		err := ginierr.NewWithError(e, "error in getting signed proposal", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "error in getting signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -50,7 +50,7 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 	proposal := &peer.Proposal{}
 	e = proto.Unmarshal(data, proposal)
 	if e != nil {
-		err := ginierr.NewWithError(e, "error in parsing signed proposal", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "error in parsing signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -58,7 +58,7 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
 	if e != nil {
-		err := ginierr.NewWithError(e, "error in parsing payload", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "error in parsing payload", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -508,18 +508,18 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	}
 	roleJson, e := json.Marshal(userRole)
 	if e != nil {
-		err := ginierr.NewWithError(e, "error in marshaling user role", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "error in marshaling user role", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if e != nil {
-		err := ginierr.NewWithError(e, "failed to create the composite key for user role", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to create the composite key for user role", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(key, roleJson); e != nil {
-		err := ginierr.NewWithError(e, "unable to put user role struct in statedb", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "unable to put user role struct in statedb", http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
