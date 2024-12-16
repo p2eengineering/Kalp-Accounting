@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
@@ -395,69 +394,6 @@ func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (stri
 	return amt.String(), nil
 }
 
-func Approve(ctx kalpsdk.TransactionContextInterface, spender string, amount string) error {
-	// Emit the Approval event
-	owner, err := ctx.GetUserID()
-	if err != nil {
-		return ginierr.ErrFailedToGetClientID
-	}
-
-	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{owner, spender})
-	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
-	}
-
-	var approval = models.Allow{
-		Owner:   owner,
-		Amount:  amount,
-		DocType: constants.Allowance,
-		Spender: spender,
-	}
-	approvalJSON, err := json.Marshal(approval)
-	if err != nil {
-		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
-	}
-	// Update the state of the smart contract by adding the allowanceKey and value
-	err = ctx.PutStateWithoutKYC(approvalKey, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to update state of smart contract for key %s: %v", ctx.GetTxID(), err)
-	}
-
-	err = ctx.SetEvent(constants.Approval, approvalJSON)
-	if err != nil {
-		return ginierr.ErrFailedToEmitEvent
-	}
-
-	logger.Log.Debugf("client %s approved a withdrawal allowance of %s for spender %s", owner, amount, spender)
-
-	return nil
-}
-
-// Allowance returns the amount still available for the spender to withdraw from the owner
-func Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
-	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{owner, spender})
-	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
-	}
-	// Get the current balance of the owner
-	approvalByte, err := ctx.GetState(approvalKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to read current balance of owner with address %s and account address %s from world state: %v", owner, spender, err)
-	}
-	var approval models.Allow
-	if approvalByte != nil {
-		err = json.Unmarshal(approvalByte, &approval)
-		if err != nil {
-			return "", fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", owner, spender, err)
-		}
-	}
-	if approval.Amount == "" {
-		return "0", nil
-	}
-
-	return approval.Amount, nil
-}
-
 func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
 	approvalKey, err := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
 	if err != nil {
@@ -512,7 +448,7 @@ func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, s
 	}
 	logger.Log.Debugf("owner: %v\n", owner[0])
 	logger.Log.Debugf("spender: %v\n", spender[0])
-	approved, err := Allowance(ctx, owner[0], spender[0])
+	approved, err := models.GetAllowance(ctx, owner[0], spender[0])
 	if err != nil {
 		return fmt.Errorf("error in getting allowance: %v", err)
 	}
@@ -696,33 +632,6 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 	}
 
 	return userRole.Role, nil
-}
-
-func IsValidAddress(address string) bool {
-	// return true
-	return IsHexAddress(address) || IsKalpAddress(address)
-}
-
-func IsKalpAddress(address string) bool {
-	// Check if the string starts with "klp-" and ends with "-cc"
-	if strings.HasPrefix(address, "klp-") && strings.HasSuffix(address, "-cc") {
-		return true
-	}
-	return false
-}
-
-func IsHexAddress(address string) bool {
-	// Check if the string is at least 40 characters hexadecimal
-	if len(address) >= 40 && isHexadecimal(address) {
-		return true
-	}
-	return false
-}
-
-// Helper function to check if a string is hexadecimal
-func isHexadecimal(input string) bool {
-	_, err := hex.DecodeString(input)
-	return err == nil
 }
 
 func IsAmountProper(amount string) bool {

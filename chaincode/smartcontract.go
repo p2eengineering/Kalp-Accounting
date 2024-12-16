@@ -112,6 +112,9 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
+	if err := s.SetBridgeContract(ctx, constants.InitialBridgeContractAddress); err != nil {
+		return false, err
+	}
 	logger.Log.Infoln("Initializing complete")
 	return true, nil
 }
@@ -177,16 +180,6 @@ func (s *SmartContract) Symbol(ctx kalpsdk.TransactionContextInterface) (string,
 	bytes, err := ctx.GetState(constants.SymbolKey)
 	if err != nil {
 		return "", ginierr.ErrFailedToGetSymbol
-	}
-	return string(bytes), nil
-}
-
-func (s *SmartContract) vestingContract(ctx kalpsdk.TransactionContextInterface) (string, error) {
-	bytes, e := ctx.GetState(constants.VestingContractKey)
-	if e != nil {
-		err := ginierr.ErrFailedToGetState(e)
-		logger.Log.Error(err)
-		return "", err
 	}
 	return string(bytes), nil
 }
@@ -608,7 +601,7 @@ func (s *SmartContract) balance(ctx kalpsdk.TransactionContextInterface, owner s
 
 func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, value string) (bool, error) {
 
-	if err := internal.Approve(ctx, spender, value); err != nil {
+	if err := models.SetAllowance(ctx, spender, value); err != nil {
 		logger.Log.Infof("error unable to approve funds: %v\n", err)
 		return false, err
 	}
@@ -674,9 +667,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
-	if !internal.IsValidAddress(sender) {
+	if !helper.IsValidAddress(sender) {
 		return false, ginierr.ErrIncorrectAddress("sender")
-	} else if !internal.IsValidAddress(recipient) {
+	} else if !helper.IsValidAddress(recipient) {
 		return false, ginierr.ErrIncorrectAddress("recipient")
 	} else if !internal.IsAmountProper(value) {
 		return false, ginierr.ErrInvalidAmount(value)
@@ -834,13 +827,17 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	var spender, signer string
 	var e error
 
-	vestingContract, err := s.vestingContract(ctx)
+	vestingContract, err := s.GetVestingContract(ctx)
+	if err != nil {
+		return false, err
+	}
+	bridgeContract, err := s.GetBridgeContract(ctx)
 	if err != nil {
 		return false, err
 	}
 
 	if callingContractAddress != s.GetName() && callingContractAddress != "" {
-		if callingContractAddress != constants.BridgeContractAddress && callingContractAddress != vestingContract {
+		if callingContractAddress != bridgeContract && callingContractAddress != vestingContract {
 			err := ginierr.New("The calling contract is not bridge contract or vesting contract", http.StatusBadRequest)
 			logger.Log.Error(err.FullError())
 			return false, err
@@ -872,6 +869,30 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	}
 	if !helper.IsValidAddress(recipient) {
 		return false, ginierr.ErrIncorrectAddress("recipient")
+	}
+
+	// check if signer, spender, sender and recipient are not denied
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(signer)
+	}
+	if denied, err := internal.IsDenied(ctx, spender); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(spender)
+	}
+
+	if denied, err := internal.IsDenied(ctx, sender); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(sender)
+	}
+
+	if denied, err := internal.IsDenied(ctx, recipient); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(recipient)
 	}
 
 	// Parse and validate amount
@@ -912,7 +933,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	if err != nil {
 		return false, err
 	}
-	allowanceStr, err := internal.Allowance(ctx, sender, spender)
+	allowanceStr, err := models.GetAllowance(ctx, sender, spender)
 	if err != nil {
 		return false, err
 	}
@@ -1140,7 +1161,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 
 func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {
 
-	allowance, err := internal.Allowance(ctx, owner, spender)
+	allowance, err := models.GetAllowance(ctx, owner, spender)
 	if err != nil {
 		return "", fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err) //big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
@@ -1149,6 +1170,44 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 
 func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	return constants.TotalSupply, nil
+}
+
+func (s *SmartContract) GetBridgeContract(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	bytes, e := ctx.GetState(constants.BridgeContractKey)
+	if e != nil {
+		err := ginierr.ErrFailedToGetState(e)
+		logger.Log.Error(err)
+		return "", err
+	}
+	return string(bytes), nil
+}
+
+func (s *SmartContract) SetBridgeContract(ctx kalpsdk.TransactionContextInterface, contract string) error {
+
+	// checking if signer is kalp foundation else return error
+	if signer, e := ctx.GetUserID(); e != nil {
+		logger.Log.Errorf("Error getting user ID: %v", e)
+		return ginierr.ErrFailedToGetClientID
+	} else if signer != constants.KalpFoundationAddress {
+		return ginierr.ErrOnlyFoundationHasAccess
+	}
+	e := ctx.PutStateWithoutKYC(constants.BridgeContractKey, []byte(contract))
+	if e != nil {
+		err := ginierr.ErrFailedToGetState(e)
+		logger.Log.Error(err)
+		return err
+	}
+	return nil
+}
+
+func (s *SmartContract) GetVestingContract(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	bytes, e := ctx.GetState(constants.VestingContractKey)
+	if e != nil {
+		err := ginierr.ErrFailedToGetState(e)
+		logger.Log.Error(err)
+		return "", err
+	}
+	return string(bytes), nil
 }
 
 // TODO: needs to be deleted just for testing purposes

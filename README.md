@@ -4,6 +4,9 @@
 - TODO: call intialize for vesting contract address
 - TODO: Do we need to take bridge contract address as input in initialize
 - TODO: use deny list in transferFrom
+- Emit event after Update Allowance?
+- Setting roles in intialize for Foundation admin and gateway admin but its not getting used
+- Write setter getter for UserRole struct if we are going to use it
 
 ## RemoveUtxo Implementation
 ```go

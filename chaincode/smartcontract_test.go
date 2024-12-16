@@ -1587,10 +1587,10 @@ func TestCase11(t *testing.T) {
 		return string(result)
 	}
 	transactionContext.InvokeChaincodeStub = func(s1 string, b [][]byte, s2 string) response.Response {
-		if s1 == constants.BridgeContractAddress && string(b[0]) == "BridgeToken" {
+		if s1 == constants.InitialBridgeContractAddress && string(b[0]) == "BridgeToken" {
 			signer, _ := transactionContext.GetUserID()
 
-			giniContract.TransferFrom(transactionContext, signer, constants.BridgeContractAddress, string(b[1]))
+			giniContract.TransferFrom(transactionContext, signer, constants.InitialBridgeContractAddress, string(b[1]))
 			return response.Response{
 				Response: peer.Response{
 					Status:  http.StatusOK,
@@ -1607,7 +1607,7 @@ func TestCase11(t *testing.T) {
 
 	}
 	internal.GetCallingContractAddress = func(ctx kalpsdk.TransactionContextInterface) (string, error) {
-		return constants.BridgeContractAddress, nil
+		return constants.InitialBridgeContractAddress, nil
 	}
 
 	// ****************END define helper functions*********************
@@ -1645,12 +1645,12 @@ func TestCase11(t *testing.T) {
 
 	// Approve: userM approves bridge contract to spend 100 units
 	transactionContext.GetUserIDReturns(userM, nil)
-	ok, err = giniContract.Approve(transactionContext, constants.BridgeContractAddress, "100")
+	ok, err = giniContract.Approve(transactionContext, constants.InitialBridgeContractAddress, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	//
-	output := transactionContext.InvokeChaincode(constants.BridgeContractAddress, [][]byte{[]byte("BridgeToken"), []byte("100")}, "kalptantra")
+	output := transactionContext.InvokeChaincode(constants.InitialBridgeContractAddress, [][]byte{[]byte("BridgeToken"), []byte("100")}, "kalptantra")
 	b, _ := strconv.ParseBool(string(output.Payload))
 	require.Equal(t, true, b)
 
@@ -1661,7 +1661,7 @@ func TestCase11(t *testing.T) {
 	require.Equal(t, "0", balance)
 
 	// Check userC balance (should reflect the additional 100 units)
-	balance, err = giniContract.BalanceOf(transactionContext, constants.BridgeContractAddress)
+	balance, err = giniContract.BalanceOf(transactionContext, constants.InitialBridgeContractAddress)
 	require.NoError(t, err)
 	require.Equal(t, "100", balance)
 
