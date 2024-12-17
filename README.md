@@ -8,6 +8,9 @@
 - Setting roles in intialize for Foundation admin and gateway admin but its not getting used
 - Write setter getter for UserRole struct if we are going to use it
 - Can a valid Transfer or TransferFrom request have amount = 0?
+- In minting, check if name & symbol are initialized or check only one?
+- Why there is need to check for balance in minting? will checking name and symbol not cover all the cases?
+- Emit event "Transfer" in TransferFrom?
 
 ## RemoveUtxo Implementation
 ```go

@@ -139,16 +139,32 @@ func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, er
 }
 
 // Mint mints given amount at a given address
-func Mint(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
+func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts []string) error {
 
-	logger.Log.Infof("Mint---->")
+	logger.Log.Infof("Mint operation started")
 
-	accAmount, ok := big.NewInt(0).SetString(amount, 10)
+	// Validate input amount
+	accAmount1, ok := big.NewInt(0).SetString(amounts[0], 10)
 	if !ok {
-		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
+		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amounts)
 	}
-	if accAmount.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
-		return fmt.Errorf("error with status code %v, invalid amount %v", http.StatusBadRequest, amount)
+	if accAmount1.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
+		return ginierr.ErrInvalidAmount(amounts[0])
+	}
+	accAmount2, ok := big.NewInt(0).SetString(amounts[1], 10)
+	if !ok {
+		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amounts)
+	}
+	if accAmount1.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
+		return ginierr.ErrInvalidAmount(amounts[1])
+	}
+
+	// Validate input address
+	if !helper.IsValidAddress(addresses[0]) {
+		return ginierr.ErrIncorrectAddress(addresses[0])
+	}
+	if !helper.IsValidAddress(addresses[1]) {
+		return ginierr.ErrIncorrectAddress(addresses[1])
 	}
 
 	// checking if contract is already initialized
@@ -157,13 +173,22 @@ func Mint(ctx kalpsdk.TransactionContextInterface, address string, amount string
 	} else if bytes != nil {
 		return fmt.Errorf("contract already initialized, minting not allowed")
 	}
+	if bytes, err := ctx.GetState(constants.SymbolKey); err != nil {
+		return ginierr.ErrFailedToGetName
+	} else if bytes != nil {
+		return fmt.Errorf("contract already initialized, minting not allowed")
+	}
+
+	// TODO: check balance if required here
 
 	// Mint tokens
-	err := MintUtxoHelperWithoutKYC(ctx, address, accAmount)
-	if err != nil {
+	if err := MintUtxoHelperWithoutKYC(ctx, addresses[0], accAmount1); err != nil {
 		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
 	}
-	logger.Log.Infof("MintToken Amount---->%v\n", amount)
+	if err := MintUtxoHelperWithoutKYC(ctx, addresses[1], accAmount2); err != nil {
+		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
+	}
+	logger.Log.Infof("MintToken Amount---->%v\n", amounts)
 	return nil
 
 }

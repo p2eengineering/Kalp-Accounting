@@ -50,7 +50,7 @@ func ErrInvalidAmount(amount string) *CustomError {
 }
 
 func ErrIncorrectAddress(user string) *CustomError {
-	return New(fmt.Sprintf("%s address is not valid", user), http.StatusBadRequest)
+	return New(fmt.Sprintf("address: %s is not valid", user), http.StatusBadRequest)
 }
 
 func ErrFailedToDeleteState(e error) *CustomError {

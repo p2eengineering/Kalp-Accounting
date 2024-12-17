@@ -82,11 +82,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 
 	// minting initial tokens
-	if err := internal.Mint(ctx, constants.KalpFoundationAddress, constants.InitialFoundationBalance); err != nil {
-		logger.Log.Errorf("error with status code %v,error in minting: %v\n", http.StatusInternalServerError, err)
-		return false, ginierr.ErrMinitingTokens
-	}
-	if err := internal.Mint(ctx, vestingContract, constants.InitialVestingContractBalance); err != nil {
+	if err := internal.Mint(ctx, []string{constants.KalpFoundationAddress, vestingContract}, []string{constants.InitialFoundationBalance, constants.InitialVestingContractBalance}); err != nil {
 		logger.Log.Errorf("error with status code %v,error in minting: %v\n", http.StatusInternalServerError, err)
 		return false, ginierr.ErrMinitingTokens
 	}
