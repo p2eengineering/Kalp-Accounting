@@ -235,12 +235,12 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 
 	// checking if contract is already initialized
 	if bytes, err := ctx.GetState(constants.NameKey); err != nil {
-		return ginierr.ErrFailedToGetName
+		return ginierr.ErrFailedToGetName(constants.NameKey)
 	} else if bytes != nil {
 		return fmt.Errorf("contract already initialized, minting not allowed")
 	}
 	if bytes, err := ctx.GetState(constants.SymbolKey); err != nil {
-		return ginierr.ErrFailedToGetName
+		return ginierr.ErrFailedToGetName(constants.SymbolKey)
 	} else if bytes != nil {
 		return fmt.Errorf("contract already initialized, minting not allowed")
 	}

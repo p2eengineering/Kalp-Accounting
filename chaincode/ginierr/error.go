@@ -37,8 +37,6 @@ func NewWithInternalError(err error, message string, statusCode int) *CustomErro
 var (
 	ErrFailedToGetClientID     = New("failed to get public address", http.StatusInternalServerError)
 	ErrOnlyFoundationHasAccess = New("only kalp foundation has access to perform this action", http.StatusUnauthorized)
-	ErrFailedToGetName         = New("failed to get name", http.StatusInternalServerError)
-	ErrFailedToGetSymbol       = New("failed to get symbol", http.StatusInternalServerError)
 	ErrInitializingRoles       = New("error while initializing roles", http.StatusInternalServerError)
 	ErrMinitingTokens          = New("error while minting tokens", http.StatusInternalServerError)
 	ErrFailedToEmitEvent       = New("failed to emit event", http.StatusInternalServerError)
@@ -91,4 +89,8 @@ func DeniedAddress(address string) *CustomError {
 
 func ErrInvalidUserAddress(address string) *CustomError {
 	return New(fmt.Sprintf("Invalid user address : %s ", address), http.StatusBadRequest)
+}
+
+func ErrFailedToGetName(name string) *CustomError {
+	return New(fmt.Sprintf("FailedToGetName for name : %s", name), http.StatusInternalServerError)
 }

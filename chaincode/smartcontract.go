@@ -45,9 +45,16 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	// checking if contract is already initialized
 	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
 		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, e)
-		return false, ginierr.ErrFailedToGetName
+		return false, ginierr.ErrFailedToGetName(constants.NameKey)
 	} else if bytes != nil {
 		logger.Log.Errorf("Found name key: %v, cannot initialize again", string(bytes))
+		return false, ginierr.New("contract already initialized", http.StatusBadRequest)
+	}
+	if bytes, e := ctx.GetState(constants.SymbolKey); e != nil {
+		logger.Log.Errorf("Error in GetState %s: %v", constants.SymbolKey, e)
+		return false, ginierr.ErrFailedToGetName(constants.SymbolKey)
+	} else if bytes != nil {
+		logger.Log.Errorf("Found symbol key: %v, cannot initialize again", string(bytes))
 		return false, ginierr.New("contract already initialized", http.StatusBadRequest)
 	}
 
@@ -167,7 +174,7 @@ func (s *SmartContract) Deny(ctx kalpsdk.TransactionContextInterface, address st
 func (s *SmartContract) Name(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	bytes, err := ctx.GetState(constants.NameKey)
 	if err != nil {
-		return "", ginierr.ErrFailedToGetName
+		return "", ginierr.ErrFailedToGetName(constants.NameKey)
 	}
 	return string(bytes), nil
 }
@@ -175,7 +182,7 @@ func (s *SmartContract) Name(ctx kalpsdk.TransactionContextInterface) (string, e
 func (s *SmartContract) Symbol(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	bytes, err := ctx.GetState(constants.SymbolKey)
 	if err != nil {
-		return "", ginierr.ErrFailedToGetSymbol
+		return "", ginierr.ErrFailedToGetName(constants.SymbolKey)
 	}
 	return string(bytes), nil
 }

@@ -11,6 +11,7 @@
 - In minting, check if name & symbol are initialized or check only one?
 - Why there is need to check for balance in minting? will checking name and symbol not cover all the cases?
 - Emit event "Transfer" in TransferFrom?
+- Remove all the unrequired logs later  
 
 ## RemoveUtxo Implementation
 ```go
