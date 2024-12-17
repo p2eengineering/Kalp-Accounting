@@ -168,7 +168,7 @@ func TestCase1(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, constants.InitialVestingContractBalance, balance)
 
-	// Updating gas fess to 1 Wei
+	// Updating gas fees to 1 Wei
 	transactionContext.PutStateWithoutKYC(constants.GasFeesKey, []byte("1"))
 
 	// Admin recharges userM, userG, and userC

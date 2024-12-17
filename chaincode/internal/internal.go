@@ -10,6 +10,7 @@ import (
 	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
+	"regexp"
 
 	"strings"
 
@@ -23,11 +24,13 @@ import (
 var GetCallingContractAddress = getCallingContractAddressHelper
 
 // CheckCallerIsContract checks if the caller is a contract
+// TODO: remove this later
 func CheckCallerIsContract(ctx kalpsdk.TransactionContextInterface) bool {
 	return true
 }
 
 // GetCallingContractAddress returns calling contract's address
+// TODO: remove this later
 func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	signedProposal, e := ctx.GetSignedProposal()
 	if signedProposal == nil {
@@ -46,6 +49,69 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
+	}
+	proposal := &peer.Proposal{}
+	e = proto.Unmarshal(data, proposal)
+	if e != nil {
+		err := ginierr.NewWithInternalError(e, "error in parsing signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	payload := &common.Payload{}
+	e = proto.Unmarshal(proposal.Payload, payload)
+	if e != nil {
+		err := ginierr.NewWithInternalError(e, "error in parsing payload", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	paystring := payload.GetHeader().GetChannelHeader()
+	if len(paystring) == 0 {
+		err := ginierr.New("channel header is empty", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	logger.Log.Debug("Calling contract address:", paystring)
+	contractAddress := helper.FindContractAddress(paystring)
+	if contractAddress == "" {
+		err := ginierr.New("contract address not found", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	return contractAddress, nil
+}
+
+func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContractAddress string) (string, error) {
+	signedProposal, e := ctx.GetSignedProposal()
+	if signedProposal == nil {
+		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+	if e != nil {
+		err := ginierr.NewWithInternalError(e, "error in getting signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	data := signedProposal.GetProposalBytes()
+	if data == nil {
+		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+	// Define the regex pattern
+	pattern := `^([a-zA-Z]+)\n\(([a-fA-F0-9]{40}|(klp-.*-cc))\n\(([a-fA-F0-9]{40}|(klp-.*-cc))\n\x12[0-9]+$`
+
+	// Compile the regex
+	re := regexp.MustCompile(pattern)
+
+	// Match the input data
+	if re.MatchString(string(data)) {
+		return giniContractAddress, nil
 	}
 	proposal := &peer.Proposal{}
 	e = proto.Unmarshal(data, proposal)

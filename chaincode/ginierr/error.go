@@ -88,3 +88,7 @@ func NotDenied(address string) *CustomError {
 func DeniedAddress(address string) *CustomError {
 	return New(fmt.Sprintf("DeniedAddress : address : %s ", address), http.StatusForbidden)
 }
+
+func ErrInvalidUserAddress(address string) *CustomError {
+	return New(fmt.Sprintf("Invalid user address : %s ", address), http.StatusBadRequest)
+}

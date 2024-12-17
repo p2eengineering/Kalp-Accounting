@@ -26,7 +26,7 @@ func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 }
 
 func IsValidAddress(address string) bool {
-	return IsHexAddress(address) || IsContractAddress(address)
+	return IsUserAddress(address) || IsContractAddress(address)
 }
 
 func IsContractAddress(address string) bool {
@@ -39,7 +39,7 @@ func IsContractAddress(address string) bool {
 	return isValid
 }
 
-func IsHexAddress(address string) bool {
+func IsUserAddress(address string) bool {
 	// Example validation logic (you can modify this to fit your use case)
 	if address == "" {
 		return false

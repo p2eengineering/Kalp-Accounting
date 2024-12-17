@@ -815,13 +815,19 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, sender string, recipient string, value string) (bool, error) {
 	logger.Log.Info("TransferFrom operation initiated")
 
-	// Determine if the call is from a contract
-	callingContractAddress, err := internal.GetCallingContractAddress(ctx)
-	// TODO: check if error needs to be handled here
-	logger.Log.Info("callingContractAddress => ", callingContractAddress, err)
-
 	var spender, signer string
 	var e error
+
+	if signer, e = ctx.GetUserID(); e != nil {
+		err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	// Determine if the call is from a contract
+	calledContractAddress, err := internal.GetCalledContractAddress(ctx, s.GetName())
+	// TODO: check if error needs to be handled here
+	logger.Log.Debug("calledContractAddress => ", calledContractAddress, err)
 
 	vestingContract, err := s.GetVestingContract(ctx)
 	if err != nil {
@@ -832,42 +838,54 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, err
 	}
 
-	if callingContractAddress != s.GetName() && callingContractAddress != "" {
-		if callingContractAddress != bridgeContract && callingContractAddress != vestingContract {
+	if calledContractAddress != s.GetName() {
+		if calledContractAddress == bridgeContract || calledContractAddress == vestingContract {
+			spender = calledContractAddress
+		} else {
 			err := ginierr.New("The calling contract is not bridge contract or vesting contract", http.StatusBadRequest)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}
-		spender = callingContractAddress
-		if signer, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
-			logger.Log.Error(err.FullError())
-			return false, err
-		}
 	} else {
-		if spender, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
-			logger.Log.Error(err.FullError())
-			return false, err
-		}
-		signer = spender
+		spender = signer
 	}
 
 	// Input validation
 	if helper.IsContractAddress(signer) {
 		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
 	}
+	if !helper.IsUserAddress(signer) {
+		return false, ginierr.ErrInvalidUserAddress(signer)
+	}
 	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
+	if !helper.IsValidAddress(spender) {
+		return false, ginierr.ErrIncorrectAddress(spender)
+	}
 	if !helper.IsValidAddress(sender) {
-		return false, ginierr.ErrIncorrectAddress("sender")
+		return false, ginierr.ErrIncorrectAddress(sender)
 	}
 	if !helper.IsValidAddress(recipient) {
-		return false, ginierr.ErrIncorrectAddress("recipient")
+		return false, ginierr.ErrIncorrectAddress(recipient)
 	}
+	if !internal.IsAmountProper(value) {
+		return false, ginierr.ErrInvalidAmount(value)
+	}
+	// Parse the amount
+	amount, _ := big.NewInt(0).SetString(value, 10)
 
 	// check if signer, spender, sender and recipient are not denied
+	if denied, err := internal.IsDenied(ctx, sender); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(sender)
+	}
+	if denied, err := internal.IsDenied(ctx, recipient); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(recipient)
+	}
 	if denied, err := internal.IsDenied(ctx, signer); err != nil {
 		return false, err
 	} else if denied {
@@ -877,24 +895,6 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, err
 	} else if denied {
 		return false, ginierr.DeniedAddress(spender)
-	}
-
-	if denied, err := internal.IsDenied(ctx, sender); err != nil {
-		return false, err
-	} else if denied {
-		return false, ginierr.DeniedAddress(sender)
-	}
-
-	if denied, err := internal.IsDenied(ctx, recipient); err != nil {
-		return false, err
-	} else if denied {
-		return false, ginierr.DeniedAddress(recipient)
-	}
-
-	// Parse and validate amount
-	amount, ok := big.NewInt(0).SetString(value, 10)
-	if !ok || amount.Cmp(big.NewInt(0)) != 1 {
-		return false, ginierr.ErrInvalidAmount(value)
 	}
 
 	// Ensure KYC compliance
