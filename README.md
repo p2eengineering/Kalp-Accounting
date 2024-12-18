@@ -12,6 +12,10 @@
 - Why there is need to check for balance in minting? will checking name and symbol not cover all the cases?
 - Emit event "Transfer" in TransferFrom?
 - Remove all the unrequired logs later  
+- Add starting and ending logs for functions
+- Deprecate GetUserID() after changes are made in kalp-sdk
+- Set Gini contract address in main()
+- Handle big int errors and change GetUserID
 
 ## RemoveUtxo Implementation
 ```go

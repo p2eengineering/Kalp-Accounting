@@ -40,15 +40,14 @@ var (
 	ErrInitializingRoles       = New("error while initializing roles", http.StatusInternalServerError)
 	ErrMinitingTokens          = New("error while minting tokens", http.StatusInternalServerError)
 	ErrFailedToEmitEvent       = New("failed to emit event", http.StatusInternalServerError)
-	ErrInvalidAddress          = New("invalid address", http.StatusBadRequest)
 )
 
 func ErrInvalidAmount(amount string) *CustomError {
 	return New(fmt.Sprintf("invalid amount passed: %s", amount), http.StatusBadRequest)
 }
 
-func ErrIncorrectAddress(user string) *CustomError {
-	return New(fmt.Sprintf("address: %s is not valid", user), http.StatusBadRequest)
+func ErrIncorrectAddress(address string) *CustomError {
+	return New(fmt.Sprintf("address: %s is not valid", address), http.StatusBadRequest)
 }
 
 func ErrFailedToDeleteState(e error) *CustomError {
@@ -91,6 +90,6 @@ func ErrInvalidUserAddress(address string) *CustomError {
 	return New(fmt.Sprintf("Invalid user address : %s ", address), http.StatusBadRequest)
 }
 
-func ErrFailedToGetName(name string) *CustomError {
-	return New(fmt.Sprintf("FailedToGetName for name : %s", name), http.StatusInternalServerError)
+func ErrFailedToGetKey(key string) *CustomError {
+	return New(fmt.Sprintf("FailedToGetKey : %s", key), http.StatusInternalServerError)
 }

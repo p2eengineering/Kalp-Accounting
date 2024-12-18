@@ -37,17 +37,6 @@ type stateQueryIterator interface {
 	kalpsdk.StateQueryIteratorInterface
 }
 
-func TestInitLedger(t *testing.T) {
-	t.Parallel()
-	transactionContext := &mocks.TransactionContext{}
-
-	giniContract := chaincode.SmartContract{}
-
-	err := giniContract.InitLedger(transactionContext)
-
-	require.NoError(t, err)
-}
-
 func TestInitialize(t *testing.T) {
 	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}

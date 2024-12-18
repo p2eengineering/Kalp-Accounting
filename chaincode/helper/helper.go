@@ -3,7 +3,11 @@ package helper
 import (
 	"encoding/base64"
 	"fmt"
+	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/logger"
 	"math/big"
+	"net/http"
 	"reflect"
 	"regexp"
 	"strings"
@@ -35,7 +39,7 @@ func IsContractAddress(address string) bool {
 		return false
 	}
 	// Assuming contract addresses should start with "0x" and have 42 characters
-	isValid, _ := regexp.MatchString(`^klp.*cc$`, address)
+	isValid, _ := regexp.MatchString(`^klp-[a-fA-F0-9]+-cc$`, address)
 	return isValid
 }
 
@@ -51,7 +55,7 @@ func IsUserAddress(address string) bool {
 
 func FindContractAddress(data string) string {
 	// Define the regex pattern
-	pattern := `^klp-.*?-cc`
+	pattern := `^klp-[a-fA-F0-9]+-cc`
 
 	// Compile the regex
 	re := regexp.MustCompile(pattern)
@@ -73,6 +77,9 @@ func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
 
 	completeId := string(decodeID)
 	userId := completeId[(strings.Index(completeId, "x509::CN=") + 9):strings.Index(completeId, ",")]
+	if !IsUserAddress(userId) {
+		return "", ginierr.ErrInvalidUserAddress(userId)
+	}
 	return userId, nil
 }
 
@@ -84,4 +91,17 @@ func FilterPrintableASCII(input string) string {
 		}
 	}
 	return string(result)
+}
+
+func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, error) {
+	signer, e := GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewWithInternalError(e, "failed to get client id", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+	if signer != constants.KalpFoundationAddress {
+		return false, nil
+	}
+	return true, nil
 }

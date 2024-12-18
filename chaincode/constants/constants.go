@@ -24,4 +24,5 @@ const (
 	VestingContractKey            = "vestingContract"
 	BridgeContractKey             = "bridgeContract"
 	InitialBridgeContractAddress  = "klp-6b616c70627269646765-cc"
+	GiniContractAddress           = "klp-6b616c70616373-cc"
 )
