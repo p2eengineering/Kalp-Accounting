@@ -65,18 +65,15 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 
 	// intializing roles for kalp foundation & gateway admin
 	if _, err := internal.InitializeRoles(ctx, constants.KalpFoundationAddress, constants.KalpFoundationRole); err != nil {
-		logger.Log.Errorf("error in initializing roles: %v\n", err)
-		return false, ginierr.ErrInitializingRoles
+		return false, err
 	}
 	if _, err := internal.InitializeRoles(ctx, constants.KalpGateWayAdminAddress, constants.KalpGateWayAdminRole); err != nil {
-		logger.Log.Errorf("error in initializing roles: %v\n", err)
-		return false, ginierr.ErrInitializingRoles
+		return false, err
 	}
 
 	// minting initial tokens
 	if err := internal.Mint(ctx, []string{constants.KalpFoundationAddress, vestingContract}, []string{constants.InitialFoundationBalance, constants.InitialVestingContractBalance}); err != nil {
-		logger.Log.Errorf("error with status code %v,error in minting: %v\n", http.StatusInternalServerError, err)
-		return false, ginierr.ErrMinitingTokens
+		return false, err
 	}
 
 	// storing name, symbol and initial gas fees

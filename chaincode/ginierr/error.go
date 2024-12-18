@@ -37,7 +37,6 @@ func NewWithInternalError(err error, message string, statusCode int) *CustomErro
 var (
 	ErrFailedToGetClientID     = New("failed to get public address", http.StatusInternalServerError)
 	ErrOnlyFoundationHasAccess = New("only kalp foundation has access to perform this action", http.StatusUnauthorized)
-	ErrInitializingRoles       = New("error while initializing roles", http.StatusInternalServerError)
 	ErrMinitingTokens          = New("error while minting tokens", http.StatusInternalServerError)
 )
 

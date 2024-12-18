@@ -203,7 +203,7 @@ func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, er
 // Mint mints given amount at a given address
 func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts []string) error {
 
-	logger.Log.Infof("Mint operation started")
+	logger.Log.Infof("Mint invoked.... with arguments", addresses, amounts)
 
 	// Validate input amount
 	accAmount1, ok := big.NewInt(0).SetString(amounts[0], 10)
@@ -230,15 +230,17 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 	}
 
 	// checking if contract is already initialized
-	if bytes, err := ctx.GetState(constants.NameKey); err != nil {
+	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
+		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, e)
 		return ginierr.ErrFailedToGetKey(constants.NameKey)
 	} else if bytes != nil {
-		return fmt.Errorf("contract already initialized, minting not allowed")
+		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.NameKey, string(bytes)), http.StatusBadRequest)
 	}
-	if bytes, err := ctx.GetState(constants.SymbolKey); err != nil {
+	if bytes, e := ctx.GetState(constants.SymbolKey); e != nil {
+		logger.Log.Errorf("Error in GetState %s: %v", constants.SymbolKey, e)
 		return ginierr.ErrFailedToGetKey(constants.SymbolKey)
 	} else if bytes != nil {
-		return fmt.Errorf("contract already initialized, minting not allowed")
+		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
 
 	// TODO: check balance if required here
@@ -250,19 +252,13 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 	if err := MintUtxoHelperWithoutKYC(ctx, addresses[1], accAmount2); err != nil {
 		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
 	}
-	logger.Log.Infof("MintToken Amount---->%v\n", amounts)
+	logger.Log.Infof("Mint Invoke complete amount: %v\n", amounts)
 	return nil
 
 }
 
 // As of now, we are not supporting usecases where asset is owned by multiple owners.
 func MintUtxoHelperWithoutKYC(ctx kalpsdk.TransactionContextInterface, account string, amount *big.Int) error {
-	if account == "0x0" {
-		return fmt.Errorf("mint to the zero address")
-	}
-
-	fmt.Println("account & amount in mintutxohelper -", account, amount)
-
 	err := AddUtxo(ctx, account, amount)
 	if err != nil {
 		return err
@@ -593,11 +589,9 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 		Role:    role,
 		DocType: constants.UserRoleMap,
 	}
-	roleJson, e := json.Marshal(userRole)
-	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in marshaling user role", http.StatusInternalServerError)
-		logger.Log.Errorf(err.FullError())
-		return false, err
+	roleJson, err := json.Marshal(userRole)
+	if err != nil {
+		return false, ginierr.New("error in marshaling user role:"+role, http.StatusInternalServerError)
 	}
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if e != nil {
