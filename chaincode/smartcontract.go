@@ -832,9 +832,11 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	}
 
 	// Determine if the call is from a contract
-	calledContractAddress, err := internal.GetCalledContractAddress(ctx, s.GetName())
-	// TODO: check if error needs to be handled here
-	logger.Log.Debug("calledContractAddress => ", calledContractAddress, err)
+	calledContractAddress, err := internal.GetCalledContractAddress(ctx)
+	logger.Log.Debug("calledContractAddress => ", calledContractAddress)
+	if err != nil {
+		return false, ginierr.New("called contract address not found", http.StatusBadRequest)
+	}
 
 	vestingContract, err := s.GetVestingContract(ctx)
 	if err != nil {
@@ -849,7 +851,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		if calledContractAddress == bridgeContract || calledContractAddress == vestingContract {
 			spender = calledContractAddress
 		} else {
-			err := ginierr.New("The calling contract is not bridge contract or vesting contract", http.StatusBadRequest)
+			err := ginierr.New("The called contract is neither bridge contract nor vesting contract", http.StatusBadRequest)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}

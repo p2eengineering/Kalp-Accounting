@@ -49,21 +49,15 @@ func IsUserAddress(address string) bool {
 	return isValid
 }
 
-func FindContractAddress(data []byte) string {
+func FindContractAddress(data string) string {
 	// Define the regex pattern
-	pattern := `klp-.*?-cc`
+	pattern := `^klp-.*?-cc`
 
 	// Compile the regex
 	re := regexp.MustCompile(pattern)
 
 	// Find the first match in the byte slice
-	matches := re.Find(data)
-
-	// Return the matched string or an empty string if no match is found
-	if matches != nil {
-		return string(matches)
-	}
-	return ""
+	return re.FindString(data)
 }
 
 func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
@@ -80,4 +74,14 @@ func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
 	completeId := string(decodeID)
 	userId := completeId[(strings.Index(completeId, "x509::CN=") + 9):strings.Index(completeId, ",")]
 	return userId, nil
+}
+
+func FilterPrintableASCII(input string) string {
+	var result []rune
+	for _, char := range input {
+		if char >= 33 && char <= 127 { // Printable ASCII characters are in the range 33-127
+			result = append(result, char)
+		}
+	}
+	return string(result)
 }

@@ -10,7 +10,6 @@ import (
 	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
-	"regexp"
 
 	"strings"
 
@@ -74,7 +73,7 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 	}
 
 	logger.Log.Debug("Calling contract address:", paystring)
-	contractAddress := helper.FindContractAddress(paystring)
+	contractAddress := helper.FindContractAddress(string(paystring))
 	if contractAddress == "" {
 		err := ginierr.New("contract address not found", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
@@ -84,7 +83,7 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 	return contractAddress, nil
 }
 
-func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContractAddress string) (string, error) {
+func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	signedProposal, e := ctx.GetSignedProposal()
 	if signedProposal == nil {
 		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
@@ -103,16 +102,8 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
-	// Define the regex pattern
-	pattern := `^([a-zA-Z]+)\n\(([a-fA-F0-9]{40}|(klp-.*-cc))\n\(([a-fA-F0-9]{40}|(klp-.*-cc))\n\x12[0-9]+$`
+	logger.Log.Debug("signedProposal.GetProposalBytes()", data, string(data))
 
-	// Compile the regex
-	re := regexp.MustCompile(pattern)
-
-	// Match the input data
-	if re.MatchString(string(data)) {
-		return giniContractAddress, nil
-	}
 	proposal := &peer.Proposal{}
 	e = proto.Unmarshal(data, proposal)
 	if e != nil {
@@ -120,6 +111,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
+	logger.Log.Debug("peer.Proposal{}", proposal)
 
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
@@ -128,6 +120,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
+	logger.Log.Debug("common.Payload{}", payload)
 
 	paystring := payload.GetHeader().GetChannelHeader()
 	if len(paystring) == 0 {
@@ -136,14 +129,17 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 		return "", err
 	}
 
-	logger.Log.Debug("Calling contract address:", paystring)
-	contractAddress := helper.FindContractAddress(paystring)
+	logger.Log.Debug("paystring", paystring, string(paystring))
+
+	printableASCIIPaystring := helper.FilterPrintableASCII(string(paystring))
+	logger.Log.Debug("printableASCIIPaystring", printableASCIIPaystring)
+
+	contractAddress := helper.FindContractAddress(printableASCIIPaystring)
 	if contractAddress == "" {
 		err := ginierr.New("contract address not found", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
-
 	return contractAddress, nil
 }
 
