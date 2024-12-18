@@ -84,7 +84,7 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, amount, spender strin
 	}
 
 	if err := ctx.SetEvent(constants.Approval, approvalJSON); err != nil {
-		return ginierr.ErrFailedToEmitEvent
+		return ginierr.ErrFailedToEmitEvent(constants.Approval)
 	}
 
 	logger.Log.Debugf("client %s approved a withdrawal allowance of %s for spender %s", signer, amount, spender)

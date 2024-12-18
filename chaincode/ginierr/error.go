@@ -6,30 +6,30 @@ import (
 )
 
 type CustomError struct {
-	StatusCode  int
-	Message     string
+	statusCode  int
+	message     string
 	internalErr error
 }
 
 func (e *CustomError) Error() string {
-	return fmt.Sprintf("%s, status code:%d", e.Message, e.StatusCode)
+	return fmt.Sprintf("%s, status code:%d", e.message, e.statusCode)
 }
 
 func (e *CustomError) FullError() string {
-	return fmt.Sprintf("%s, status code:%d, internal err: %v", e.Message, e.StatusCode, e.internalErr)
+	return fmt.Sprintf("%s, status code:%d, internal err: %v", e.message, e.statusCode, e.internalErr)
 }
 
 func New(message string, statusCode int) *CustomError {
 	return &CustomError{
-		StatusCode: statusCode,
-		Message:    message,
+		statusCode: statusCode,
+		message:    message,
 	}
 }
 
 func NewWithInternalError(err error, message string, statusCode int) *CustomError {
 	return &CustomError{
-		StatusCode:  statusCode,
-		Message:     message,
+		statusCode:  statusCode,
+		message:     message,
 		internalErr: err,
 	}
 }
@@ -39,8 +39,11 @@ var (
 	ErrOnlyFoundationHasAccess = New("only kalp foundation has access to perform this action", http.StatusUnauthorized)
 	ErrInitializingRoles       = New("error while initializing roles", http.StatusInternalServerError)
 	ErrMinitingTokens          = New("error while minting tokens", http.StatusInternalServerError)
-	ErrFailedToEmitEvent       = New("failed to emit event", http.StatusInternalServerError)
 )
+
+func ErrFailedToEmitEvent(event string) *CustomError {
+	return New(fmt.Sprintf("failed to emit event: %s", event), http.StatusInternalServerError)
+}
 
 func ErrInvalidAmount(amount string) *CustomError {
 	return New(fmt.Sprintf("invalid amount passed: %s", amount), http.StatusBadRequest)

@@ -20,7 +20,7 @@ type SmartContract struct {
 }
 
 func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, vestingContract string) (bool, error) {
-	logger.Log.Infoln("Initializing smart contract")
+	logger.Log.Infoln("Initializing smart contract... with arguments", name, symbol, vestingContract)
 
 	// checking if signer is kalp foundation else return error
 	if signerKalp, err := helper.IsSignerKalpFoundation(ctx); err != nil {
@@ -103,7 +103,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	if err := s.SetBridgeContract(ctx, constants.InitialBridgeContractAddress); err != nil {
 		return false, err
 	}
-	logger.Log.Infoln("Initializing complete")
+	logger.Log.Infoln("Initialize Invoked complete")
 	return true, nil
 }
 
@@ -580,7 +580,7 @@ func (s *SmartContract) balance(ctx kalpsdk.TransactionContextInterface, account
 }
 
 func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, amount string) (bool, error) {
-
+	logger.Log.Infoln("Approve invoked.... with arguments", spender, amount)
 	if err := models.SetAllowance(ctx, spender, amount); err != nil {
 		logger.Log.Infof("error unable to approve funds: %v\n", err)
 		return false, err
@@ -797,7 +797,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 }
 
 func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, sender string, recipient string, amount string) (bool, error) {
-	logger.Log.Info("TransferFrom operation initiated")
+	logger.Log.Infoln("TransferFrom invoked.... with arguments", sender, recipient, amount)
 
 	var spender, signer string
 	var e error
@@ -1127,7 +1127,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	if err != nil {
 		return false, err
 	}
-	logger.Log.Info("Transferred ", amt, " tokens from: ", sender, " to: ", recipient)
+	logger.Log.Info("TransferFrom Invoked complete... transferred ", amt, " tokens from: ", sender, " to: ", recipient, " spender: ", spender)
 
 	// Emit transfer event
 	eventPayload := map[string]interface{}{

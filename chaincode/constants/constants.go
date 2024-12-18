@@ -21,6 +21,7 @@ const (
 	Approval                      = "Approval"
 	Denied                        = "Denied"
 	Approved                      = "Approved"
+	Mint                          = "Mint"
 	VestingContractKey            = "vestingContract"
 	BridgeContractKey             = "bridgeContract"
 	InitialBridgeContractAddress  = "klp-6b616c70627269646765-cc"

@@ -163,7 +163,7 @@ func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error 
 		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
 	if err := ctx.SetEvent(constants.Denied, []byte(address)); err != nil {
-		return ginierr.ErrFailedToEmitEvent
+		return ginierr.ErrFailedToEmitEvent(constants.Denied)
 	}
 	return nil
 }
@@ -178,7 +178,7 @@ func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error
 		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
 	if err := ctx.SetEvent(constants.Approved, []byte(address)); err != nil {
-		return ginierr.ErrFailedToEmitEvent
+		return ginierr.ErrFailedToEmitEvent(constants.Approved)
 	}
 	return nil
 }
@@ -276,8 +276,8 @@ func MintUtxoHelperWithoutKYC(ctx kalpsdk.TransactionContextInterface, account s
 	if err != nil {
 		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
 	}
-	if err := ctx.SetEvent("Mint", utxoJSON); err != nil {
-		return ginierr.ErrFailedToEmitEvent
+	if err := ctx.SetEvent(constants.Mint, utxoJSON); err != nil {
+		return ginierr.ErrFailedToEmitEvent(constants.Mint)
 	}
 	return nil
 }
