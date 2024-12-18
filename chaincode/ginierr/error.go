@@ -70,8 +70,8 @@ func ErrFailedToSetEvent(e error, event string) *CustomError {
 	return NewWithInternalError(e, "failed to set event: "+event, http.StatusInternalServerError)
 }
 
-func ErrConvertingStringToBigInt(number string) *CustomError {
-	return New(fmt.Sprintf("failed to covert number %s to big int", number), http.StatusInternalServerError)
+func ErrConvertingAmountToBigInt(number string) *CustomError {
+	return New(fmt.Sprintf("failed to covert amount %s to big int", number), http.StatusInternalServerError)
 }
 
 func AlreadyDenied(address string) *CustomError {

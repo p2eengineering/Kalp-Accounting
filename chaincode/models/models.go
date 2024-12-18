@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/logger"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
@@ -56,7 +57,7 @@ type Account struct {
 
 func SetAllowance(ctx kalpsdk.TransactionContextInterface, amount, spender string) error {
 	// Emit the Approval event
-	signer, err := ctx.GetUserID()
+	signer, err := helper.GetUserId(ctx)
 	if err != nil {
 		return ginierr.ErrFailedToGetClientID
 	}

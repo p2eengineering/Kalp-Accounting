@@ -15,7 +15,6 @@
 - Add starting and ending logs for functions
 - Deprecate GetUserID() after changes are made in kalp-sdk
 - Set Gini contract address in main()
-- Handle big int errors and change GetUserID
 
 ## RemoveUtxo Implementation
 ```go

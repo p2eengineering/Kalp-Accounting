@@ -187,7 +187,7 @@ func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) (str
 
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
 
-	operator, err := ctx.GetUserID()
+	operator, err := helper.GetUserId(ctx)
 	if err != nil {
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
@@ -311,7 +311,7 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 // 		return false, fmt.Errorf("invalid input address")
 // 	}
 
-// 	sender, err := ctx.GetUserID()
+// 	sender, err := helper.GetUserId(ctx)
 // 	if err != nil {
 // 		return false, fmt.Errorf("error in getting user id: %v", err)
 // 	}
@@ -571,7 +571,7 @@ func (s *SmartContract) balance(ctx kalpsdk.TransactionContextInterface, account
 	if balanceStr, err := s.BalanceOf(ctx, account); err != nil {
 		return big.NewInt(0), err
 	} else if senderBalance, ok := big.NewInt(0).SetString(balanceStr, 10); !ok {
-		err := ginierr.New("unable to convert balance to big int", http.StatusInternalServerError)
+		err := ginierr.ErrConvertingAmountToBigInt(balanceStr)
 		logger.Log.Error(err.FullError())
 		return big.NewInt(0), err
 	} else {
@@ -591,7 +591,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, value string) (bool, error) {
 	logger.Log.Info("Transfer operation initiated")
 
-	signer, err := ctx.GetUserID()
+	signer, err := helper.GetUserId(ctx)
 	if err != nil {
 		err := ginierr.NewWithInternalError(err, "error getting signer", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
@@ -619,7 +619,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	if isContractRequest {
 		spender, e = internal.GetCallingContractAddress(ctx)
 	} else {
-		if spender, e = ctx.GetUserID(); e != nil {
+		if spender, e = helper.GetUserId(ctx); e != nil {
 			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
 			logger.Log.Error(err.FullError())
 			return false, err
@@ -802,7 +802,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	var spender, signer string
 	var e error
 
-	if signer, e = ctx.GetUserID(); e != nil {
+	if signer, e = helper.GetUserId(ctx); e != nil {
 		err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
@@ -921,7 +921,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	}
 	allowance, ok := big.NewInt(0).SetString(allowanceStr, 10)
 	if !ok {
-		err := ginierr.New("error converting allowance to big integer:"+allowanceStr, http.StatusInternalServerError)
+		err := ginierr.ErrConvertingAmountToBigInt(allowanceStr)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}

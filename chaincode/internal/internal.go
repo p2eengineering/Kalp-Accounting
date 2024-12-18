@@ -208,14 +208,14 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 	// Validate input amount
 	accAmount1, ok := big.NewInt(0).SetString(amounts[0], 10)
 	if !ok {
-		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amounts)
+		return ginierr.ErrConvertingAmountToBigInt(amounts[0])
 	}
 	if accAmount1.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
 		return ginierr.ErrInvalidAmount(amounts[0])
 	}
 	accAmount2, ok := big.NewInt(0).SetString(amounts[1], 10)
 	if !ok {
-		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amounts)
+		return ginierr.ErrConvertingAmountToBigInt(amounts[1])
 	}
 	if accAmount1.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
 		return ginierr.ErrInvalidAmount(amounts[1])
@@ -499,11 +499,11 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 		}
 		approvalAmount, s := big.NewInt(0).SetString(approval.Amount, 10)
 		if !s {
-			return fmt.Errorf("failed to convert approvalAmount to big int")
+			return ginierr.ErrConvertingAmountToBigInt(approval.Amount)
 		}
 		amountSpent, s := big.NewInt(0).SetString(spent, 10)
 		if !s {
-			return fmt.Errorf("failed to convert approvalAmount to big int")
+			return ginierr.ErrConvertingAmountToBigInt(spent)
 		}
 		if amountSpent.Cmp(approvalAmount) == 1 { // amountToAdd > approvalAmount {
 			return fmt.Errorf("failed to convert approvalAmount to float64")
@@ -529,7 +529,7 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, spender []string, receiver string, iamount interface{}, docType string) error {
 
 	// Get ID of submitting client identity
-	operator, err := ctx.GetUserID()
+	operator, err := helper.GetUserId(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get client id: %v", err)
 	}
@@ -541,7 +541,7 @@ func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, s
 	}
 	approvedAmount, s := big.NewInt(0).SetString(approved, 10)
 	if !s {
-		return fmt.Errorf("failed to convert approvalAmount to big int")
+		return ginierr.ErrConvertingAmountToBigInt(approved)
 	}
 	var am string
 	if a, ok := iamount.(string); ok {
@@ -550,7 +550,7 @@ func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, s
 	}
 	amount, s := big.NewInt(0).SetString(am, 10)
 	if !s {
-		return fmt.Errorf("failed to convert approvalAmount to big int")
+		return ginierr.ErrConvertingAmountToBigInt(am)
 	}
 
 	if approvedAmount.Cmp(amount) == -1 { //approvedAmount < amount {
@@ -678,7 +678,7 @@ func GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, e
 func ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
 
 	// Check if operator is authorized to create Role.
-	operator, err := ctx.GetUserID()
+	operator, err := helper.GetUserId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get client id: %v", err)
 	}
