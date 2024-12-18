@@ -604,7 +604,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 	return true, nil
 }
 
-func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, value string) (bool, error) {
+func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, amount string) (bool, error) {
 	logger.Log.Info("Transfer operation initiated")
 
 	signer, err := ctx.GetUserID()
@@ -614,9 +614,10 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, err
 	}
 
-	sender := signer
+	gatewayAdmin := internal.GetGatewayAdminAddress(ctx)
 
-	var gasFees *big.Int
+	sender := signer
+	var gasFees, actualAmount *big.Int
 	if gasFeesString, err := s.GetGasFees(ctx); err != nil {
 		return false, err
 	} else if val, ok := big.NewInt(0).SetString(gasFeesString, 10); !ok {
@@ -625,75 +626,129 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		gasFees = val
 	}
 
-	// Determine if the call is from a contract
-	isContractRequest := internal.CheckCallerIsContract(ctx)
-	logger.Log.Info("IsContractRequest: ", isContractRequest)
-
-	var spender string
-	var e error
-
-	if isContractRequest {
-		spender, e = internal.GetCallingContractAddress(ctx)
-	} else {
-		if spender, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
-			logger.Log.Error(err.FullError())
-			return false, err
-		}
-		signer = spender
+	amountInInt, ok := big.NewInt(0).SetString(amount, 10)
+	if !ok || amountInInt.Cmp(big.NewInt(0)) != 1 {
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
 
-	gatewayAdmin := internal.GetGatewayAdminAddress(ctx)
+	if helper.IsValidAddress(recipient) {
+		if amountInInt.Cmp(gasFees) < 0 {
+			return false, ginierr.ErrInvalidAmount(amount)
+		}
 
-	if signer == gatewayAdmin {
-		var gasDeductionAccount models.Account
+	} else if signer == gatewayAdmin {
+		var gasDeductionAccount models.Sender
 		err := json.Unmarshal([]byte(recipient), &gasDeductionAccount)
+		if err != nil {
+			return false, fmt.Errorf("failed to unmarshal recipient: %v", err)
+		}
+
+		if !helper.IsHexAddress(gasDeductionAccount.Sender) {
+			return false, ginierr.ErrIncorrectAddress("gasDeductionAccount")
+		}
+
 		if err == nil {
-			sender = gasDeductionAccount.Recipient
+			sender = gasDeductionAccount.Sender
+			recipient = constants.KalpFoundationAddress
+			actualAmount = amountInInt
 			gasFees = big.NewInt(0)
 		} else {
 			return false, fmt.Errorf("failed to unmarshal recipient: %v", err)
 		}
+
+		if !internal.IsAmountProper(amount) {
+			return false, ginierr.ErrInvalidAmount(amount)
+		}
+	} else {
+		return false, ginierr.ErrIncorrectAddress("recipient")
 	}
+
+	actualAmount = new(big.Int).Sub(amountInInt, gasFees)
+	logger.Log.Info("actualAmount => ", actualAmount)
+
+	// Determine if the call is from a contract
+	callingContractAddress, err := internal.GetCallingContractAddress(ctx, s.GetName())
+	if err != nil || len(callingContractAddress) == 0 {
+		callingContractAddress = s.GetName()
+	}
+	// TODO: check if error needs to be handled here
+	logger.Log.Info("callingContractAddress => ", callingContractAddress, err)
+
+	var e error
+
+	vestingContract, err := s.GetVestingContract(ctx)
+	if err != nil {
+		return false, err
+	}
+	bridgeContract, err := s.GetBridgeContract(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if callingContractAddress != s.GetName() && callingContractAddress != "" {
+		if callingContractAddress != bridgeContract && callingContractAddress != vestingContract {
+			err := ginierr.New("The calling contract is not bridge contract or vesting contract", http.StatusBadRequest)
+			logger.Log.Error(err.FullError())
+			return false, err
+		}
+		sender = callingContractAddress
+		if signer, e = ctx.GetUserID(); e != nil {
+			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
+			logger.Log.Error(err.FullError())
+			return false, err
+		}
+	}
+
+	logger.Log.Info("signer ==> ", signer, sender, recipient, helper.IsValidAddress(sender), helper.IsValidAddress(recipient))
 
 	// Input validation
 	if helper.IsContractAddress(signer) {
 		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
+	} else if !helper.IsValidAddress(signer) {
+		return false, ginierr.ErrIncorrectAddress("signer")
 	}
 	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
 	if !helper.IsValidAddress(sender) {
 		return false, ginierr.ErrIncorrectAddress("sender")
-	} else if !helper.IsValidAddress(recipient) {
-		return false, ginierr.ErrIncorrectAddress("recipient")
-	} else if !internal.IsAmountProper(value) {
-		return false, ginierr.ErrInvalidAmount(value)
 	}
 
-	if kycSender, e := ctx.GetKYC(sender); e != nil {
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(signer)
+	}
+
+	if denied, err := internal.IsDenied(ctx, sender); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(sender)
+	}
+
+	if denied, err := internal.IsDenied(ctx, recipient); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(recipient)
+	}
+
+	var kycSender, kycSigner bool
+	if kycSender, e = ctx.GetKYC(sender); e != nil {
 		err := ginierr.NewWithInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
-	} else if !kycSender {
-		err := ginierr.New("sender is not KYCed", http.StatusForbidden)
-		logger.Log.Error(err.FullError())
-		return false, err
 	}
 
-	if kycSigner, e := ctx.GetKYC(signer); e != nil {
+	if kycSigner, e = ctx.GetKYC(signer); e != nil {
 		err := ginierr.NewWithInternalError(e, "error fetching KYC for signer", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
-	} else if !kycSigner {
-		err := ginierr.New("signer is not KYCed", http.StatusForbidden)
-		logger.Log.Error(err.FullError())
-		return false, err
 	}
 
-	amount, ok := big.NewInt(0).SetString(value, 10)
-	if !ok || amount.Cmp(big.NewInt(0)) != 1 {
-		return false, ginierr.ErrInvalidAmount(value)
+	if !(kycSender || kycSigner) {
+		err := ginierr.New(fmt.Sprintf("IsSender kyced: %v, IsSigner kyced: %v", kycSender, kycSigner), http.StatusForbidden)
+		logger.Log.Error(err.FullError())
+		return false, err
 	}
 
 	senderBalance, err := s.balance(ctx, sender)
@@ -701,26 +756,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, err
 	}
 
-	signerBalance, err := s.balance(ctx, signer)
-	if err != nil {
-		return false, err
+	if senderBalance.Cmp(amountInInt) < 0 {
+		return false, ginierr.New("insufficient balance in sender's account for amount", http.StatusBadRequest)
 	}
 
-	if sender == signer {
-		if senderBalance.Cmp(new(big.Int).Add(amount, gasFees)) < 0 {
-			return false, ginierr.New("insufficient balance in sender's account for amount + gas fees", http.StatusBadRequest)
-		}
-	} else {
-		if senderBalance.Cmp(amount) < 0 {
-			return false, ginierr.New("insufficient balance in sender's account for amount", http.StatusBadRequest)
-		}
-		if signerBalance.Cmp(gasFees) < 0 {
-			return false, ginierr.New("insufficient balance in signer's account for gas fees", http.StatusBadRequest)
-		}
-	}
-
-	if signer == sender && signer == recipient {
-		if signer != constants.KalpFoundationAddress {
+	if sender == signer && sender == recipient {
+		if sender != constants.KalpFoundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, gasFees); err != nil {
 				return false, err
 			}
@@ -728,27 +769,27 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				return false, err
 			}
 		}
-	} else if signer == sender && signer != recipient {
-		if signer == constants.KalpFoundationAddress {
-			if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+	} else if sender == signer && sender != recipient {
+		if sender == constants.KalpFoundationAddress {
+			if err = internal.RemoveUtxo(ctx, sender, actualAmount); err != nil {
 				return false, err
 			}
-			if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+			if err = internal.AddUtxo(ctx, recipient, actualAmount); err != nil {
 				return false, err
 			}
 		} else {
 			if recipient == constants.KalpFoundationAddress {
-				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Add(amount, gasFees)); err != nil {
+				if err = internal.RemoveUtxo(ctx, sender, amountInInt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, recipient, new(big.Int).Add(amount, gasFees)); err != nil {
+				if err = internal.AddUtxo(ctx, recipient, amountInInt); err != nil {
 					return false, err
 				}
 			} else {
-				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Add(amount, gasFees)); err != nil {
+				if err = internal.RemoveUtxo(ctx, sender, amountInInt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+				if err = internal.AddUtxo(ctx, recipient, actualAmount); err != nil {
 					return false, err
 				}
 				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
@@ -759,39 +800,24 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	} else {
 		if signer == gatewayAdmin {
 			if sender != constants.KalpFoundationAddress {
-				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+				if err = internal.RemoveUtxo(ctx, sender, actualAmount); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amount); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, actualAmount); err != nil {
 					return false, err
 				}
 			}
 		} else {
-			if signer == constants.KalpFoundationAddress {
-				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
-					return false, err
-				}
-				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
-					return false, err
-				}
-			} else if recipient == constants.KalpFoundationAddress {
-				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
-					return false, err
-				}
-				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
-					return false, err
-				}
-				if err = internal.AddUtxo(ctx, recipient, new(big.Int).Add(amount, gasFees)); err != nil {
+			if err = internal.RemoveUtxo(ctx, sender, amountInInt); err != nil {
+				return false, err
+			}
+
+			if recipient == constants.KalpFoundationAddress {
+				if err = internal.AddUtxo(ctx, recipient, amountInInt); err != nil {
 					return false, err
 				}
 			} else {
-				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
-					return false, err
-				}
-				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
-					return false, err
-				}
-				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+				if err = internal.AddUtxo(ctx, recipient, actualAmount); err != nil {
 					return false, err
 				}
 				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
@@ -804,7 +830,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	eventPayload := map[string]interface{}{
 		"from":  sender,
 		"to":    recipient,
-		"value": amount.String(),
+		"value": amountInInt.String(),
 	}
 	eventBytes, _ := json.Marshal(eventPayload)
 	_ = ctx.SetEvent("Transfer", eventBytes)
@@ -816,7 +842,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	logger.Log.Info("TransferFrom operation initiated")
 
 	// Determine if the call is from a contract
-	callingContractAddress, err := internal.GetCallingContractAddress(ctx)
+	callingContractAddress, err := internal.GetCallingContractAddress(ctx, s.GetName())
 	// TODO: check if error needs to be handled here
 	logger.Log.Info("callingContractAddress => ", callingContractAddress, err)
 

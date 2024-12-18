@@ -10,6 +10,7 @@ import (
 	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
+	"regexp"
 
 	"strings"
 
@@ -20,7 +21,7 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-var GetCallingContractAddress = getCallingContractAddressHelper
+var GetCallingContractAddress = GetCalledContractAddress
 
 // CheckCallerIsContract checks if the caller is a contract
 func CheckCallerIsContract(ctx kalpsdk.TransactionContextInterface) bool {
@@ -28,7 +29,7 @@ func CheckCallerIsContract(ctx kalpsdk.TransactionContextInterface) bool {
 }
 
 // GetCallingContractAddress returns calling contract's address
-func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (string, error) {
+func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContractAddress string) (string, error) {
 	signedProposal, e := ctx.GetSignedProposal()
 	if signedProposal == nil {
 		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
@@ -41,11 +42,24 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 		return "", err
 	}
 
+	logger.Log.Debug("signedProposal:", signedProposal)
+
 	data := signedProposal.GetProposalBytes()
 	if data == nil {
 		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
+	}
+	logger.Log.Debug("Proposal bytes:", data)
+	// Define the regex pattern
+	pattern := `(TransferFrom|Transfer)`
+
+	// Compile the regex
+	re := regexp.MustCompile(pattern)
+
+	// Match the input data
+	if re.MatchString(string(data)) {
+		return giniContractAddress, nil
 	}
 	proposal := &peer.Proposal{}
 	e = proto.Unmarshal(data, proposal)
@@ -55,6 +69,9 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 		return "", err
 	}
 
+	logger.Log.Debug("proposal:", proposal)
+
+
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
 	if e != nil {
@@ -63,6 +80,9 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 		return "", err
 	}
 
+	logger.Log.Debug("payload:", payload)
+
+
 	paystring := payload.GetHeader().GetChannelHeader()
 	if len(paystring) == 0 {
 		err := ginierr.New("channel header is empty", http.StatusInternalServerError)
@@ -70,7 +90,8 @@ func getCallingContractAddressHelper(ctx kalpsdk.TransactionContextInterface) (s
 		return "", err
 	}
 
-	logger.Log.Debug("Calling contract address:", paystring)
+	logger.Log.Debug("paystring:", string(paystring))
+
 	contractAddress := helper.FindContractAddress(paystring)
 	if contractAddress == "" {
 		err := ginierr.New("contract address not found", http.StatusInternalServerError)
