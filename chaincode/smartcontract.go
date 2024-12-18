@@ -838,6 +838,17 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	return true, nil
 }
 
+func (s *SmartContract) GetTotalSUMUTXO(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	sum1, err := internal.GetTotalSUMUTXO(ctx)
+	if err != nil {
+		return "", fmt.Errorf("the error occured in getutxo", err)
+	}
+
+	logger.Log.Info("GetTotalSUMUTXO =============>", sum1)
+
+	return sum1, nil
+}
+
 func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, sender string, recipient string, value string) (bool, error) {
 	logger.Log.Info("TransferFrom operation initiated")
 

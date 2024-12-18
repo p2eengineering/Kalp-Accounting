@@ -71,7 +71,6 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 
 	logger.Log.Debug("proposal:", proposal)
 
-
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
 	if e != nil {
@@ -81,7 +80,6 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 	}
 
 	logger.Log.Debug("payload:", payload)
-
 
 	paystring := payload.GetHeader().GetChannelHeader()
 	if len(paystring) == 0 {
@@ -408,6 +406,42 @@ func IsCallerKalpBridge(ctx kalpsdk.TransactionContextInterface, KalpBridgeContr
 func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
 
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"}}`
+	logger.Log.Infof("queryString: %s\n", queryString)
+	resultsIterator, err := ctx.GetQueryResult(queryString)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from world state: %v", err)
+	}
+	amt := big.NewInt(0)
+	for resultsIterator.HasNext() {
+		var u map[string]interface{}
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return "", err
+		}
+		logger.Log.Infof("query Value %s\n", string(queryResult.Value))
+		logger.Log.Infof("query key %s\n", queryResult.Key)
+		err = json.Unmarshal(queryResult.Value, &u)
+		if err != nil {
+			logger.Log.Infof("%v", err)
+			return amt.String(), err
+		}
+		logger.Log.Debugf("%v\n", u["amount"])
+		amount := new(big.Int)
+		if uamount, ok := u["amount"].(string); ok {
+			amount.SetString(uamount, 10)
+		}
+
+		amt = amt.Add(amt, amount) // += u.Amount
+
+	}
+
+	return amt.String(), nil
+}
+
+
+func GetTotalSUMUTXO(ctx kalpsdk.TransactionContextInterface) (string, error) {
+
+	queryString := `{"selector":{"docType":"` + constants.UTXO + `"}}`
 	logger.Log.Infof("queryString: %s\n", queryString)
 	resultsIterator, err := ctx.GetQueryResult(queryString)
 	if err != nil {
