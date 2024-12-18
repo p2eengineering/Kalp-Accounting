@@ -604,7 +604,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 	return true, nil
 }
 
-func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, value string) (bool, error) {
+func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, amount string) (bool, error) {
 	logger.Log.Info("Transfer operation initiated")
 
 	signer, err := ctx.GetUserID()
@@ -626,14 +626,14 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		gasFees = val
 	}
 
-	amount, ok := big.NewInt(0).SetString(value, 10)
-	if !ok || amount.Cmp(big.NewInt(0)) != 1 {
-		return false, ginierr.ErrInvalidAmount(value)
+	amountInInt, ok := big.NewInt(0).SetString(amount, 10)
+	if !ok || amountInInt.Cmp(big.NewInt(0)) != 1 {
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
 
 	if helper.IsValidAddress(recipient) {
-		if amount.Cmp(gasFees) < 0 {
-			return false, ginierr.ErrInvalidAmount(value)
+		if amountInInt.Cmp(gasFees) < 0 {
+			return false, ginierr.ErrInvalidAmount(amount)
 		}
 
 	} else if signer == gatewayAdmin {
@@ -650,20 +650,20 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		if err == nil {
 			sender = gasDeductionAccount.Sender
 			recipient = constants.KalpFoundationAddress
-			actualAmount = amount
+			actualAmount = amountInInt
 			gasFees = big.NewInt(0)
 		} else {
 			return false, fmt.Errorf("failed to unmarshal recipient: %v", err)
 		}
 
-		if !internal.IsAmountProper(value) {
-			return false, ginierr.ErrInvalidAmount(value)
+		if !internal.IsAmountProper(amount) {
+			return false, ginierr.ErrInvalidAmount(amount)
 		}
 	} else {
 		return false, ginierr.ErrIncorrectAddress("recipient")
 	}
 
-	actualAmount = new(big.Int).Sub(amount, gasFees)
+	actualAmount = new(big.Int).Sub(amountInInt, gasFees)
 	logger.Log.Info("actualAmount => ", actualAmount)
 
 	// Determine if the call is from a contract
@@ -756,7 +756,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, err
 	}
 
-	if senderBalance.Cmp(amount) < 0 {
+	if senderBalance.Cmp(amountInInt) < 0 {
 		return false, ginierr.New("insufficient balance in sender's account for amount", http.StatusBadRequest)
 	}
 
@@ -779,14 +779,14 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 			}
 		} else {
 			if recipient == constants.KalpFoundationAddress {
-				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+				if err = internal.RemoveUtxo(ctx, sender, amountInInt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+				if err = internal.AddUtxo(ctx, recipient, amountInInt); err != nil {
 					return false, err
 				}
 			} else {
-				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+				if err = internal.RemoveUtxo(ctx, sender, amountInInt); err != nil {
 					return false, err
 				}
 				if err = internal.AddUtxo(ctx, recipient, actualAmount); err != nil {
@@ -808,12 +808,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				}
 			}
 		} else {
-			if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+			if err = internal.RemoveUtxo(ctx, sender, amountInInt); err != nil {
 				return false, err
 			}
 
 			if recipient == constants.KalpFoundationAddress {
-				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+				if err = internal.AddUtxo(ctx, recipient, amountInInt); err != nil {
 					return false, err
 				}
 			} else {
@@ -830,7 +830,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	eventPayload := map[string]interface{}{
 		"from":  sender,
 		"to":    recipient,
-		"value": amount.String(),
+		"value": amountInInt.String(),
 	}
 	eventBytes, _ := json.Marshal(eventPayload)
 	_ = ctx.SetEvent("Transfer", eventBytes)
