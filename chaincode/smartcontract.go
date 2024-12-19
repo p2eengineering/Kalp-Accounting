@@ -117,7 +117,7 @@ func (s *SmartContract) Allow(ctx kalpsdk.TransactionContextInterface, address s
 	if denied, err := internal.IsDenied(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error checking if address already allowed: %v", http.StatusInternalServerError, err)
 	} else if !denied {
-		return ginierr.NotDenied(address)
+		return ginierr.ErrNotDenied(address)
 	}
 
 	if err := internal.AllowAddress(ctx, address); err != nil {
@@ -141,7 +141,7 @@ func (s *SmartContract) Deny(ctx kalpsdk.TransactionContextInterface, address st
 	if denied, err := internal.IsDenied(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error checking if address already denied: %v", http.StatusInternalServerError, err)
 	} else if denied {
-		return ginierr.AlreadyDenied(address)
+		return ginierr.ErrAlreadyDenied(address)
 	}
 	if err := internal.DenyAddress(ctx, address); err != nil {
 		return fmt.Errorf("error with status code %v, error denying address: %v", http.StatusInternalServerError, err)
@@ -172,8 +172,6 @@ func (s *SmartContract) Decimals(ctx kalpsdk.TransactionContextInterface) uint8 
 func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	bytes, err := ctx.GetState(constants.GasFeesKey)
 	if err != nil {
-		// return "", fmt.Errorf("failed to get Name: %v", err)
-		fmt.Printf("failed to get Gas Fee: %v", err)
 		return "", fmt.Errorf("failed to get Gas Fee: %v", err)
 	}
 	if bytes == nil {
@@ -606,24 +604,6 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		gasFees = val
 	}
 
-	// Determine if the call is from a contract
-	isContractRequest := internal.CheckCallerIsContract(ctx)
-	logger.Log.Info("IsContractRequest: ", isContractRequest)
-
-	var spender string
-	var e error
-
-	if isContractRequest {
-		spender, e = internal.GetCallingContractAddress(ctx)
-	} else {
-		if spender, e = helper.GetUserId(ctx); e != nil {
-			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
-			logger.Log.Error(err.FullError())
-			return false, err
-		}
-		signer = spender
-	}
-
 	gatewayAdmin := internal.GetGatewayAdminAddress(ctx)
 
 	if signer == gatewayAdmin {
@@ -862,22 +842,22 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	if denied, err := internal.IsDenied(ctx, sender); err != nil {
 		return false, err
 	} else if denied {
-		return false, ginierr.DeniedAddress(sender)
+		return false, ginierr.ErrDeniedAddress(sender)
 	}
 	if denied, err := internal.IsDenied(ctx, recipient); err != nil {
 		return false, err
 	} else if denied {
-		return false, ginierr.DeniedAddress(recipient)
+		return false, ginierr.ErrDeniedAddress(recipient)
 	}
 	if denied, err := internal.IsDenied(ctx, signer); err != nil {
 		return false, err
 	} else if denied {
-		return false, ginierr.DeniedAddress(signer)
+		return false, ginierr.ErrDeniedAddress(signer)
 	}
 	if denied, err := internal.IsDenied(ctx, spender); err != nil {
 		return false, err
 	} else if denied {
-		return false, ginierr.DeniedAddress(spender)
+		return false, ginierr.ErrDeniedAddress(spender)
 	}
 
 	// Ensure KYC compliance

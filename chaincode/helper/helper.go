@@ -15,7 +15,7 @@ import (
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
-func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
+func ConvertToBigInt(value interface{}) (*big.Int, error) {
 	switch v := value.(type) {
 	case int:
 		return big.NewInt(int64(v)), nil

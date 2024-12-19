@@ -76,15 +76,15 @@ func ErrConvertingAmountToBigInt(number string) *CustomError {
 	return New(fmt.Sprintf("failed to covert amount %s to big int", number), http.StatusInternalServerError)
 }
 
-func AlreadyDenied(address string) *CustomError {
+func ErrAlreadyDenied(address string) *CustomError {
 	return New(fmt.Sprintf("AlreadyDenied : address : %s ", address), http.StatusConflict)
 }
 
-func NotDenied(address string) *CustomError {
+func ErrNotDenied(address string) *CustomError {
 	return New(fmt.Sprintf("NotDenied : address : %s ", address), http.StatusConflict)
 }
 
-func DeniedAddress(address string) *CustomError {
+func ErrDeniedAddress(address string) *CustomError {
 	return New(fmt.Sprintf("DeniedAddress : address : %s ", address), http.StatusForbidden)
 }
 

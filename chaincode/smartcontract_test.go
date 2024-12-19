@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"gini-contract/chaincode"
 	"gini-contract/chaincode/constants"
-	"gini-contract/chaincode/internal"
 	"gini-contract/chaincode/mocks"
 	"math/big"
 	"math/rand"
@@ -1594,9 +1593,6 @@ func TestCase11(t *testing.T) {
 			},
 		}
 
-	}
-	internal.GetCallingContractAddress = func(ctx kalpsdk.TransactionContextInterface) (string, error) {
-		return constants.InitialBridgeContractAddress, nil
 	}
 
 	// ****************END define helper functions*********************
