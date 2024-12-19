@@ -11,8 +11,6 @@ import (
 	"math/big"
 	"net/http"
 
-	"strings"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
@@ -331,55 +329,6 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 	}
 
 	return nil
-}
-
-func EmitTransferSingle(ctx kalpsdk.TransactionContextInterface, transferSingleEvent models.TransferSingle) error {
-	transferSingleEventJSON, err := json.Marshal(transferSingleEvent)
-	if err != nil {
-		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
-	}
-
-	err = ctx.SetEvent("models.TransferSingle", transferSingleEventJSON)
-	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
-	}
-
-	return nil
-}
-
-func IsCallerKalpBridge(ctx kalpsdk.TransactionContextInterface, KalpBridgeContractName string) (bool, error) {
-	signedProposal, err := ctx.GetSignedProposal()
-	if signedProposal == nil {
-		return false, fmt.Errorf("could not retrieve proposal details")
-	}
-	if err != nil {
-		return false, fmt.Errorf("error in getting signed proposal")
-	}
-
-	data := signedProposal.GetProposalBytes()
-	if data == nil {
-		return false, fmt.Errorf("error in fetching signed proposal")
-	}
-
-	proposal := &peer.Proposal{}
-	err = proto.Unmarshal(data, proposal)
-	if err != nil {
-		return false, fmt.Errorf("error in parsing signed proposal")
-	}
-
-	payload := &common.Payload{}
-	err = proto.Unmarshal(proposal.Payload, payload)
-	if err != nil {
-		return false, fmt.Errorf("error in parsing payload")
-	}
-
-	paystring := payload.GetHeader().GetChannelHeader()
-	if paystring == nil {
-		return false, fmt.Errorf("channel header is empty")
-	}
-
-	fmt.Println(paystring, KalpBridgeContractName)
-	return strings.Contains(string(paystring), KalpBridgeContractName), nil
 }
 
 func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {

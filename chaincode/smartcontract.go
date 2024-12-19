@@ -274,14 +274,10 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 			return false, ginierr.ErrIncorrectAddress("gasDeductionAccount")
 		}
 
-		if err == nil {
-			sender = gasDeductionAccount.Sender
-			recipient = constants.KalpFoundationAddress
-			actualAmount = amountInInt
-			gasFees = big.NewInt(0)
-		} else {
-			return false, fmt.Errorf("failed to unmarshal recipient: %v", err)
-		}
+		sender = gasDeductionAccount.Sender
+		recipient = constants.KalpFoundationAddress
+		actualAmount = amountInInt
+		gasFees = big.NewInt(0)
 
 		if !internal.IsAmountProper(amount) {
 			return false, ginierr.ErrInvalidAmount(amount)
