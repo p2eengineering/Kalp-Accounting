@@ -10,6 +10,7 @@ import (
 	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
+	"regexp"
 
 	"strings"
 
@@ -19,6 +20,78 @@ import (
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 	"golang.org/x/exp/slices"
 )
+
+// TODO: remove this later
+func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface, giniContractAddress string) (string, error) {
+	signedProposal, e := ctx.GetSignedProposal()
+	if signedProposal == nil {
+		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+	if e != nil {
+		err := ginierr.NewWithInternalError(e, "error in getting signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	logger.Log.Debug("signedProposal:", signedProposal)
+
+	data := signedProposal.GetProposalBytes()
+	if data == nil {
+		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+	logger.Log.Debug("Proposal bytes:", data)
+	// Define the regex pattern
+	pattern := `(TransferFrom|Transfer)`
+
+	// Compile the regex
+	re := regexp.MustCompile(pattern)
+
+	// Match the input data
+	if re.MatchString(string(data)) {
+		return giniContractAddress, nil
+	}
+	proposal := &peer.Proposal{}
+	e = proto.Unmarshal(data, proposal)
+	if e != nil {
+		err := ginierr.NewWithInternalError(e, "error in parsing signed proposal", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	logger.Log.Debug("proposal:", proposal)
+
+	payload := &common.Payload{}
+	e = proto.Unmarshal(proposal.Payload, payload)
+	if e != nil {
+		err := ginierr.NewWithInternalError(e, "error in parsing payload", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	logger.Log.Debug("payload:", payload)
+
+	paystring := payload.GetHeader().GetChannelHeader()
+	if len(paystring) == 0 {
+		err := ginierr.New("channel header is empty", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	logger.Log.Debug("paystring:", string(paystring))
+
+	contractAddress := helper.FindContractAddress(string(paystring))
+	if contractAddress == "" {
+		err := ginierr.New("contract address not found", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return "", err
+	}
+
+	return contractAddress, nil
+}
 
 func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	signedProposal, e := ctx.GetSignedProposal()
@@ -32,6 +105,8 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
+
+	logger.Log.Debug("signedProposal:", signedProposal)
 
 	data := signedProposal.GetProposalBytes()
 	if data == nil {
@@ -50,6 +125,8 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	}
 	logger.Log.Debug("peer.Proposal{}", proposal)
 
+	logger.Log.Debug("proposal:", proposal)
+
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
 	if e != nil {
@@ -58,6 +135,8 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 		return "", err
 	}
 	logger.Log.Debug("common.Payload{}", payload)
+
+	logger.Log.Debug("payload:", payload)
 
 	paystring := payload.GetHeader().GetChannelHeader()
 	if len(paystring) == 0 {

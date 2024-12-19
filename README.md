@@ -240,3 +240,372 @@ func UpdateBalances(signer, contractAdmin,sender, recipient string, gasFees, amo
  }
 }
 ```
+
+func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, value string) (bool, error) {
+	logger.Log.Info("Transfer operation initiated")
+
+	signer, err := ctx.GetUserID()
+	if err != nil {
+		err := ginierr.NewWithInternalError(err, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	sender := signer
+
+	var gasFees *big.Int
+	if gasFeesString, err := s.GetGasFees(ctx); err != nil {
+		return false, err
+	} else if val, ok := big.NewInt(0).SetString(gasFeesString, 10); !ok {
+		return false, ginierr.New("invalid gas fees found:"+gasFeesString, http.StatusInternalServerError)
+	} else {
+		gasFees = val
+	}
+
+	// Determine if the call is from a contract
+	callingContractAddress, err := internal.GetCallingContractAddress(ctx, s.GetName())
+	if err != nil || len(callingContractAddress) == 0 {
+		callingContractAddress = s.GetName()
+	}
+	// TODO: check if error needs to be handled here
+	logger.Log.Info("callingContractAddress => ", callingContractAddress, err)
+
+	var spender string
+	var e error
+
+	vestingContract, err := s.GetVestingContract(ctx)
+	if err != nil {
+		return false, err
+	}
+	bridgeContract, err := s.GetBridgeContract(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if callingContractAddress != s.GetName() && callingContractAddress != "" {
+		if callingContractAddress != bridgeContract && callingContractAddress != vestingContract {
+			err := ginierr.New("The calling contract is not bridge contract or vesting contract", http.StatusBadRequest)
+			logger.Log.Error(err.FullError())
+			return false, err
+		}
+		sender = callingContractAddress
+		if signer, e = ctx.GetUserID(); e != nil {
+			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
+			logger.Log.Error(err.FullError())
+			return false, err
+		}
+	} else {
+		if sender, e = ctx.GetUserID(); e != nil {
+			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
+			logger.Log.Error(err.FullError())
+			return false, err
+		}
+		signer = sender
+	}
+
+	logger.Log.Info("signer ==> ", signer, spender)
+	gatewayAdmin := internal.GetGatewayAdminAddress(ctx)
+
+	if signer == gatewayAdmin {
+		var gasDeductionAccount models.Sender
+		err := json.Unmarshal([]byte(recipient), &gasDeductionAccount)
+		if err == nil {
+			sender = gasDeductionAccount.Sender
+			recipient = constants.KalpFoundationAddress
+
+			gasFees = big.NewInt(0)
+		} else {
+			return false, fmt.Errorf("failed to unmarshal recipient: %v", err)
+		}
+	}
+
+	logger.Log.Info("signer ==> ", signer, spender, recipient, helper.IsValidAddress(sender), helper.IsValidAddress(recipient))
+
+	// Input validation
+	if helper.IsContractAddress(signer) {
+		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
+	} else if !helper.IsValidAddress(signer) {
+		return false, ginierr.ErrIncorrectAddress("signer")
+	}
+	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
+		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
+	}
+	if !helper.IsValidAddress(sender) {
+		return false, ginierr.ErrIncorrectAddress("sender")
+	} else if !helper.IsValidAddress(recipient) {
+		return false, ginierr.ErrIncorrectAddress("recipient")
+	} else if !internal.IsAmountProper(value) {
+		return false, ginierr.ErrInvalidAmount(value)
+	}
+
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(signer)
+	}
+
+	if denied, err := internal.IsDenied(ctx, sender); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(sender)
+	}
+
+	if denied, err := internal.IsDenied(ctx, recipient); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.DeniedAddress(recipient)
+	}
+
+	var kycSender, kycSigner bool
+	if kycSender, e = ctx.GetKYC(sender); e != nil {
+		err := ginierr.NewWithInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	if kycSigner, e = ctx.GetKYC(signer); e != nil {
+		err := ginierr.NewWithInternalError(e, "error fetching KYC for signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	if !(kycSender || kycSigner) {
+		err := ginierr.New(fmt.Sprintf("IsSender kyced: %v, IsSigner kyced: %v", kycSender, kycSigner), http.StatusForbidden)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	amount, ok := big.NewInt(0).SetString(value, 10)
+	if !ok || amount.Cmp(big.NewInt(0)) != 1 {
+		return false, ginierr.ErrInvalidAmount(value)
+	}
+
+	senderBalance, err := s.balance(ctx, sender)
+	if err != nil {
+		return false, err
+	}
+
+	signerBalance, err := s.balance(ctx, signer)
+	if err != nil {
+		return false, err
+	}
+
+	if sender == signer {
+		if senderBalance.Cmp(new(big.Int).Add(amount, gasFees)) < 0 {
+			return false, ginierr.New("insufficient balance in sender's account for amount + gas fees", http.StatusBadRequest)
+		}
+	} else {
+		if senderBalance.Cmp(amount) < 0 {
+			return false, ginierr.New("insufficient balance in sender's account for amount", http.StatusBadRequest)
+		}
+		if signerBalance.Cmp(gasFees) < 0 {
+			return false, ginierr.New("insufficient balance in signer's account for gas fees", http.StatusBadRequest)
+		}
+	}
+
+	if sender == signer && sender == recipient {
+		if sender != constants.KalpFoundationAddress {
+			if err = internal.RemoveUtxo(ctx, sender, gasFees); err != nil {
+				return false, err
+			}
+			if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				return false, err
+			}
+		}
+	} else if sender == signer && sender != recipient {
+		if sender == constants.KalpFoundationAddress {
+			if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+				return false, err
+			}
+			if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+				return false, err
+			}
+		} else {
+			if recipient == constants.KalpFoundationAddress {
+				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Add(amount, gasFees)); err != nil {
+					return false, err
+				}
+				if err = internal.AddUtxo(ctx, recipient, new(big.Int).Add(amount, gasFees)); err != nil {
+					return false, err
+				}
+			} else {
+				if err = internal.RemoveUtxo(ctx, sender, new(big.Int).Add(amount, gasFees)); err != nil {
+					return false, err
+				}
+				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+					return false, err
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					return false, err
+				}
+			}
+		}
+	} else {
+		if signer == gatewayAdmin {
+			if sender != constants.KalpFoundationAddress {
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					return false, err
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amount); err != nil {
+					return false, err
+				}
+			}
+		} else {
+			if signer == constants.KalpFoundationAddress {
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					return false, err
+				}
+				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+					return false, err
+				}
+			} else if recipient == constants.KalpFoundationAddress {
+				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+					return false, err
+				}
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					return false, err
+				}
+				if err = internal.AddUtxo(ctx, recipient, new(big.Int).Add(amount, gasFees)); err != nil {
+					return false, err
+				}
+			} else {
+				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
+					return false, err
+				}
+				if err = internal.RemoveUtxo(ctx, sender, amount); err != nil {
+					return false, err
+				}
+				if err = internal.AddUtxo(ctx, recipient, amount); err != nil {
+					return false, err
+				}
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+					return false, err
+				}
+			}
+		}
+	}
+
+	eventPayload := map[string]interface{}{
+		"from":  sender,
+		"to":    recipient,
+		"value": amount.String(),
+	}
+	eventBytes, _ := json.Marshal(eventPayload)
+	_ = ctx.SetEvent("Transfer", eventBytes)
+
+	return true, nil
+}
+
+
+
+
+1. Third party game (gasFee deduction and gateway normal transfer)
+2. Direct gini transfer (user->user)
+3. From vesting contract (contract(gini&bridge) -> user , user -> contract(any))
+Function Transfer(ctx, recipient , amount) (bool,error):
+    Logger := InitializeLogger()
+    Logger.Info("Transfer operation initiated")
+
+  KalpFoundation := GetKalpFoundationAdminAddress(ctx)
+  signer:=GetSigner()
+  GatewayAdmin := GetGatewayAdminAddress(ctx)
+    IF IsValidAddress(recipient) 
+    gas := CalculateGasFee()
+      if amount<gas{
+          return false,ERROR("amount is not proper ")
+      }
+  ELSE IF signer==GatewayAdmin && IsRecipientMarshallable()   // this function represent gas fees deduction scenario
+    gasDeductionAccount,err:=Unmarshal(recipient)
+    IF !IsUserAddress(gasDeductionAccount)
+      return false,ERROR
+        IF err==nil 
+            sender=gasDeductionAccount
+      recipient=CONTRACT_ADMIN
+            actualAmount:=amount
+            gas=0     
+    if amount<0{
+          return false,ERROR("amount is not proper ")
+      }
+  ELSE
+    return false,ERROR("recipient is not proper ")
+
+    actualAmount:=amount-gas
+    sender:=signer
+
+    calledContractAddress,err = GetCalledContractAddress(ctx)
+    if err!=nil{
+        return false, ERROR("getting called contract address ")
+    }
+    if (calledContractAddress!=GINI_CONTRACT_NAME) {
+        if calledContractAddress==BRIDGE_CONTRACT_NAME || calledContractAddress=VESTING_CONTRACT_NAME{
+            sender=calledContractAddress
+        }else{
+            return false,ERROR("Cannot use contract other than bridge contract or vesting contract")
+        }
+    }
+
+
+    # Validate inputs
+    IF IsContractAddress(signer) 
+      RETURN false,ERROR("signer cannot be contract")
+    ELSE IF !IsUserAddress(signer)
+      RETURN false,ERROR("signer is not proper userAddress")
+    IF IsContractAddress(sender)&&IsContractAddress(recipient)
+      RETURN false,ERROR("both sender and recipient cannot be contract")
+    IF !IsValidAddress(sender) 
+      RETURN false,ERROR("sender address is not valid")
+
+    IF IsDenied(sender) 
+        return false,ERROR("sender has been denied")
+    ELSE IF IsDenied(recipient)
+        return false,ERROR("recipient has been denied")
+    ELSE IF IsDenied(signer)
+        return false,ERROR("signer has been denied") 
+
+    IF !(IsKYCed(sender) || IsKYCed(signer))
+        RETURN false,Error()   
+
+    IF balanceOf(sender)<actualamount + gas
+        return false,ERROR("insufficient amount in sender")
+
+    // normal user transfer
+    IF sender==signer AND sender==recipient
+        IF sender==CONTRACT_ADMIN
+            // Do Nothing
+        ELSE
+            RemoveUTXO(ctx,sender,gas)
+            AddUTXO(ctx,CONTRACT_ADMIN,gas)
+    ELSE IF sender==signer AND sender!=recipient
+        IF sender==CONTRACT_ADMIN
+            RemoveUTXO(ctx,sender,actualAmount)
+            AddUTXO(ctx,recipient,actualAmount)
+        ELSE
+            IF recipient==CONTRACT_ADMIN
+                RemoveUTXO(ctx,sender,actualAmount+gas)
+                AddUTXO(ctx,recipient,actualAmount+gas)
+            ELSE
+                RemoveUTXO(ctx,sender,actualAmount+gas)
+                AddUTXO(ctx,recipient,actualAmount)
+                AddUTXO(ctx,CONTRACT_ADMIN,gas)
+    // scenario: sender is Contract to user transfer or gateway gas fee deduction
+    // 1. gateway gas fee deduction from CONTRACT_ADMIN account
+    ELSE // sender!=signer // recipient is a user                                          // when sender!=signer then it is scenario for call coming from another contract or from gateway
+        IF signer==gatewayAdmin
+            IF sender == CONTRACT_ADMIN THEN
+              // Do nothing
+            ELSE
+              RemoveUTXO(ctx,sender,actualAmount)
+              AddUTXO(ctx,CONTRACT_ADMIN,actualAmount)
+        ELSE 
+      RemoveUTXO(ctx,sender,actualAmount+gas)
+          IF recipient==CONTRACT_ADMIN
+            AddUTXO(ctx,recipient,actualAmount+gas)
+          ELSE
+            AddUTXO(ctx,recipient,actualAmount)
+            AddUTXO(ctx,CONTRACT_ADMIN,gas)
+
+
+    # Emit transfer event
+    EmitEvent("Transfer", {"from": sender, "to": recipient, "value": amount})
+
+    RETURN

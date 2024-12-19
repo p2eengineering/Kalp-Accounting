@@ -25,9 +25,9 @@ type UserRole struct {
 	Desc    string `json:"desc"`
 }
 
-// type Sender struct {
-// 	Sender string `json:"sender"`
-// }
+type Sender struct {
+	Sender string `json:"sender"`
+}
 
 type Utxo struct {
 	Key     string `json:"_id,omitempty"`
