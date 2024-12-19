@@ -6,30 +6,30 @@ import (
 )
 
 type CustomError struct {
-	StatusCode  int
-	Message     string
+	statusCode  int
+	message     string
 	internalErr error
 }
 
 func (e *CustomError) Error() string {
-	return fmt.Sprintf("%s, status code:%d", e.Message, e.StatusCode)
+	return fmt.Sprintf("%s, status code:%d", e.message, e.statusCode)
 }
 
 func (e *CustomError) FullError() string {
-	return fmt.Sprintf("%s, status code:%d, internal err: %v", e.Message, e.StatusCode, e.internalErr)
+	return fmt.Sprintf("%s, status code:%d, internal err: %v", e.message, e.statusCode, e.internalErr)
 }
 
 func New(message string, statusCode int) *CustomError {
 	return &CustomError{
-		StatusCode: statusCode,
-		Message:    message,
+		statusCode: statusCode,
+		message:    message,
 	}
 }
 
 func NewWithInternalError(err error, message string, statusCode int) *CustomError {
 	return &CustomError{
-		StatusCode:  statusCode,
-		Message:     message,
+		statusCode:  statusCode,
+		message:     message,
 		internalErr: err,
 	}
 }
@@ -37,20 +37,19 @@ func NewWithInternalError(err error, message string, statusCode int) *CustomErro
 var (
 	ErrFailedToGetClientID     = New("failed to get public address", http.StatusInternalServerError)
 	ErrOnlyFoundationHasAccess = New("only kalp foundation has access to perform this action", http.StatusUnauthorized)
-	ErrFailedToGetName         = New("failed to get name", http.StatusInternalServerError)
-	ErrFailedToGetSymbol       = New("failed to get symbol", http.StatusInternalServerError)
-	ErrInitializingRoles       = New("error while initializing roles", http.StatusInternalServerError)
 	ErrMinitingTokens          = New("error while minting tokens", http.StatusInternalServerError)
-	ErrFailedToEmitEvent       = New("failed to emit event", http.StatusInternalServerError)
-	ErrInvalidAddress          = New("invalid address", http.StatusBadRequest)
 )
+
+func ErrFailedToEmitEvent(event string) *CustomError {
+	return New(fmt.Sprintf("failed to emit event: %s", event), http.StatusInternalServerError)
+}
 
 func ErrInvalidAmount(amount string) *CustomError {
 	return New(fmt.Sprintf("invalid amount passed: %s", amount), http.StatusBadRequest)
 }
 
-func ErrIncorrectAddress(user string) *CustomError {
-	return New(fmt.Sprintf("address: %s is not valid", user), http.StatusBadRequest)
+func ErrIncorrectAddress(address string) *CustomError {
+	return New(fmt.Sprintf("address: %s is not valid", address), http.StatusBadRequest)
 }
 
 func ErrFailedToDeleteState(e error) *CustomError {
@@ -73,18 +72,26 @@ func ErrFailedToSetEvent(e error, event string) *CustomError {
 	return NewWithInternalError(e, "failed to set event: "+event, http.StatusInternalServerError)
 }
 
-func ErrConvertingStringToBigInt(number string) *CustomError {
-	return New(fmt.Sprintf("failed to covert number %s to big int", number), http.StatusInternalServerError)
+func ErrConvertingAmountToBigInt(number string) *CustomError {
+	return New(fmt.Sprintf("failed to covert amount %s to big int", number), http.StatusInternalServerError)
 }
 
-func AlreadyDenied(address string) *CustomError {
+func ErrAlreadyDenied(address string) *CustomError {
 	return New(fmt.Sprintf("AlreadyDenied : address : %s ", address), http.StatusConflict)
 }
 
-func NotDenied(address string) *CustomError {
+func ErrNotDenied(address string) *CustomError {
 	return New(fmt.Sprintf("NotDenied : address : %s ", address), http.StatusConflict)
 }
 
-func DeniedAddress(address string) *CustomError {
+func ErrDeniedAddress(address string) *CustomError {
 	return New(fmt.Sprintf("DeniedAddress : address : %s ", address), http.StatusForbidden)
+}
+
+func ErrInvalidUserAddress(address string) *CustomError {
+	return New(fmt.Sprintf("Invalid user address : %s ", address), http.StatusBadRequest)
+}
+
+func ErrFailedToGetKey(key string) *CustomError {
+	return New(fmt.Sprintf("FailedToGetKey : %s", key), http.StatusInternalServerError)
 }
