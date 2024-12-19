@@ -1,6 +1,7 @@
 package chaincode_test
 
 import (
+	"encoding/base64"
 	"fmt"
 	"gini-contract/chaincode"
 	"gini-contract/chaincode/constants"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
@@ -36,19 +38,118 @@ type stateQueryIterator interface {
 	kalpsdk.StateQueryIteratorInterface
 }
 
+//go:generate counterfeiter -o mocks/clientidentity.go -fake-name ClientIdentity . clientIdentity
+type clientIdentity interface {
+	cid.ClientIdentity
+}
+
+func SetUserID(transactionContext *mocks.TransactionContext, userID string) {
+	completeId := fmt.Sprintf("x509::CN=%s,O=Organization,L=City,ST=State,C=Country", userID)
+
+	// Base64 encode the complete ID
+	b64ID := base64.StdEncoding.EncodeToString([]byte(completeId))
+
+	clientIdentity := &mocks.ClientIdentity{}
+	clientIdentity.GetIDReturns(b64ID, nil)
+	transactionContext.GetClientIdentityReturns(clientIdentity)
+}
+
 func TestInitialize(t *testing.T) {
 	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
-
 	giniContract := chaincode.SmartContract{}
+	// ****************START define helper functions*********************
+	worldState := map[string][]byte{}
+	transactionContext.CreateCompositeKeyStub = func(s1 string, s2 []string) (string, error) {
+		key := "_" + s1 + "_"
+		for _, s := range s2 {
+			key += s + "_"
+		}
+		return key, nil
+	}
+	transactionContext.PutStateWithoutKYCStub = func(s string, b []byte) error {
+		worldState[s] = b
+		return nil
+	}
+	transactionContext.GetQueryResultStub = func(s string) (kalpsdk.StateQueryIteratorInterface, error) {
+		var docType string
+		var account string
 
-	transactionContext.GetUserIDReturns(constants.KalpFoundationAddress, nil)
+		// finding doc type
+		re := regexp.MustCompile(`"docType"\s*:\s*"([^"]+)"`)
+		match := re.FindStringSubmatch(s)
+
+		if len(match) > 1 {
+			docType = match[1]
+		}
+
+		// finding account
+		re = regexp.MustCompile(`"account"\s*:\s*"([^"]+)"`)
+		match = re.FindStringSubmatch(s)
+
+		if len(match) > 1 {
+			account = match[1]
+		}
+
+		iteratorData := struct {
+			index int
+			data  []queryresult.KV
+		}{}
+		for key, val := range worldState {
+			if strings.Contains(key, docType) && strings.Contains(key, account) {
+				iteratorData.data = append(iteratorData.data, queryresult.KV{Key: key, Value: val})
+			}
+		}
+		iterator := &mocks.StateQueryIterator{}
+		iterator.HasNextStub = func() bool {
+			return iteratorData.index < len(iteratorData.data)
+		}
+		iterator.NextStub = func() (*queryresult.KV, error) {
+			if iteratorData.index < len(iteratorData.data) {
+				iteratorData.index++
+				return &iteratorData.data[iteratorData.index-1], nil
+			}
+			return nil, fmt.Errorf("iterator out of bounds")
+		}
+		return iterator, nil
+	}
+	transactionContext.GetStateStub = func(s string) ([]byte, error) {
+		data, found := worldState[s]
+		if found {
+			return data, nil
+		}
+		return nil, nil
+	}
+	transactionContext.DelStateWithoutKYCStub = func(s string) error {
+		delete(worldState, s)
+		return nil
+	}
+	transactionContext.GetTxIDStub = func() string {
+		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+		length := 10
+		rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+		result := make([]byte, length)
+		for i := range result {
+			result[i] = charset[rand.Intn(len(charset))]
+		}
+		return string(result)
+	}
+	// ****************END define helper functions*********************
+
+	SetUserID(transactionContext, constants.KalpFoundationAddress)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
-
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
+
+	balance, err := giniContract.BalanceOf(transactionContext, constants.KalpFoundationAddress)
+	require.NoError(t, err)
+	require.Equal(t, constants.InitialFoundationBalance, balance)
+
+	balance, err = giniContract.BalanceOf(transactionContext, "klp-6b616c70627269646775-cc")
+	require.NoError(t, err)
+	require.Equal(t, constants.InitialVestingContractBalance, balance)
 }
 func TestCase1(t *testing.T) {
 	t.Parallel()
@@ -140,7 +241,7 @@ func TestCase1(t *testing.T) {
 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -177,13 +278,13 @@ func TestCase1(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// Approve: userG approves userM to spend 100 units
-	transactionContext.GetUserIDReturns(userG, nil)
+	SetUserID(transactionContext, userG)
 	ok, err = giniContract.Approve(transactionContext, userM, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 100 units from userG to userC
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, userC, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
@@ -302,7 +403,7 @@ func TestCase2(t *testing.T) {
 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -339,7 +440,7 @@ func TestCase2(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 100 units from userG to userC
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, userC, "100")
 	require.ErrorContains(t, err, "insufficient allowance")
 	require.Equal(t, false, ok)
@@ -458,7 +559,7 @@ func TestCase3(t *testing.T) {
 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -495,13 +596,13 @@ func TestCase3(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// Approve: userG approves userM to spend 100 units
-	transactionContext.GetUserIDReturns(userG, nil)
+	SetUserID(transactionContext, userG)
 	ok, err = giniContract.Approve(transactionContext, userM, "80")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 100 units from userG to userC
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, userC, "80")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
@@ -620,7 +721,7 @@ func TestCase4(t *testing.T) {
 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -657,13 +758,13 @@ func TestCase4(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// Approve: userG approves userM to spend 100 units
-	transactionContext.GetUserIDReturns(userG, nil)
+	SetUserID(transactionContext, userG)
 	ok, err = giniContract.Approve(transactionContext, userM, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 100 units from userG to userC
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, userC, "100")
 	require.ErrorContains(t, err, "insufficient balance in sender's account for amount")
 	require.Equal(t, false, ok)
@@ -782,7 +883,7 @@ func TestCase5(t *testing.T) {
 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -819,13 +920,13 @@ func TestCase5(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// Approve: userG approves userM to spend 100 units
-	transactionContext.GetUserIDReturns(userG, nil)
+	SetUserID(transactionContext, userG)
 	ok, err = giniContract.Approve(transactionContext, userM, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 100 units from userG to userC
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, userC, "100")
 	require.ErrorContains(t, err, "insufficient balance in signer's account for gas fees")
 	require.Equal(t, false, ok)
@@ -944,7 +1045,7 @@ func TestCase7(t *testing.T) {
 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -981,13 +1082,13 @@ func TestCase7(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// Approve: userG approves userM to spend 100 units
-	transactionContext.GetUserIDReturns(userG, nil)
+	SetUserID(transactionContext, userG)
 	ok, err = giniContract.Approve(transactionContext, admin, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 100 units from userG to userC
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, userC, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
@@ -1106,7 +1207,7 @@ func TestCase8(t *testing.T) {
 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -1143,13 +1244,13 @@ func TestCase8(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// Approve: userG approves userM to spend 100 units
-	transactionContext.GetUserIDReturns(userG, nil)
+	SetUserID(transactionContext, userG)
 	ok, err = giniContract.Approve(transactionContext, userM, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 100 units from userG to userC
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, admin, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
@@ -1268,7 +1369,7 @@ func TestCase9(t *testing.T) {
 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -1305,19 +1406,19 @@ func TestCase9(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// Approve: userG approves userM to spend 100 units
-	transactionContext.GetUserIDReturns(userG, nil)
+	SetUserID(transactionContext, userG)
 	ok, err = giniContract.Approve(transactionContext, userM, "200")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 100 units from userG to userC
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, admin, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
 	// TransferFrom: userM transfers 200 units from userG to userC
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, userG, admin, "200")
 	require.ErrorContains(t, err, "insufficient balance in sender's account for amount")
 	require.Equal(t, false, ok)
@@ -1435,7 +1536,7 @@ func TestCase10(t *testing.T) {
 	userC := "2da4c4908a393a387b728206b18388bc529fa8d7"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -1471,7 +1572,7 @@ func TestCase10(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// TransferFrom
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.TransferFrom(transactionContext, admin, userC, "100")
 
 	require.NoError(t, err)
@@ -1602,7 +1703,7 @@ func TestCase11(t *testing.T) {
 	userM := "16f8ff33ef05bb24fb9a30fa79e700f57a496184"
 
 	// Initialize
-	transactionContext.GetUserIDReturns(admin, nil)
+	SetUserID(transactionContext, admin)
 	transactionContext.GetKYCReturns(true, nil)
 
 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
@@ -1629,7 +1730,7 @@ func TestCase11(t *testing.T) {
 	require.Equal(t, true, ok)
 
 	// Approve: userM approves bridge contract to spend 100 units
-	transactionContext.GetUserIDReturns(userM, nil)
+	SetUserID(transactionContext, userM)
 	ok, err = giniContract.Approve(transactionContext, constants.InitialBridgeContractAddress, "100")
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
