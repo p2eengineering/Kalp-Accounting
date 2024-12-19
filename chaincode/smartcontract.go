@@ -645,14 +645,6 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	actualAmount = new(big.Int).Sub(amountInInt, gasFees)
 	logger.Log.Info("actualAmount => ", actualAmount)
 
-	// Determine if the call is from a contract
-	callingContractAddress, err := internal.GetCallingContractAddress(ctx, s.GetName())
-	if err != nil || len(callingContractAddress) == 0 {
-		callingContractAddress = s.GetName()
-	}
-	// TODO: check if error needs to be handled here
-	logger.Log.Info("callingContractAddress => ", callingContractAddress, err)
-
 	var e error
 
 	vestingContract, err := s.GetVestingContract(ctx)
@@ -664,13 +656,20 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, err
 	}
 
-	if callingContractAddress != s.GetName() && callingContractAddress != "" {
-		if callingContractAddress != bridgeContract && callingContractAddress != vestingContract {
+	// Determine if the call is from a contract
+	calledContractAddress, err := internal.GetCalledContractAddress(ctx)
+	logger.Log.Info("calledContractAddress => ", calledContractAddress, err, s.GetName(), vestingContract, bridgeContract)
+	if err != nil {
+		return false, err
+	}
+
+	if calledContractAddress != s.GetName() {
+		if calledContractAddress != bridgeContract && calledContractAddress != vestingContract {
 			err := ginierr.New("The calling contract is not bridge contract or vesting contract", http.StatusBadRequest)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}
-		sender = callingContractAddress
+		sender = calledContractAddress
 		if signer, e = ctx.GetUserID(); e != nil {
 			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
 			logger.Log.Error(err.FullError())
@@ -1211,36 +1210,3 @@ func (s *SmartContract) GetVestingContract(ctx kalpsdk.TransactionContextInterfa
 	}
 	return string(bytes), nil
 }
-
-// TODO: needs to be deleted just for testing purposes
-// func (s *SmartContract) DeleteDocTypes(ctx kalpsdk.TransactionContextInterface, queryString string) (string, error) {
-
-// 	logger := kalpsdk.NewLogger()
-
-// 	// queryString := `{"selector":{"DocType":"` + docType + `","Id":"GINI"}}`
-
-// 	logger.Infof("queryString: %s\n", queryString)
-// 	resultsIterator, err := ctx.GetQueryResult(queryString)
-// 	if err != nil {
-// 		return "fail", fmt.Errorf("err:failed to fetch UTXO tokens for: %v", err)
-// 	}
-// 	if !resultsIterator.HasNext() {
-// 		return "fail", fmt.Errorf("error with status code %v, err:no records to delete", http.StatusInternalServerError)
-
-// 	}
-
-// 	for resultsIterator.HasNext() {
-// 		queryResult, err := resultsIterator.Next()
-// 		if err != nil {
-// 			return "fail", fmt.Errorf("error with status code %v, err:failed to fetch unlocked tokens: %v ", http.StatusInternalServerError, err)
-// 		}
-
-// 		logger.Infof("deleting %s\n", queryResult.Key)
-
-// 		if err = ctx.DelStateWithoutKYC(queryResult.Key); err != nil {
-// 			logger.Errorf("Error in deleting %s\n", err.Error())
-// 		}
-// 	}
-// 	return "success", nil
-
-// }

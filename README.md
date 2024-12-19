@@ -241,6 +241,76 @@ func UpdateBalances(signer, contractAdmin,sender, recipient string, gasFees, amo
 }
 ```
 
+```go
+// TODO: needs to be deleted just for testing purposes
+func (s *SmartContract) DeleteDocTypes(ctx kalpsdk.TransactionContextInterface, queryString string) (string, error) {
+
+	logger := kalpsdk.NewLogger()
+
+	// queryString := `{"selector":{"DocType":"` + docType + `","Id":"GINI"}}`
+
+	logger.Infof("queryString: %s\n", queryString)
+	resultsIterator, err := ctx.GetQueryResult(queryString)
+	if err != nil {
+		return "fail", fmt.Errorf("err:failed to fetch UTXO tokens for: %v", err)
+	}
+	if !resultsIterator.HasNext() {
+		return "fail", fmt.Errorf("error with status code %v, err:no records to delete", http.StatusInternalServerError)
+
+	}
+
+	for resultsIterator.HasNext() {
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return "fail", fmt.Errorf("error with status code %v, err:failed to fetch unlocked tokens: %v ", http.StatusInternalServerError, err)
+		}
+
+		logger.Infof("deleting %s\n", queryResult.Key)
+
+		if err = ctx.DelStateWithoutKYC(queryResult.Key); err != nil {
+			logger.Errorf("Error in deleting %s\n", err.Error())
+		}
+	}
+	return "success", nil
+
+}
+
+func (s *SmartContract) GetTotalSUMUTXO(ctx kalpsdk.TransactionContextInterface) (string, error) {
+
+	queryString := `{"selector":{"docType":"` + constants.UTXO + `"}}`
+	logger.Log.Infof("queryString: %s\n", queryString)
+	resultsIterator, err := ctx.GetQueryResult(queryString)
+	if err != nil {
+		return "", fmt.Errorf("failed to read from world state: %v", err)
+	}
+	amt := big.NewInt(0)
+	for resultsIterator.HasNext() {
+		var u map[string]interface{}
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return "", err
+		}
+		logger.Log.Infof("query Value %s\n", string(queryResult.Value))
+		logger.Log.Infof("query key %s\n", queryResult.Key)
+		err = json.Unmarshal(queryResult.Value, &u)
+		if err != nil {
+			logger.Log.Infof("%v", err)
+			return amt.String(), err
+		}
+		logger.Log.Debugf("%v\n", u["amount"])
+		amount := new(big.Int)
+		if uamount, ok := u["amount"].(string); ok {
+			amount.SetString(uamount, 10)
+		}
+
+		amt = amt.Add(amt, amount) // += u.Amount
+
+	}
+
+	return amt.String(), nil
+}
+```
+
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, value string) (bool, error) {
 	logger.Log.Info("Transfer operation initiated")
 
