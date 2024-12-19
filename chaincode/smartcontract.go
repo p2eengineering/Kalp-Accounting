@@ -44,7 +44,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, ginierr.New(fmt.Sprintf("cannot initialize again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
 
-	if !helper.IsValidAddress(vestingContractAddress) {
+	if !helper.IsContractAddress(vestingContractAddress) {
 		return false, ginierr.ErrIncorrectAddress(vestingContractAddress)
 	}
 
@@ -227,6 +227,13 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 	logger.Log.Infoln("Approve invoked.... with arguments", spender, amount)
 	if err := models.SetAllowance(ctx, spender, amount); err != nil {
 		logger.Log.Infof("error unable to approve funds: %v\n", err)
+		return false, err
+	}
+	signer, err := helper.GetUserId(ctx)
+	if err != nil {
+		return false, ginierr.ErrFailedToGetClientID
+	}
+	if err := events.EmitApproval(ctx, signer, spender, amount); err != nil {
 		return false, err
 	}
 	return true, nil

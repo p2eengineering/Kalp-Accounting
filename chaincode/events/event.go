@@ -11,10 +11,10 @@ import (
 )
 
 type DeniedEvent struct {
-	Address string `json:"addr"`
+	Address string `json:"address"`
 }
 type AllowedEvent struct {
-	Address string `json:"addr"`
+	Address string `json:"address"`
 }
 
 type ApprovalEvent struct {
@@ -26,6 +26,11 @@ type TransferEvent struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Value string `json:"value"`
+}
+
+type MintEvent struct {
+	Account string `json:"account"`
+	Value   string `json:"value"`
 }
 
 func EmitDenied(ctx kalpsdk.TransactionContextInterface, address string) error {
@@ -98,6 +103,25 @@ func EmitApproval(ctx kalpsdk.TransactionContextInterface, owner string, spender
 	}
 	if e := ctx.SetEvent(constants.Approval, approvalEventJSON); e != nil {
 		err := ginierr.NewWithInternalError(e, "failed to emit Approval event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	return nil
+}
+
+func EmitMint(ctx kalpsdk.TransactionContextInterface, account string, value string) error {
+	mintEvent := MintEvent{
+		Account: account,
+		Value:   value,
+	}
+	mintEventJSON, e := json.Marshal(mintEvent)
+	if e != nil {
+		err := ginierr.NewWithInternalError(e, "failed to marshal Mint event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	if e := ctx.SetEvent(constants.Mint, mintEventJSON); e != nil {
+		err := ginierr.NewWithInternalError(e, "failed to emit Mint event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}

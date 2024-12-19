@@ -200,6 +200,9 @@ func MintUtxoHelperWithoutKYC(ctx kalpsdk.TransactionContextInterface, account s
 	if err != nil {
 		return err
 	}
+	if err := events.EmitMint(ctx, account, amount.String()); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -10,9 +10,7 @@
 - Can a valid Transfer or TransferFrom request have amount = 0?
 - In minting, check if name & symbol are initialized or check only one?
 - Why there is need to check for balance in minting? will checking name and symbol not cover all the cases?
-- Emit event "Transfer" in TransferFrom?
-- Remove all the unrequired logs later  
-- Add starting and ending logs for functions
+- Check this condition in Transfer !helper.IsValidAddress(signer) 
 - Deprecate GetUserID() after changes are made in kalp-sdk
 - Set Gini contract address in main()
 
