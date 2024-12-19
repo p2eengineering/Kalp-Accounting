@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/events"
 	"gini-contract/chaincode/ginierr"
 	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/logger"
@@ -83,8 +84,8 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, amount, spender strin
 		return fmt.Errorf("failed to update state of smart contract for key %s: %v", ctx.GetTxID(), err)
 	}
 
-	if err := ctx.SetEvent(constants.Approval, approvalJSON); err != nil {
-		return ginierr.ErrFailedToEmitEvent(constants.Approval)
+	if err := events.EmitApproval(ctx, signer, spender, amount); err != nil {
+		return err
 	}
 
 	logger.Log.Debugf("client %s approved a withdrawal allowance of %s for spender %s", signer, amount, spender)

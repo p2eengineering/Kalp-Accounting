@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/events"
 	"gini-contract/chaincode/ginierr"
 	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/internal"
@@ -19,8 +20,8 @@ type SmartContract struct {
 	kalpsdk.Contract
 }
 
-func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, vestingContract string) (bool, error) {
-	logger.Log.Infoln("Initializing smart contract... with arguments", name, symbol, vestingContract)
+func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, vestingContractAddress string) (bool, error) {
+	logger.Log.Infoln("Initializing smart contract... with arguments", name, symbol, vestingContractAddress)
 
 	// checking if signer is kalp foundation else return error
 	if signerKalp, err := helper.IsSignerKalpFoundation(ctx); err != nil {
@@ -43,8 +44,8 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, ginierr.New(fmt.Sprintf("cannot initialize again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
 
-	if !helper.IsValidAddress(vestingContract) {
-		return false, ginierr.ErrIncorrectAddress(vestingContract)
+	if !helper.IsValidAddress(vestingContractAddress) {
+		return false, ginierr.ErrIncorrectAddress(vestingContractAddress)
 	}
 
 	// Checking if kalp foundation & gateway admin are KYC'd
@@ -72,28 +73,28 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 
 	// minting initial tokens
-	if err := internal.Mint(ctx, []string{constants.KalpFoundationAddress, vestingContract}, []string{constants.InitialFoundationBalance, constants.InitialVestingContractBalance}); err != nil {
+	if err := internal.Mint(ctx, []string{constants.KalpFoundationAddress, vestingContractAddress}, []string{constants.InitialFoundationBalance, constants.InitialVestingContractBalance}); err != nil {
 		return false, err
 	}
 
 	// storing name, symbol and initial gas fees
 	if e := ctx.PutStateWithoutKYC(constants.NameKey, []byte(name)); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to set token name", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to set token name: "+name, http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(constants.SymbolKey, []byte(symbol)); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to set symbol", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to set symbol: "+symbol, http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(constants.GasFeesKey, []byte(constants.InitialGasFees)); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to set gas fees", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to set gas fees: "+constants.InitialGasFees, http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
-	if e := ctx.PutStateWithoutKYC(constants.VestingContractKey, []byte(vestingContract)); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to set vesting Contract", http.StatusInternalServerError)
+	if e := ctx.PutStateWithoutKYC(constants.VestingContractKey, []byte(vestingContractAddress)); e != nil {
+		err := ginierr.NewWithInternalError(e, "failed to set vesting Contract: "+vestingContractAddress, http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
@@ -449,13 +450,9 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		}
 	}
 
-	eventPayload := map[string]interface{}{
-		"from":  sender,
-		"to":    recipient,
-		"value": amountInInt.String(),
+	if err := events.EmitTransfer(ctx, sender, recipient, amount); err != nil {
+		return false, err
 	}
-	eventBytes, _ := json.Marshal(eventPayload)
-	_ = ctx.SetEvent("Transfer", eventBytes)
 
 	return true, nil
 }
@@ -795,13 +792,9 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	logger.Log.Info("TransferFrom Invoked complete... transferred ", amt, " tokens from: ", sender, " to: ", recipient, " spender: ", spender)
 
 	// Emit transfer event
-	eventPayload := map[string]interface{}{
-		"from":  sender,
-		"to":    recipient,
-		"value": amt.String(),
+	if err := events.EmitTransfer(ctx, sender, recipient, amount); err != nil {
+		return false, err
 	}
-	eventBytes, _ := json.Marshal(eventPayload)
-	_ = ctx.SetEvent("Transfer", eventBytes)
 
 	return true, nil
 }

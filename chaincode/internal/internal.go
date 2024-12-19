@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/events"
 	"gini-contract/chaincode/ginierr"
 	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/logger"
@@ -99,8 +100,8 @@ func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error 
 	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte("true")); err != nil {
 		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
-	if err := ctx.SetEvent(constants.Denied, []byte(address)); err != nil {
-		return ginierr.ErrFailedToEmitEvent(constants.Denied)
+	if err := events.EmitDenied(ctx, address); err != nil {
+		return err
 	}
 	return nil
 }
@@ -113,8 +114,8 @@ func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error
 	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte("false")); err != nil {
 		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
-	if err := ctx.SetEvent(constants.Approved, []byte(address)); err != nil {
-		return ginierr.ErrFailedToEmitEvent(constants.Approved)
+	if err := events.EmitAllowed(ctx, address); err != nil {
+		return err
 	}
 	return nil
 }
@@ -198,18 +199,6 @@ func MintUtxoHelperWithoutKYC(ctx kalpsdk.TransactionContextInterface, account s
 	err := AddUtxo(ctx, account, amount)
 	if err != nil {
 		return err
-	}
-	utxo := models.Utxo{
-		DocType: constants.UTXO,
-		Account: account,
-		Amount:  amount.String(),
-	}
-	utxoJSON, err := json.Marshal(utxo)
-	if err != nil {
-		return ginierr.New(fmt.Sprintf("failed to marshal UTXO struct for account address %s to JSON", account), http.StatusInternalServerError)
-	}
-	if err := ctx.SetEvent(constants.Mint, utxoJSON); err != nil {
-		return ginierr.ErrFailedToEmitEvent(constants.Mint)
 	}
 	return nil
 }
@@ -403,10 +392,6 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 	err = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
 	if err != nil {
 		return fmt.Errorf("failed to update state of smart contract for key %s: %v", approvalKey, err)
-	}
-	err = sdk.SetEvent(constants.Approval, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
 	}
 	return nil
 }
