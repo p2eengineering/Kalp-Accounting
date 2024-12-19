@@ -10,7 +10,6 @@ import (
 	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
-	"regexp"
 
 	"strings"
 
@@ -21,82 +20,11 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-// TODO: remove this later
-func GetCallingContractAddress(ctx kalpsdk.TransactionContextInterface, giniContractAddress string) (string, error) {
-	signedProposal, e := ctx.GetSignedProposal()
-	if signedProposal == nil {
-		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return "", err
-	}
-	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in getting signed proposal", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return "", err
-	}
-
-	logger.Log.Debug("signedProposal:", signedProposal)
-
-	data := signedProposal.GetProposalBytes()
-	if data == nil {
-		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return "", err
-	}
-	logger.Log.Debug("Proposal bytes:", data)
-	// Define the regex pattern
-	pattern := `(TransferFrom|Transfer)`
-
-	// Compile the regex
-	re := regexp.MustCompile(pattern)
-
-	// Match the input data
-	if re.MatchString(string(data)) {
-		return giniContractAddress, nil
-	}
-	proposal := &peer.Proposal{}
-	e = proto.Unmarshal(data, proposal)
-	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in parsing signed proposal", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return "", err
-	}
-
-	logger.Log.Debug("proposal:", proposal)
-
-	payload := &common.Payload{}
-	e = proto.Unmarshal(proposal.Payload, payload)
-	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in parsing payload", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return "", err
-	}
-
-	logger.Log.Debug("payload:", payload)
-
-	paystring := payload.GetHeader().GetChannelHeader()
-	if len(paystring) == 0 {
-		err := ginierr.New("channel header is empty", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return "", err
-	}
-
-	logger.Log.Debug("paystring:", string(paystring))
-
-	contractAddress := helper.FindContractAddress(string(paystring))
-	if contractAddress == "" {
-		err := ginierr.New("contract address not found", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return "", err
-	}
-
-	return contractAddress, nil
-}
-
+// TODO: remove debug logs later
 func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	signedProposal, e := ctx.GetSignedProposal()
 	if signedProposal == nil {
-		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
+		err := ginierr.New("could not retrieve signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -110,7 +38,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 
 	data := signedProposal.GetProposalBytes()
 	if data == nil {
-		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
+		err := ginierr.New("error in fetching proposal bytes", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -125,8 +53,6 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	}
 	logger.Log.Debug("peer.Proposal{}", proposal)
 
-	logger.Log.Debug("proposal:", proposal)
-
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
 	if e != nil {
@@ -135,8 +61,6 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 		return "", err
 	}
 	logger.Log.Debug("common.Payload{}", payload)
-
-	logger.Log.Debug("payload:", payload)
 
 	paystring := payload.GetHeader().GetChannelHeader()
 	if len(paystring) == 0 {
@@ -293,13 +217,19 @@ func MintUtxoHelperWithoutKYC(ctx kalpsdk.TransactionContextInterface, account s
 }
 
 func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
+	amount, err := helper.ConvertToBigInt(iamount)
+	if err != nil {
+		return fmt.Errorf("error in coverting amount: %v to big int: %v", iamount, err)
+	}
+	if amount.Cmp(big.NewInt(0)) < 0 {
+		return fmt.Errorf("amount to add cannot be negative")
+	}
+	if amount.Cmp(big.NewInt(0)) == 0 {
+		return nil
+	}
 	utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
-	}
-	amount, err := helper.ConvertToBigInt(iamount)
-	if err != nil {
-		return fmt.Errorf("error in CustomBigInt %v", err)
 	}
 	utxo := models.Utxo{
 		DocType: constants.UTXO,
@@ -530,67 +460,6 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 		return fmt.Errorf("failed to set event: %v", err)
 	}
 	return nil
-}
-
-func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, spender []string, receiver string, iamount interface{}, docType string) error {
-
-	// Get ID of submitting client identity
-	operator, err := helper.GetUserId(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
-	}
-	logger.Log.Debugf("owner: %v\n", owner[0])
-	logger.Log.Debugf("spender: %v\n", spender[0])
-	approved, err := models.GetAllowance(ctx, owner[0], spender[0])
-	if err != nil {
-		return fmt.Errorf("error in getting allowance: %v", err)
-	}
-	approvedAmount, s := big.NewInt(0).SetString(approved, 10)
-	if !s {
-		return ginierr.ErrConvertingAmountToBigInt(approved)
-	}
-	var am string
-	if a, ok := iamount.(string); ok {
-		am = a
-		logger.Log.Debugf("String found: %s\n", am)
-	}
-	amount, s := big.NewInt(0).SetString(am, 10)
-	if !s {
-		return ginierr.ErrConvertingAmountToBigInt(am)
-	}
-
-	if approvedAmount.Cmp(amount) == -1 { //approvedAmount < amount {
-		logger.Log.Debugf("approvedAmount: %f\n", approvedAmount)
-		logger.Log.Debugf("amount: %f\n", amount)
-		return fmt.Errorf("transfer amount can not be greater than allowed amount")
-	}
-	if spender[0] == owner[0] {
-		return fmt.Errorf("owner and spender can not be same account")
-	}
-	logger.Log.Debugf("spender check")
-
-	err = RemoveUtxo(ctx, owner[0], amount)
-	if err != nil {
-		return err
-	}
-	logger.Log.Debugf("removed utxo")
-	if receiver == "0x0" {
-		return fmt.Errorf("transfer to the zero address")
-	}
-
-	// Deposit the fund to the recipient address
-	err = AddUtxo(ctx, receiver, amount)
-	if err != nil {
-		return err
-	}
-
-	err = UpdateAllowance(ctx, owner[0], spender[0], fmt.Sprint(amount))
-	if err != nil {
-		return err
-	}
-	// Emit models.TransferSingle event
-	transferSingleEvent := models.TransferSingle{Operator: operator, From: owner[0], To: receiver, Value: amount}
-	return EmitTransferSingle(ctx, transferSingleEvent)
 }
 
 func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role string) (bool, error) {
