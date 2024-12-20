@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/logger"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
@@ -54,13 +55,17 @@ type Account struct {
 	Recipient string `json:"recipient"`
 }
 
-func SetAllowance(ctx kalpsdk.TransactionContextInterface, amount, spender string) error {
-	// Emit the Approval event
-	signer, err := ctx.GetUserID()
+func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amount string) error {
+	signer, err := helper.GetUserId(ctx)
 	if err != nil {
 		return ginierr.ErrFailedToGetClientID
 	}
-
+	if !helper.IsValidAddress(spender) {
+		return ginierr.ErrInvalidAddress(spender)
+	}
+	if !helper.IsAmountProper(amount) {
+		return ginierr.ErrInvalidAmount(amount)
+	}
 	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{signer, spender})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", signer, spender, err)
@@ -80,10 +85,6 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, amount, spender strin
 	err = ctx.PutStateWithoutKYC(approvalKey, approvalJSON)
 	if err != nil {
 		return fmt.Errorf("failed to update state of smart contract for key %s: %v", ctx.GetTxID(), err)
-	}
-
-	if err := ctx.SetEvent(constants.Approval, approvalJSON); err != nil {
-		return ginierr.ErrFailedToEmitEvent
 	}
 
 	logger.Log.Debugf("client %s approved a withdrawal allowance of %s for spender %s", signer, amount, spender)

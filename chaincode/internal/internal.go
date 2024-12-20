@@ -4,15 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/events"
 	"gini-contract/chaincode/ginierr"
 	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/logger"
 	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
-	"regexp"
-
-	"strings"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-protos-go/common"
@@ -21,18 +19,11 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-var GetCallingContractAddress = GetCalledContractAddress
-
-// CheckCallerIsContract checks if the caller is a contract
-func CheckCallerIsContract(ctx kalpsdk.TransactionContextInterface) bool {
-	return true
-}
-
-// GetCallingContractAddress returns calling contract's address
-func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContractAddress string) (string, error) {
+// TODO: remove debug logs later
+func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	signedProposal, e := ctx.GetSignedProposal()
 	if signedProposal == nil {
-		err := ginierr.New("could not retrieve proposal details", http.StatusInternalServerError)
+		err := ginierr.New("could not retrieve signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -46,21 +37,12 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 
 	data := signedProposal.GetProposalBytes()
 	if data == nil {
-		err := ginierr.New("error in fetching signed proposal", http.StatusInternalServerError)
+		err := ginierr.New("error in fetching proposal bytes", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
-	logger.Log.Debug("Proposal bytes:", data)
-	// Define the regex pattern
-	pattern := `(TransferFrom|Transfer)`
+	logger.Log.Debug("signedProposal.GetProposalBytes()", data, string(data))
 
-	// Compile the regex
-	re := regexp.MustCompile(pattern)
-
-	// Match the input data
-	if re.MatchString(string(data)) {
-		return giniContractAddress, nil
-	}
 	proposal := &peer.Proposal{}
 	e = proto.Unmarshal(data, proposal)
 	if e != nil {
@@ -68,9 +50,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
-
-	logger.Log.Debug("proposal:", proposal)
-
+	logger.Log.Debug("peer.Proposal{}", proposal)
 
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
@@ -79,9 +59,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
-
-	logger.Log.Debug("payload:", payload)
-
+	logger.Log.Debug("common.Payload{}", payload)
 
 	paystring := payload.GetHeader().GetChannelHeader()
 	if len(paystring) == 0 {
@@ -90,15 +68,17 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface, giniContr
 		return "", err
 	}
 
-	logger.Log.Debug("paystring:", string(paystring))
+	logger.Log.Debug("paystring", paystring, string(paystring))
 
-	contractAddress := helper.FindContractAddress(paystring)
+	printableASCIIPaystring := helper.FilterPrintableASCII(string(paystring))
+	logger.Log.Debug("printableASCIIPaystring", printableASCIIPaystring)
+
+	contractAddress := helper.FindContractAddress(printableASCIIPaystring)
 	if contractAddress == "" {
 		err := ginierr.New("contract address not found", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
-
 	return contractAddress, nil
 }
 
@@ -112,7 +92,6 @@ func GetKalpFoundationAdminAddress(ctx kalpsdk.TransactionContextInterface) stri
 	return constants.KalpFoundationAddress
 }
 
-// DenyAddress adds the given address to the denylist
 func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
 	addressDenyKey, err := ctx.CreateCompositeKey(constants.DenyListKey, []string{address})
 	if err != nil {
@@ -121,13 +100,12 @@ func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error 
 	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte("true")); err != nil {
 		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
-	if err := ctx.SetEvent(constants.Denied, []byte(address)); err != nil {
-		return ginierr.ErrFailedToEmitEvent
+	if err := events.EmitDenied(ctx, address); err != nil {
+		return err
 	}
 	return nil
 }
 
-// AllowAddress removes the given address from the denylist
 func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
 	addressDenyKey, err := ctx.CreateCompositeKey(constants.DenyListKey, []string{address})
 	if err != nil {
@@ -136,8 +114,8 @@ func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error
 	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte("false")); err != nil {
 		return fmt.Errorf("failed to put state in deny list: %v", err)
 	}
-	if err := ctx.SetEvent(constants.Approved, []byte(address)); err != nil {
-		return ginierr.ErrFailedToEmitEvent
+	if err := events.EmitAllowed(ctx, address); err != nil {
+		return err
 	}
 	return nil
 }
@@ -162,19 +140,19 @@ func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, er
 // Mint mints given amount at a given address
 func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts []string) error {
 
-	logger.Log.Infof("Mint operation started")
+	logger.Log.Infof("Mint invoked.... with arguments", addresses, amounts)
 
 	// Validate input amount
 	accAmount1, ok := big.NewInt(0).SetString(amounts[0], 10)
 	if !ok {
-		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amounts)
+		return ginierr.ErrConvertingAmountToBigInt(amounts[0])
 	}
 	if accAmount1.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
 		return ginierr.ErrInvalidAmount(amounts[0])
 	}
 	accAmount2, ok := big.NewInt(0).SetString(amounts[1], 10)
 	if !ok {
-		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amounts)
+		return ginierr.ErrConvertingAmountToBigInt(amounts[1])
 	}
 	if accAmount1.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
 		return ginierr.ErrInvalidAmount(amounts[1])
@@ -182,76 +160,67 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 
 	// Validate input address
 	if !helper.IsValidAddress(addresses[0]) {
-		return ginierr.ErrIncorrectAddress(addresses[0])
+		return ginierr.ErrInvalidAddress(addresses[0])
 	}
 	if !helper.IsValidAddress(addresses[1]) {
-		return ginierr.ErrIncorrectAddress(addresses[1])
+		return ginierr.ErrInvalidAddress(addresses[1])
 	}
 
 	// checking if contract is already initialized
-	if bytes, err := ctx.GetState(constants.NameKey); err != nil {
-		return ginierr.ErrFailedToGetName
+	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
+		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, e)
+		return ginierr.ErrFailedToGetKey(constants.NameKey)
 	} else if bytes != nil {
-		return fmt.Errorf("contract already initialized, minting not allowed")
+		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.NameKey, string(bytes)), http.StatusBadRequest)
 	}
-	if bytes, err := ctx.GetState(constants.SymbolKey); err != nil {
-		return ginierr.ErrFailedToGetName
+	if bytes, e := ctx.GetState(constants.SymbolKey); e != nil {
+		logger.Log.Errorf("Error in GetState %s: %v", constants.SymbolKey, e)
+		return ginierr.ErrFailedToGetKey(constants.SymbolKey)
 	} else if bytes != nil {
-		return fmt.Errorf("contract already initialized, minting not allowed")
+		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
 
 	// TODO: check balance if required here
 
 	// Mint tokens
 	if err := MintUtxoHelperWithoutKYC(ctx, addresses[0], accAmount1); err != nil {
-		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
+		return err
 	}
 	if err := MintUtxoHelperWithoutKYC(ctx, addresses[1], accAmount2); err != nil {
-		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
+		return err
 	}
-	logger.Log.Infof("MintToken Amount---->%v\n", amounts)
+	logger.Log.Infof("Mint Invoke complete amount: %v\n", amounts)
 	return nil
 
 }
 
 // As of now, we are not supporting usecases where asset is owned by multiple owners.
 func MintUtxoHelperWithoutKYC(ctx kalpsdk.TransactionContextInterface, account string, amount *big.Int) error {
-	if account == "0x0" {
-		return fmt.Errorf("mint to the zero address")
-	}
-
-	fmt.Println("account & amount in mintutxohelper -", account, amount)
-
 	err := AddUtxo(ctx, account, amount)
 	if err != nil {
 		return err
 	}
-	utxo := models.Utxo{
-		DocType: constants.UTXO,
-		Account: account,
-		Amount:  amount.String(),
-	}
-	utxoJSON, err := json.Marshal(utxo)
-	if err != nil {
-		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
-	}
-	if err := ctx.SetEvent("Mint", utxoJSON); err != nil {
-		return ginierr.ErrFailedToEmitEvent
+	if err := events.EmitMint(ctx, account, amount.String()); err != nil {
+		return err
 	}
 	return nil
 }
 
 func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
+	amount, err := helper.ConvertToBigInt(iamount)
+	if err != nil {
+		return fmt.Errorf("error in coverting amount: %v to big int: %v", iamount, err)
+	}
+	if amount.Cmp(big.NewInt(0)) < 0 {
+		return fmt.Errorf("amount to add cannot be negative")
+	}
+	if amount.Cmp(big.NewInt(0)) == 0 {
+		return nil
+	}
 	utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
 	}
-	amount, err := helper.CustomBigIntConvertor(iamount)
-	if err != nil {
-		return fmt.Errorf("error in CustomBigInt %v", err)
-	}
-	fmt.Printf("add amount: %v\n", amount)
-	fmt.Printf("utxoKey: %v\n", utxoKey)
 	utxo := models.Utxo{
 		DocType: constants.UTXO,
 		Account: account,
@@ -262,7 +231,6 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount in
 	if err != nil {
 		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
 	}
-	fmt.Printf("utxoJSON: %s\n", utxoJSON)
 
 	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
 	if err != nil {
@@ -272,17 +240,22 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount in
 	return nil
 }
 func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount interface{}) error {
-
+	amount, err := helper.ConvertToBigInt(iamount)
+	if err != nil {
+		return fmt.Errorf("error in coverting amount: %v to big int: %v", iamount, err)
+	}
+	if amount.Cmp(big.NewInt(0)) < 0 {
+		return fmt.Errorf("amount to remove cannot be negative")
+	}
+	if amount.Cmp(big.NewInt(0)) == 0 {
+		return nil
+	}
 	utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
 	}
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"use_index": "indexIdDocType"}`
-	amount, err := helper.CustomBigIntConvertor(iamount)
-	if err != nil {
-		return fmt.Errorf("error in CustomBigInt %v", err)
-	}
-	fmt.Printf("queryString: %s\n", queryString)
+
 	resultsIterator, err := sdk.GetQueryResult(queryString)
 	if err != nil {
 		return fmt.Errorf("failed to read from world state: %v", err)
@@ -295,8 +268,6 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 		if err != nil {
 			return err
 		}
-		fmt.Printf("query Value %s\n", queryResult.Value)
-		fmt.Printf("query key %s\n", queryResult.Key)
 		err = json.Unmarshal(queryResult.Value, &u)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal value %v", err)
@@ -312,8 +283,6 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 			break
 		}
 	}
-	fmt.Printf("amount: %v\n", amount)
-	fmt.Printf("total balance: %v\n", amt)
 	if amount.Cmp(amt) == 1 {
 		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, constants.GINI, amount, amt)
 	}
@@ -324,13 +293,11 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 			return fmt.Errorf("failed to set string")
 		}
 		if amount.Cmp(am) == 0 || amount.Cmp(am) == 1 { // >= utxo[i].Amount {
-			fmt.Printf("amount> delete: %s\n", utxo[i].Amount)
 			amount = amount.Sub(amount, am)
 			if err := sdk.DelStateWithoutKYC(utxo[i].Key); err != nil {
 				return fmt.Errorf("%v", err)
 			}
 		} else if amount.Cmp(am) == -1 { // < utxo[i].Amount {
-			fmt.Printf("amount<: %s\n", utxo[i].Amount)
 			if err := sdk.DelStateWithoutKYC(utxo[i].Key); err != nil {
 				return fmt.Errorf("%v", err)
 			}
@@ -354,55 +321,6 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 	}
 
 	return nil
-}
-
-func EmitTransferSingle(ctx kalpsdk.TransactionContextInterface, transferSingleEvent models.TransferSingle) error {
-	transferSingleEventJSON, err := json.Marshal(transferSingleEvent)
-	if err != nil {
-		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
-	}
-
-	err = ctx.SetEvent("models.TransferSingle", transferSingleEventJSON)
-	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
-	}
-
-	return nil
-}
-
-func IsCallerKalpBridge(ctx kalpsdk.TransactionContextInterface, KalpBridgeContractName string) (bool, error) {
-	signedProposal, err := ctx.GetSignedProposal()
-	if signedProposal == nil {
-		return false, fmt.Errorf("could not retrieve proposal details")
-	}
-	if err != nil {
-		return false, fmt.Errorf("error in getting signed proposal")
-	}
-
-	data := signedProposal.GetProposalBytes()
-	if data == nil {
-		return false, fmt.Errorf("error in fetching signed proposal")
-	}
-
-	proposal := &peer.Proposal{}
-	err = proto.Unmarshal(data, proposal)
-	if err != nil {
-		return false, fmt.Errorf("error in parsing signed proposal")
-	}
-
-	payload := &common.Payload{}
-	err = proto.Unmarshal(proposal.Payload, payload)
-	if err != nil {
-		return false, fmt.Errorf("error in parsing payload")
-	}
-
-	paystring := payload.GetHeader().GetChannelHeader()
-	if paystring == nil {
-		return false, fmt.Errorf("channel header is empty")
-	}
-
-	fmt.Println(paystring, KalpBridgeContractName)
-	return strings.Contains(string(paystring), KalpBridgeContractName), nil
 }
 
 func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
@@ -458,11 +376,11 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 		}
 		approvalAmount, s := big.NewInt(0).SetString(approval.Amount, 10)
 		if !s {
-			return fmt.Errorf("failed to convert approvalAmount to big int")
+			return ginierr.ErrConvertingAmountToBigInt(approval.Amount)
 		}
 		amountSpent, s := big.NewInt(0).SetString(spent, 10)
 		if !s {
-			return fmt.Errorf("failed to convert approvalAmount to big int")
+			return ginierr.ErrConvertingAmountToBigInt(spent)
 		}
 		if amountSpent.Cmp(approvalAmount) == 1 { // amountToAdd > approvalAmount {
 			return fmt.Errorf("failed to convert approvalAmount to float64")
@@ -478,72 +396,7 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 	if err != nil {
 		return fmt.Errorf("failed to update state of smart contract for key %s: %v", approvalKey, err)
 	}
-	err = sdk.SetEvent(constants.Approval, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
-	}
 	return nil
-}
-
-func TransferUTXOFrom(ctx kalpsdk.TransactionContextInterface, owner []string, spender []string, receiver string, iamount interface{}, docType string) error {
-
-	// Get ID of submitting client identity
-	operator, err := ctx.GetUserID()
-	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
-	}
-	logger.Log.Debugf("owner: %v\n", owner[0])
-	logger.Log.Debugf("spender: %v\n", spender[0])
-	approved, err := models.GetAllowance(ctx, owner[0], spender[0])
-	if err != nil {
-		return fmt.Errorf("error in getting allowance: %v", err)
-	}
-	approvedAmount, s := big.NewInt(0).SetString(approved, 10)
-	if !s {
-		return fmt.Errorf("failed to convert approvalAmount to big int")
-	}
-	var am string
-	if a, ok := iamount.(string); ok {
-		am = a
-		logger.Log.Debugf("String found: %s\n", am)
-	}
-	amount, s := big.NewInt(0).SetString(am, 10)
-	if !s {
-		return fmt.Errorf("failed to convert approvalAmount to big int")
-	}
-
-	if approvedAmount.Cmp(amount) == -1 { //approvedAmount < amount {
-		logger.Log.Debugf("approvedAmount: %f\n", approvedAmount)
-		logger.Log.Debugf("amount: %f\n", amount)
-		return fmt.Errorf("transfer amount can not be greater than allowed amount")
-	}
-	if spender[0] == owner[0] {
-		return fmt.Errorf("owner and spender can not be same account")
-	}
-	logger.Log.Debugf("spender check")
-
-	err = RemoveUtxo(ctx, owner[0], amount)
-	if err != nil {
-		return err
-	}
-	logger.Log.Debugf("removed utxo")
-	if receiver == "0x0" {
-		return fmt.Errorf("transfer to the zero address")
-	}
-
-	// Deposit the fund to the recipient address
-	err = AddUtxo(ctx, receiver, amount)
-	if err != nil {
-		return err
-	}
-
-	err = UpdateAllowance(ctx, owner[0], spender[0], fmt.Sprint(amount))
-	if err != nil {
-		return err
-	}
-	// Emit models.TransferSingle event
-	transferSingleEvent := models.TransferSingle{Operator: operator, From: owner[0], To: receiver, Value: amount}
-	return EmitTransferSingle(ctx, transferSingleEvent)
 }
 
 func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role string) (bool, error) {
@@ -552,20 +405,18 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 		Role:    role,
 		DocType: constants.UserRoleMap,
 	}
-	roleJson, e := json.Marshal(userRole)
-	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in marshaling user role", http.StatusInternalServerError)
-		logger.Log.Errorf(err.FullError())
-		return false, err
+	roleJson, err := json.Marshal(userRole)
+	if err != nil {
+		return false, ginierr.New("error in marshaling user role: "+role, http.StatusInternalServerError)
 	}
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to create the composite key for user role", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, "failed to create the composite key for user role: "+role, http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(key, roleJson); e != nil {
-		err := ginierr.NewWithInternalError(e, "unable to put user role struct in statedb", http.StatusInternalServerError)
+		err := ginierr.NewWithInternalError(e, fmt.Sprintf("unable to put user role: %s struct in statedb", role), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
@@ -637,7 +488,7 @@ func GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, e
 func ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
 
 	// Check if operator is authorized to create Role.
-	operator, err := ctx.GetUserID()
+	operator, err := helper.GetUserId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get client id: %v", err)
 	}
@@ -678,16 +529,4 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 	}
 
 	return userRole.Role, nil
-}
-
-func IsAmountProper(amount string) bool {
-	// Parse the amount as a big.Int
-	bigAmount, ok := new(big.Int).SetString(amount, 10)
-	if !ok {
-		// Return false if amount cannot be converted to big.Int
-		return false
-	}
-
-	// Check if the amount is less than 0
-	return bigAmount.Sign() >= 0
 }

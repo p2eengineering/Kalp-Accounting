@@ -8,13 +8,14 @@ import (
 	"log"
 
 	"gini-contract/chaincode"
+	"gini-contract/chaincode/constants"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
 func main() {
-	contract := kalpsdk.Contract{IsPayableContract: false}
-	contract.Contract.Name = "klp-gini-chirag-1-cc"
+	contract := kalpsdk.Contract{}
+	contract.Contract.Name = constants.GiniContractAddress
 	contract.Logger = kalpsdk.NewLogger()
 	giniChaincode, err := kalpsdk.NewChaincode(&chaincode.SmartContract{Contract: contract})
 	if err != nil {
