@@ -55,12 +55,17 @@ type Account struct {
 	Recipient string `json:"recipient"`
 }
 
-func SetAllowance(ctx kalpsdk.TransactionContextInterface, amount, spender string) error {
+func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amount string) error {
 	signer, err := helper.GetUserId(ctx)
 	if err != nil {
 		return ginierr.ErrFailedToGetClientID
 	}
-
+	if !helper.IsValidAddress(spender) {
+		return ginierr.ErrInvalidAddress(spender)
+	}
+	if !helper.IsAmountProper(amount) {
+		return ginierr.ErrInvalidAmount(amount)
+	}
 	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{signer, spender})
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", signer, spender, err)

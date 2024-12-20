@@ -105,3 +105,15 @@ func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, erro
 	}
 	return true, nil
 }
+
+func IsAmountProper(amount string) bool {
+	// Parse the amount as a big.Int
+	bigAmount, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		// Return false if amount cannot be converted to big.Int
+		return false
+	}
+
+	// Check if the amount is less than 0
+	return bigAmount.Sign() >= 0
+}

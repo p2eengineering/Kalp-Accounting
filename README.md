@@ -402,7 +402,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, ginierr.ErrIncorrectAddress("sender")
 	} else if !helper.IsValidAddress(recipient) {
 		return false, ginierr.ErrIncorrectAddress("recipient")
-	} else if !internal.IsAmountProper(value) {
+	} else if !helper.IsAmountProper(value) {
 		return false, ginierr.ErrInvalidAmount(value)
 	}
 

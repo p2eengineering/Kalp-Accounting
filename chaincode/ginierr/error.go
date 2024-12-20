@@ -48,7 +48,7 @@ func ErrInvalidAmount(amount string) *CustomError {
 	return New(fmt.Sprintf("invalid amount passed: %s", amount), http.StatusBadRequest)
 }
 
-func ErrIncorrectAddress(address string) *CustomError {
+func ErrInvalidAddress(address string) *CustomError {
 	return New(fmt.Sprintf("address: %s is not valid", address), http.StatusBadRequest)
 }
 

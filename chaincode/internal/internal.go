@@ -160,10 +160,10 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 
 	// Validate input address
 	if !helper.IsValidAddress(addresses[0]) {
-		return ginierr.ErrIncorrectAddress(addresses[0])
+		return ginierr.ErrInvalidAddress(addresses[0])
 	}
 	if !helper.IsValidAddress(addresses[1]) {
-		return ginierr.ErrIncorrectAddress(addresses[1])
+		return ginierr.ErrInvalidAddress(addresses[1])
 	}
 
 	// checking if contract is already initialized
@@ -529,16 +529,4 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 	}
 
 	return userRole.Role, nil
-}
-
-func IsAmountProper(amount string) bool {
-	// Parse the amount as a big.Int
-	bigAmount, ok := new(big.Int).SetString(amount, 10)
-	if !ok {
-		// Return false if amount cannot be converted to big.Int
-		return false
-	}
-
-	// Check if the amount is less than 0
-	return bigAmount.Sign() >= 0
 }

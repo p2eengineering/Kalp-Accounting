@@ -45,7 +45,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 
 	if !helper.IsContractAddress(vestingContractAddress) {
-		return false, ginierr.ErrIncorrectAddress(vestingContractAddress)
+		return false, ginierr.ErrInvalidAddress(vestingContractAddress)
 	}
 
 	// Checking if kalp foundation & gateway admin are KYC'd
@@ -200,7 +200,7 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
 
 	if !helper.IsValidAddress(account) {
-		return "0", ginierr.ErrIncorrectAddress(account)
+		return "0", ginierr.ErrInvalidAddress(account)
 	}
 	amt, err := internal.GetTotalUTXO(ctx, account)
 	if err != nil {
@@ -279,7 +279,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		}
 
 		if !helper.IsUserAddress(gasDeductionAccount.Sender) {
-			return false, ginierr.ErrIncorrectAddress("gasDeductionAccount")
+			return false, ginierr.ErrInvalidAddress("gasDeductionAccount")
 		}
 
 		sender = gasDeductionAccount.Sender
@@ -287,11 +287,11 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		actualAmount = amountInInt
 		gasFees = big.NewInt(0)
 
-		if !internal.IsAmountProper(amount) {
+		if !helper.IsAmountProper(amount) {
 			return false, ginierr.ErrInvalidAmount(amount)
 		}
 	} else {
-		return false, ginierr.ErrIncorrectAddress("recipient")
+		return false, ginierr.ErrInvalidAddress("recipient")
 	}
 
 	actualAmount = new(big.Int).Sub(amountInInt, gasFees)
@@ -335,13 +335,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	if helper.IsContractAddress(signer) {
 		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
 	} else if !helper.IsValidAddress(signer) {
-		return false, ginierr.ErrIncorrectAddress("signer")
+		return false, ginierr.ErrInvalidAddress("signer")
 	}
 	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
 	if !helper.IsValidAddress(sender) {
-		return false, ginierr.ErrIncorrectAddress("sender")
+		return false, ginierr.ErrInvalidAddress("sender")
 	}
 
 	if denied, err := internal.IsDenied(ctx, signer); err != nil {
@@ -486,12 +486,12 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
 	if !helper.IsValidAddress(sender) {
-		return false, ginierr.ErrIncorrectAddress(sender)
+		return false, ginierr.ErrInvalidAddress(sender)
 	}
 	if !helper.IsValidAddress(recipient) {
-		return false, ginierr.ErrIncorrectAddress(recipient)
+		return false, ginierr.ErrInvalidAddress(recipient)
 	}
-	if !internal.IsAmountProper(amount) {
+	if !helper.IsAmountProper(amount) {
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
 	// Parse the amt
@@ -523,7 +523,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		}
 	}
 	if !helper.IsValidAddress(spender) {
-		return false, ginierr.ErrIncorrectAddress(spender)
+		return false, ginierr.ErrInvalidAddress(spender)
 	}
 
 	// check if signer, spender, sender and recipient are not denied
