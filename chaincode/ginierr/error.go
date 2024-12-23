@@ -26,7 +26,7 @@ func New(message string, statusCode int) *CustomError {
 	}
 }
 
-func NewWithInternalError(err error, message string, statusCode int) *CustomError {
+func NewInternalError(err error, message string, statusCode int) *CustomError {
 	return &CustomError{
 		statusCode:  statusCode,
 		message:     message,
@@ -53,23 +53,23 @@ func ErrInvalidAddress(address string) *CustomError {
 }
 
 func ErrFailedToDeleteState(e error) *CustomError {
-	return NewWithInternalError(e, "failed to delete data from world state", http.StatusInternalServerError)
+	return NewInternalError(e, "failed to delete data from world state", http.StatusInternalServerError)
 }
 
 func ErrFailedToPutState(e error) *CustomError {
-	return NewWithInternalError(e, "failed to put data in world state", http.StatusInternalServerError)
+	return NewInternalError(e, "failed to put data in world state", http.StatusInternalServerError)
 }
 
 func ErrFailedToGetState(e error) *CustomError {
-	return NewWithInternalError(e, "failed to get data from world state", http.StatusInternalServerError)
+	return NewInternalError(e, "failed to get data from world state", http.StatusInternalServerError)
 }
 
 func ErrCreatingCompositeKey(e error) *CustomError {
-	return NewWithInternalError(e, "failed to create the composite key", http.StatusInternalServerError)
+	return NewInternalError(e, "failed to create the composite key", http.StatusInternalServerError)
 }
 
 func ErrFailedToSetEvent(e error, event string) *CustomError {
-	return NewWithInternalError(e, "failed to set event: "+event, http.StatusInternalServerError)
+	return NewInternalError(e, "failed to set event: "+event, http.StatusInternalServerError)
 }
 
 func ErrConvertingAmountToBigInt(number string) *CustomError {
@@ -92,6 +92,6 @@ func ErrInvalidUserAddress(address string) *CustomError {
 	return New(fmt.Sprintf("Invalid user address : %s ", address), http.StatusBadRequest)
 }
 
-func ErrFailedToGetKey(key string) *CustomError {
-	return New(fmt.Sprintf("FailedToGetKey : %s", key), http.StatusInternalServerError)
+func ErrFailedToGetKey(key, value string) *CustomError {
+	return New(fmt.Sprintf("FailedToGetKey for %s : %s", key, value), http.StatusInternalServerError)
 }

@@ -11,13 +11,6 @@ import (
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
-//	type Response struct {
-//		Status     string      `json:"status"`
-//		StatusCode uint        `json:"statusCode"`
-//		Success    bool        `json:"success"`
-//		Message    string      `json:"message"`
-//		Response   interface{} `json:"response"`
-//	}
 type UserRole struct {
 	Id      string `json:"user"`
 	Role    string `json:"role"`

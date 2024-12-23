@@ -28,7 +28,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 		return "", err
 	}
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in getting signed proposal", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error in getting signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -46,7 +46,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	proposal := &peer.Proposal{}
 	e = proto.Unmarshal(data, proposal)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in parsing signed proposal", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error in parsing signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -55,7 +55,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in parsing payload", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error in parsing payload", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -168,19 +168,15 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 
 	// checking if contract is already initialized
 	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
-		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, e)
-		return ginierr.ErrFailedToGetKey(constants.NameKey)
+		return ginierr.ErrFailedToGetKey("namekey", constants.NameKey)
 	} else if bytes != nil {
 		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.NameKey, string(bytes)), http.StatusBadRequest)
 	}
 	if bytes, e := ctx.GetState(constants.SymbolKey); e != nil {
-		logger.Log.Errorf("Error in GetState %s: %v", constants.SymbolKey, e)
-		return ginierr.ErrFailedToGetKey(constants.SymbolKey)
+		return ginierr.ErrFailedToGetKey("symbolkey", constants.SymbolKey)
 	} else if bytes != nil {
 		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
-
-	// TODO: check balance if required here
 
 	// Mint tokens
 	if err := MintUtxoHelperWithoutKYC(ctx, addresses[0], accAmount1); err != nil {
@@ -411,13 +407,11 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	}
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to create the composite key for user role: "+role, http.StatusInternalServerError)
-		logger.Log.Errorf(err.FullError())
+		err := ginierr.NewInternalError(e, "failed to create the composite key for user role: "+role, http.StatusInternalServerError)
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(key, roleJson); e != nil {
-		err := ginierr.NewWithInternalError(e, fmt.Sprintf("unable to put user role: %s struct in statedb", role), http.StatusInternalServerError)
-		logger.Log.Errorf(err.FullError())
+		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to put user role: %s struct in statedb", role), http.StatusInternalServerError)
 		return false, err
 	}
 	return true, nil
@@ -426,9 +420,6 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 // SetUserRoles is a smart contract function which is used to setup a role for user.
 func SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
 	//check if contract has been intilized first
-
-	fmt.Println("SetUserRoles", data)
-
 	// Parse input data into Role struct.
 	var userRole models.UserRole
 	errs := json.Unmarshal([]byte(data), &userRole)
@@ -493,7 +484,6 @@ func ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (boo
 		return false, fmt.Errorf("failed to get client id: %v", err)
 	}
 
-	fmt.Println("operator---------------", operator)
 	userRole, err1 := GetUserRoles(ctx, operator)
 	if err1 != nil {
 		return false, fmt.Errorf("error: %v", err1)

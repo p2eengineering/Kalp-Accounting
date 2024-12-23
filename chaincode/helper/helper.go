@@ -96,7 +96,7 @@ func FilterPrintableASCII(input string) string {
 func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, error) {
 	signer, e := GetUserId(ctx)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to get client id", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to get client id", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
