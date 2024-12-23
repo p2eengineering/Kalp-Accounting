@@ -16,8 +16,25 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
-	"golang.org/x/exp/slices"
 )
+
+func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to get client id", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+	kalpFoundationAddress, err := GetKalpFoundationAdminAddress(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if signer != kalpFoundationAddress {
+		return false, nil
+	}
+	return true, nil
+}
 
 // TODO: remove debug logs later
 func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
@@ -82,14 +99,90 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	return contractAddress, nil
 }
 
-// GetGatewayAdminAddress returns calling gateway admin's address
-func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) string {
-	return constants.KalpGateWayAdminAddress
+// GetGatewayAdminAddress retrieves the address of the Kalp Gateway Admin dynamically from the blockchain.
+func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) ([]models.UserRole, error) {
+	// Define the composite key to retrieve the gateway admin role
+	prefix := constants.UserRolePrefix
+	iterator, err := ctx.GetStateByPartialCompositeKey(prefix, []string{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get state for gateway admin: %v", err)
+	}
+	defer iterator.Close()
+
+	gatewayAdmins := []models.UserRole{}
+
+	// Iterate through keys to find the gateway admin
+	for iterator.HasNext() {
+		response, err := iterator.Next()
+		if err != nil {
+			return nil, fmt.Errorf("error reading next item: %v", err)
+		}
+
+		var userRole models.UserRole
+		if err := json.Unmarshal(response.Value, &userRole); err != nil {
+			return nil, fmt.Errorf("failed to parse user role data: %v", err)
+		}
+
+		gatewayAdmins = append(gatewayAdmins, userRole)
+	}
+
+	return gatewayAdmins, nil
 }
 
-// GetKalpFoundationAdminAddress returns calling kalp foundation admin's address
-func GetKalpFoundationAdminAddress(ctx kalpsdk.TransactionContextInterface) string {
-	return constants.KalpFoundationAddress
+// IsGatewayAdminAddress retrieves the address of the Kalp Gateway Admin dynamically from the blockchain.
+func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (bool, error) {
+	// Define the composite key to retrieve the gateway admin role
+	prefix := constants.UserRolePrefix
+	iterator, err := ctx.GetStateByPartialCompositeKey(prefix, []string{})
+	if err != nil {
+		return false, fmt.Errorf("failed to get state for gateway admin: %v", err)
+	}
+	defer iterator.Close()
+
+	// Iterate through keys to find the gateway admin
+	for iterator.HasNext() {
+		response, err := iterator.Next()
+		if err != nil {
+			return false, fmt.Errorf("error reading next item: %v", err)
+		}
+
+		var userRole models.UserRole
+		if err := json.Unmarshal(response.Value, &userRole); err != nil {
+			return false, fmt.Errorf("failed to parse user role data: %v", err)
+		}
+
+		if userRole.Id == userID {
+			return true, nil
+		}
+	}
+
+	return false, fmt.Errorf("no gateway admin address found")
+}
+
+// GetKalpFoundationAdminAddress retrieves the Kalp Foundation Admin address from the blockchain state.
+func GetKalpFoundationAdminAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	// Create the composite key for the Kalp Foundation Admin
+	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KalpFoundationRole})
+	if err != nil {
+		return "", fmt.Errorf("failed to create composite key for foundation admin: %v", err)
+	}
+
+	roleData, err := ctx.GetState(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch foundation admin role: %v", err)
+	}
+
+	if roleData == nil {
+		return "", fmt.Errorf("no foundation admin role found in the state")
+	}
+
+	var userRole models.UserRole
+	if err := json.Unmarshal(roleData, &userRole); err != nil {
+		return "", fmt.Errorf("failed to parse foundation admin role data: %v", err)
+	}
+
+	// Return the address (assuming it's stored in the Id field)
+	return userRole.Id, nil
 }
 
 func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
@@ -415,55 +508,6 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 		return false, err
 	}
 	return true, nil
-}
-
-// SetUserRoles is a smart contract function which is used to setup a role for user.
-func SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
-	//check if contract has been intilized first
-	// Parse input data into Role struct.
-	var userRole models.UserRole
-	errs := json.Unmarshal([]byte(data), &userRole)
-	if errs != nil {
-		return "", fmt.Errorf("failed to parse data: %v", errs)
-	}
-
-	userValid, err := ValidateUserRole(ctx, constants.KalpFoundationRole)
-	if err != nil {
-		return "", fmt.Errorf("error in validating the role %v", err)
-	}
-	if !userValid {
-		return "", fmt.Errorf("error in setting role %s, only %s can set the roles", userRole.Role, constants.KalpFoundationRole)
-	}
-
-	// Validate input data.
-	if userRole.Id == "" {
-		return "", fmt.Errorf("user Id can not be null")
-	}
-
-	if userRole.Role == "" {
-		return "", fmt.Errorf("role can not be null")
-	}
-
-	ValidRoles := []string{constants.KalpFoundationRole, constants.KalpGateWayAdminRole}
-	if !slices.Contains(ValidRoles, userRole.Role) {
-		return "", fmt.Errorf("invalid input role")
-	}
-
-	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
-	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, err)
-	}
-	// Generate JSON representation of Role struct.
-	usrRoleJSON, err := json.Marshal(userRole)
-	if err != nil {
-		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
-	}
-	// Store the Role struct in the state database
-	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
-		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
-	}
-	return GetTransactionTimestamp(ctx)
-
 }
 
 // GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.

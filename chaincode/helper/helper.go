@@ -3,11 +3,8 @@ package helper
 import (
 	"encoding/base64"
 	"fmt"
-	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
-	"gini-contract/chaincode/logger"
 	"math/big"
-	"net/http"
 	"reflect"
 	"regexp"
 	"strings"
@@ -91,19 +88,6 @@ func FilterPrintableASCII(input string) string {
 		}
 	}
 	return string(result)
-}
-
-func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, error) {
-	signer, e := GetUserId(ctx)
-	if e != nil {
-		err := ginierr.NewInternalError(e, "failed to get client id", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return false, err
-	}
-	if signer != constants.KalpFoundationAddress {
-		return false, nil
-	}
-	return true, nil
 }
 
 func IsAmountProper(amount string) bool {
