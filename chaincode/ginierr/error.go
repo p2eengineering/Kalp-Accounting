@@ -35,9 +35,9 @@ func NewInternalError(err error, message string, statusCode int) *CustomError {
 }
 
 var (
-	ErrFailedToGetClientID     = New("failed to get public address", http.StatusInternalServerError)
-	ErrOnlyFoundationHasAccess = New("only kalp foundation has access to perform this action", http.StatusUnauthorized)
-	ErrMinitingTokens          = New("error while minting tokens", http.StatusInternalServerError)
+	ErrFailedToGetPublicAddress = New("failed to get public address", http.StatusInternalServerError)
+	ErrOnlyFoundationHasAccess  = New("only kalp foundation has access to perform this action", http.StatusUnauthorized)
+	ErrMintingTokens            = New("error while minting tokens", http.StatusInternalServerError)
 )
 
 func ErrFailedToEmitEvent(event string) *CustomError {
@@ -52,24 +52,16 @@ func ErrInvalidAddress(address string) *CustomError {
 	return New(fmt.Sprintf("address: %s is not valid", address), http.StatusBadRequest)
 }
 
-func ErrFailedToDeleteState(e error) *CustomError {
-	return NewInternalError(e, "failed to delete data from world state", http.StatusInternalServerError)
+func ErrInvalidContractAddress(address string) *CustomError {
+	return New(fmt.Sprintf("contract address: %s is not valid", address), http.StatusBadRequest)
 }
 
 func ErrFailedToPutState(e error) *CustomError {
-	return NewInternalError(e, "failed to put data in world state", http.StatusInternalServerError)
+	return NewInternalError(e, "failed to put data", http.StatusInternalServerError)
 }
 
 func ErrFailedToGetState(e error) *CustomError {
-	return NewInternalError(e, "failed to get data from world state", http.StatusInternalServerError)
-}
-
-func ErrCreatingCompositeKey(e error) *CustomError {
-	return NewInternalError(e, "failed to create the composite key", http.StatusInternalServerError)
-}
-
-func ErrFailedToSetEvent(e error, event string) *CustomError {
-	return NewInternalError(e, "failed to set event: "+event, http.StatusInternalServerError)
+	return NewInternalError(e, "failed to get data", http.StatusInternalServerError)
 }
 
 func ErrConvertingAmountToBigInt(number string) *CustomError {

@@ -2,15 +2,9 @@
 
 ## TODOs
 - TODO: use deny list in transferFrom and transfer
-- Emit event after Update Allowance?
-- Setting roles in intialize for Foundation admin and gateway admin but its not getting used
-- Write setter getter for UserRole struct if we are going to use it
 - Can a valid Transfer or TransferFrom request have amount = 0?
-- In minting, check if name & symbol are initialized or check only one?
-- Why there is need to check for balance in minting? will checking name and symbol not cover all the cases?
 - Check this condition in Transfer !helper.IsValidAddress(signer) 
 - Deprecate GetUserID() after changes are made in kalp-sdk
-- Set Gini contract address in main()
 
 ## RemoveUtxo Implementation
 ```go

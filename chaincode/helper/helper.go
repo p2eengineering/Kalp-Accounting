@@ -3,6 +3,7 @@ package helper
 import (
 	"encoding/base64"
 	"fmt"
+	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
 	"math/big"
 	"reflect"
@@ -31,33 +32,28 @@ func IsValidAddress(address string) bool {
 }
 
 func IsContractAddress(address string) bool {
-	// Example validation logic (you can modify this to fit your use case)
+
 	if address == "" {
 		return false
 	}
-	// Assuming contract addresses should start with "0x" and have 42 characters
-	isValid, _ := regexp.MatchString(`^klp-[a-fA-F0-9]+-cc$`, address)
+
+	isValid, _ := regexp.MatchString(constants.IsContractAddressRegex, address)
 	return isValid
 }
 
 func IsUserAddress(address string) bool {
-	// Example validation logic (you can modify this to fit your use case)
+
 	if address == "" {
 		return false
 	}
-	// Assuming user addresses have the same structure as contract addresses
-	isValid, _ := regexp.MatchString(`^[0-9a-fA-F]{40}$`, address)
+
+	isValid, _ := regexp.MatchString(constants.UserAddressRegex, address)
 	return isValid
 }
 
 func FindContractAddress(data string) string {
-	// Define the regex pattern
-	pattern := `^klp-[a-fA-F0-9]+-cc`
+	re := regexp.MustCompile(constants.ContractAddressRegex)
 
-	// Compile the regex
-	re := regexp.MustCompile(pattern)
-
-	// Find the first match in the byte slice
 	return re.FindString(data)
 }
 
@@ -83,7 +79,7 @@ func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
 func FilterPrintableASCII(input string) string {
 	var result []rune
 	for _, char := range input {
-		if char >= 33 && char <= 127 { // Printable ASCII characters are in the range 33-127
+		if char >= 33 && char <= 127 {
 			result = append(result, char)
 		}
 	}
@@ -91,13 +87,12 @@ func FilterPrintableASCII(input string) string {
 }
 
 func IsAmountProper(amount string) bool {
-	// Parse the amount as a big.Int
+
 	bigAmount, ok := new(big.Int).SetString(amount, 10)
 	if !ok {
-		// Return false if amount cannot be converted to big.Int
+
 		return false
 	}
 
-	// Check if the amount is less than 0
 	return bigAmount.Sign() >= 0
 }

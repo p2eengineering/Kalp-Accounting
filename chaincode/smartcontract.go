@@ -24,14 +24,12 @@ type SmartContract struct {
 func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, vestingContractAddress string) (bool, error) {
 	logger.Log.Infoln("Initializing smart contract... with arguments", name, symbol, vestingContractAddress)
 
-	// checking if signer is kalp foundation else return error
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return false, err
 	} else if !signerKalp {
 		return false, ginierr.New("Only Kalp Foundation can initialize the contract", http.StatusUnauthorized)
 	}
 
-	// checking if contract is already initialized
 	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
 		return false, ginierr.ErrFailedToGetKey("namekey", constants.NameKey)
 	} else if bytes != nil {
@@ -44,10 +42,9 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 
 	if !helper.IsContractAddress(vestingContractAddress) {
-		return false, ginierr.ErrInvalidAddress(vestingContractAddress)
+		return false, ginierr.ErrInvalidContractAddress(vestingContractAddress)
 	}
 
-	// Checking if kalp foundation & gateway admin are KYC'd
 	if kyced, e := ctx.GetKYC(constants.KalpFoundationAddress); e != nil {
 		err := ginierr.NewInternalError(e, "Error fetching KYC status of foundation", http.StatusInternalServerError)
 		return false, err
@@ -61,7 +58,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, ginierr.New("Gateway Admin is not KYC'd", http.StatusBadRequest)
 	}
 
-	// intializing roles for kalp foundation & gateway admin
 	if _, err := internal.InitializeRoles(ctx, constants.KalpFoundationAddress, constants.KalpFoundationRole); err != nil {
 		return false, err
 	}
@@ -69,12 +65,10 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, err
 	}
 
-	// minting initial tokens
 	if err := internal.Mint(ctx, []string{constants.KalpFoundationAddress, vestingContractAddress}, []string{constants.InitialFoundationBalance, constants.InitialVestingContractBalance}); err != nil {
 		return false, err
 	}
 
-	// storing name, symbol and initial gas fees
 	if e := ctx.PutStateWithoutKYC(constants.NameKey, []byte(name)); e != nil {
 		err := ginierr.NewInternalError(e, "failed to set token name: "+name, http.StatusInternalServerError)
 		return false, err
@@ -98,11 +92,38 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	return true, nil
 }
 
-// SetUserRoles is a smart contract function which is used to setup a role for user.
+func (s *SmartContract) GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (string, error) {
+	prefix := constants.UserRolePrefix
+	iterator, err := ctx.GetStateByPartialCompositeKey(prefix, []string{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get data for gateway admin: %v", err)
+	}
+	defer iterator.Close()
+
+	gatewayAdmins := []string{}
+
+	for iterator.HasNext() {
+		response, err := iterator.Next()
+		if err != nil {
+			return "", fmt.Errorf("error reading next item: %v", err)
+		}
+
+		var userRole models.UserRole
+		if err := json.Unmarshal(response.Value, &userRole); err != nil {
+			return "", fmt.Errorf("failed to parse user role data: %v", err)
+		}
+
+		gatewayAdmins = append(gatewayAdmins, userRole.Id)
+
+		fmt.Println("here are the gatewayAdmins ====================>", gatewayAdmins, userRole.Id)
+	}
+
+	return gatewayAdmins[0], nil
+}
+
 func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
 	logger.Log.Info("SetUserRoles........", data)
 
-	// checking if signer is kalp foundation else return error
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return "", err
 	} else if !signerKalp {
@@ -115,15 +136,6 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("failed to parse data: %v", errs)
 	}
 
-	userValid, err := internal.ValidateUserRole(ctx, constants.KalpFoundationRole)
-	if err != nil {
-		return "", fmt.Errorf("error in validating the role %v", err)
-	}
-	if !userValid {
-		return "", fmt.Errorf("error in setting role %s, only %s can set the roles", userRole.Role, constants.KalpFoundationRole)
-	}
-
-	// Validate input data.
 	if userRole.Id == "" {
 		return "", fmt.Errorf("user Id can not be null")
 	}
@@ -146,14 +158,13 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, err)
 	}
 
-	// Generate JSON representation of Role struct.
 	usrRoleJSON, err := json.Marshal(userRole)
 	if err != nil {
 		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
 	}
-	// Store the Role struct in the state database
+
 	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
-		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
+		return "", fmt.Errorf("unable to put user role struct: %v", err)
 	}
 
 	return internal.GetTransactionTimestamp(ctx)
@@ -220,17 +231,12 @@ func (s *SmartContract) Deny(ctx kalpsdk.TransactionContextInterface, address st
 
 	logger.Log.Infof("Deny invoked for address: %s", address)
 
-	kalpFoundationAddress, err := internal.GetKalpFoundationAdminAddress(ctx)
-	if err != nil {
-		return err
-	}
-
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
 	} else if !signerKalp {
 		return ginierr.New("Only Kalp Foundation can Deny", http.StatusUnauthorized)
 	}
-	if address == kalpFoundationAddress {
+	if address == constants.KalpFoundationAddress {
 		return ginierr.New("admin cannot be denied", http.StatusBadRequest)
 	}
 	if denied, err := internal.IsDenied(ctx, address); err != nil {
@@ -278,7 +284,6 @@ func (s *SmartContract) GetGasFees(ctx kalpsdk.TransactionContextInterface) (str
 func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasFees string) error {
 	logger.Log.Infoln("SetGasFees... with arguments", gasFees)
 
-	// checking if signer is kalp foundation else return error
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
 	} else if !signerKalp {
@@ -329,7 +334,7 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 	}
 	signer, err := helper.GetUserId(ctx)
 	if err != nil {
-		return false, ginierr.ErrFailedToGetClientID
+		return false, ginierr.ErrFailedToGetPublicAddress
 	}
 	if err := events.EmitApproval(ctx, signer, spender, amount); err != nil {
 		return false, err
@@ -362,11 +367,6 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		gasFees = val
 	}
 
-	kalpFoundationAddress, err := internal.GetKalpFoundationAdminAddress(ctx)
-	if err != nil {
-		return false, err
-	}
-
 	amountInInt, ok := big.NewInt(0).SetString(amount, 10)
 	if !ok || amountInInt.Cmp(big.NewInt(0)) != 1 {
 		return false, ginierr.ErrInvalidAmount(amount)
@@ -389,7 +389,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		}
 
 		sender = gasDeductionAccount.Sender
-		recipient = kalpFoundationAddress
+		recipient = constants.KalpFoundationAddress
 		actualAmount = amountInInt
 		gasFees = big.NewInt(0)
 
@@ -414,7 +414,6 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, err
 	}
 
-	// Determine if the call is from a contract
 	calledContractAddress, err := internal.GetCalledContractAddress(ctx)
 	logger.Log.Info("calledContractAddress => ", calledContractAddress, err, s.GetName(), vestingContract, bridgeContract)
 	if err != nil {
@@ -437,7 +436,6 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 
 	logger.Log.Info("signer ==> ", signer, sender, recipient, helper.IsValidAddress(sender), helper.IsValidAddress(recipient))
 
-	// Input validation
 	if helper.IsContractAddress(signer) {
 		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
 	} else if !helper.IsValidAddress(signer) {
@@ -497,16 +495,16 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	}
 
 	if sender == signer && sender == recipient {
-		if sender != kalpFoundationAddress {
+		if sender != constants.KalpFoundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, gasFees); err != nil {
 				return false, err
 			}
-			if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+			if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 				return false, err
 			}
 		}
 	} else if sender == signer && sender != recipient {
-		if sender == kalpFoundationAddress {
+		if sender == constants.KalpFoundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, actualAmount); err != nil {
 				return false, err
 			}
@@ -514,7 +512,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				return false, err
 			}
 		} else {
-			if recipient == kalpFoundationAddress {
+			if recipient == constants.KalpFoundationAddress {
 				if err = internal.RemoveUtxo(ctx, sender, amountInInt); err != nil {
 					return false, err
 				}
@@ -528,18 +526,18 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				if err = internal.AddUtxo(ctx, recipient, actualAmount); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
 		}
 	} else {
 		if isGatewayAdmin {
-			if sender != kalpFoundationAddress {
+			if sender != constants.KalpFoundationAddress {
 				if err = internal.RemoveUtxo(ctx, sender, actualAmount); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, actualAmount); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, actualAmount); err != nil {
 					return false, err
 				}
 			}
@@ -548,7 +546,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				return false, err
 			}
 
-			if recipient == kalpFoundationAddress {
+			if recipient == constants.KalpFoundationAddress {
 				if err = internal.AddUtxo(ctx, recipient, amountInInt); err != nil {
 					return false, err
 				}
@@ -556,7 +554,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				if err = internal.AddUtxo(ctx, recipient, actualAmount); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
@@ -582,12 +580,6 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, err
 	}
 
-	kalpFoundationAddress, err := internal.GetKalpFoundationAdminAddress(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	// Input validation
 	if helper.IsContractAddress(signer) {
 		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
 	}
@@ -606,10 +598,8 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	if !helper.IsAmountProper(amount) {
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
-	// Parse the amt
 	amt, _ := big.NewInt(0).SetString(amount, 10)
 
-	// Determine if the call is from a contract
 	calledContractAddress, err := internal.GetCalledContractAddress(ctx)
 	logger.Log.Debug("calledContractAddress => ", calledContractAddress)
 	if err != nil {
@@ -638,7 +628,6 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, ginierr.ErrInvalidAddress(spender)
 	}
 
-	// check if signer, spender, sender and recipient are not denied
 	if denied, err := internal.IsDenied(ctx, sender); err != nil {
 		return false, err
 	} else if denied {
@@ -660,7 +649,6 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, ginierr.ErrDeniedAddress(spender)
 	}
 
-	// Ensure KYC compliance
 	var kycSender, kycSpender, kycSigner bool
 	if kycSender, e = ctx.GetKYC(sender); e != nil {
 		err := ginierr.NewInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
@@ -677,13 +665,22 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
-	if !(kycSender || kycSpender || kycSigner) {
-		err := ginierr.New("Neither sender nor spender nor signer is kyc'd", http.StatusForbidden)
+	if !kycSender {
+		err := ginierr.New("sender is not kyc'd", http.StatusForbidden)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+	if !kycSpender {
+		err := ginierr.New("spender is not kyc'd", http.StatusForbidden)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+	if !kycSigner {
+		err := ginierr.New("signer is not kyc'd", http.StatusForbidden)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
 
-	// Get balances
 	senderBalance, err := s.balance(ctx, sender)
 	if err != nil {
 		return false, err
@@ -712,7 +709,6 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		gasFees = val
 	}
 
-	// Balance checks
 	if signer == sender {
 		if signerBalance.Cmp(new(big.Int).Add(amt, gasFees)) < 0 {
 			return false, ginierr.New("insufficient balance in sender's account for amount + gas fees", http.StatusBadRequest)
@@ -726,7 +722,6 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		}
 	}
 
-	// Allowance check
 	if allowance.Cmp(amt) < 0 {
 		return false, ginierr.New("insufficient allowance for spender's account for the sender", http.StatusForbidden)
 	}
@@ -735,18 +730,17 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 			return false, ginierr.New("If bridge or vesting contract is the spender then , sender and signer should be same", http.StatusBadRequest)
 		}
 	}
-	// Transfer logic with UTXO updates
 	if signer == sender && signer == recipient {
-		if signer != kalpFoundationAddress {
+		if signer != constants.KalpFoundationAddress {
 			if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 				return false, err
 			}
-			if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+			if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 				return false, err
 			}
 		}
 	} else if signer == sender && signer != recipient {
-		if signer == kalpFoundationAddress {
+		if signer == constants.KalpFoundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 				return false, err
 			}
@@ -754,7 +748,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				return false, err
 			}
 		} else {
-			if recipient == kalpFoundationAddress {
+			if recipient == constants.KalpFoundationAddress {
 				if err = internal.RemoveUtxo(ctx, signer, new(big.Int).Add(amt, gasFees)); err != nil {
 					return false, err
 				}
@@ -768,21 +762,21 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				if err = internal.AddUtxo(ctx, recipient, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
 		}
 
 	} else if signer != sender && signer == recipient {
-		if signer == kalpFoundationAddress {
+		if signer == constants.KalpFoundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 				return false, err
 			}
 			if err = internal.AddUtxo(ctx, recipient, amt); err != nil {
 				return false, err
 			}
-		} else if sender == kalpFoundationAddress {
+		} else if sender == constants.KalpFoundationAddress {
 			if amt.Cmp(gasFees) > 0 {
 				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(amt, gasFees)); err != nil {
 					return false, err
@@ -806,14 +800,14 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			} else if amt.Cmp(gasFees) == 0 {
 				if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			} else {
@@ -823,7 +817,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
@@ -831,23 +825,23 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 
 	} else if signer != sender && signer != recipient {
 		if sender == recipient {
-			if sender == kalpFoundationAddress {
+			if sender == constants.KalpFoundationAddress {
 				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
 		} else {
-			if signer == kalpFoundationAddress {
+			if signer == constants.KalpFoundationAddress {
 				if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 					return false, err
 				}
 				if err = internal.AddUtxo(ctx, recipient, amt); err != nil {
 					return false, err
 				}
-			} else if sender == kalpFoundationAddress {
+			} else if sender == constants.KalpFoundationAddress {
 				if amt.Cmp(gasFees) > 0 {
 					if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 						return false, err
@@ -876,7 +870,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 						return false, err
 					}
 				}
-			} else if recipient == kalpFoundationAddress {
+			} else if recipient == constants.KalpFoundationAddress {
 				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 					return false, err
 				}
@@ -896,21 +890,19 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				if err = internal.AddUtxo(ctx, recipient, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, kalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
 		}
 	}
 
-	// Update allowance
 	err = internal.UpdateAllowance(ctx, sender, spender, amt.String())
 	if err != nil {
 		return false, err
 	}
 	logger.Log.Info("TransferFrom Invoked complete... transferred ", amt, " tokens from: ", sender, " to: ", recipient, " spender: ", spender)
 
-	// Emit transfer event
 	if err := events.EmitTransfer(ctx, sender, recipient, amount); err != nil {
 		return false, err
 	}
@@ -945,7 +937,6 @@ func (s *SmartContract) GetBridgeContract(ctx kalpsdk.TransactionContextInterfac
 func (s *SmartContract) SetBridgeContract(ctx kalpsdk.TransactionContextInterface, contract string) error {
 	logger.Log.Infoln("SetBridgeContract... with arguments", contract)
 
-	// checking if signer is kalp foundation else return error
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
 	} else if !signerKalp {

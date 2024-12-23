@@ -36,22 +36,10 @@ type Allow struct {
 	Spender string `json:"spendor"`
 }
 
-type TransferSingle struct {
-	Operator string      `json:"address"`
-	From     string      `json:"from"`
-	To       string      `json:"to"`
-	ID       string      `json:"id"`
-	Value    interface{} `json:"value"`
-}
-
-type Account struct {
-	Recipient string `json:"recipient"`
-}
-
 func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amount string) error {
 	signer, err := helper.GetUserId(ctx)
 	if err != nil {
-		return ginierr.ErrFailedToGetClientID
+		return ginierr.ErrFailedToGetPublicAddress
 	}
 	if !helper.IsValidAddress(spender) {
 		return ginierr.ErrInvalidAddress(spender)
@@ -61,7 +49,7 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amoun
 	}
 	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{signer, spender})
 	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", signer, spender, err)
+		return fmt.Errorf("failed to create the composite key for owner with address %s and spender with address %s: %v", signer, spender, err)
 	}
 
 	var approval = Allow{
@@ -74,33 +62,31 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amoun
 	if err != nil {
 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
-	// Update the state of the smart contract by adding the allowanceKey and value
+
 	err = ctx.PutStateWithoutKYC(approvalKey, approvalJSON)
 	if err != nil {
-		return fmt.Errorf("failed to update state of smart contract for key %s: %v", ctx.GetTxID(), err)
+		return fmt.Errorf("failed to update data of smart contract: %v", err)
 	}
 
-	logger.Log.Debugf("client %s approved a withdrawal allowance of %s for spender %s", signer, amount, spender)
+	logger.Log.Debugf("owner %s approved a withdrawal allowance of %s for spender %s", signer, amount, spender)
 
 	return nil
 }
 
-// GetAllowance returns the amount still available for the spender to withdraw from the owner
 func GetAllowance(ctx kalpsdk.TransactionContextInterface, signer string, spender string) (string, error) {
 	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{signer, spender})
 	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", signer, spender, err)
+		return "", fmt.Errorf("failed to create the composite key for owner with address %s and spender with address %s: %v", signer, spender, err)
 	}
-	// Get the current balance of the owner
 	approvalByte, err := ctx.GetState(approvalKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to read current balance of owner with address %s and account address %s from world state: %v", signer, spender, err)
+		return "", fmt.Errorf("failed to read current balance of owner with address %s and spender with address %s from world state: %v", signer, spender, err)
 	}
 	var approval Allow
 	if approvalByte != nil {
 		err = json.Unmarshal(approvalByte, &approval)
 		if err != nil {
-			return "", fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", signer, spender, err)
+			return "", fmt.Errorf("failed to unmarshal allow struct for owner %v and spender %v: %v", signer, spender, err)
 		}
 	}
 	if approval.Amount == "" {
