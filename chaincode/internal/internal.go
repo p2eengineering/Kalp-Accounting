@@ -119,9 +119,9 @@ func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) ([]string, 
 			return nil, fmt.Errorf("failed to parse user role data: %v", err)
 		}
 
-		gatewayAdmins = append(gatewayAdmins, userRole.Id)
-
-		fmt.Println("here are the gatewayAdmins ====================>", gatewayAdmins, userRole.Id)
+		if userRole.Role == constants.KalpGateWayAdminRole {
+			gatewayAdmins = append(gatewayAdmins, userRole.Id)
+		}
 	}
 
 	return gatewayAdmins, nil
@@ -487,15 +487,6 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 		return false, err
 	}
 	return true, nil
-}
-
-func GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, error) {
-	timestamp, err := ctx.GetTxTimestamp()
-	if err != nil {
-		return "", err
-	}
-
-	return timestamp.AsTime().String(), nil
 }
 
 func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
