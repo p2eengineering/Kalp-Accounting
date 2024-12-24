@@ -98,96 +98,98 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	return true, nil
 }
 
-func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
+func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) error {
 	logger.Log.Info("SetUserRoles........", data)
 
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
-		return "", err
+		return err
 	} else if !signerKalp {
-		return "", ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized)
+		return ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized)
 	}
 
 	var userRole models.UserRole
 	errs := json.Unmarshal([]byte(data), &userRole)
 	if errs != nil {
-		return "", fmt.Errorf("failed to parse data: %v", errs)
+		return fmt.Errorf("failed to parse data: %v", errs)
 	}
 
 	if userRole.Id == "" {
-		return "", fmt.Errorf("user Id can not be null")
+		return fmt.Errorf("user Id can not be null")
 	}
 
 	if !helper.IsUserAddress(userRole.Id) {
-		return "", ginierr.ErrInvalidUserAddress(userRole.Id)
+		return ginierr.ErrInvalidUserAddress(userRole.Id)
 	}
 
 	if userRole.Role == "" {
-		return "", fmt.Errorf("role can not be null")
+		return fmt.Errorf("role can not be null")
 	}
 
 	ValidRoles := []string{constants.KalpGateWayAdminRole}
 	if !slices.Contains(ValidRoles, userRole.Role) {
-		return "", fmt.Errorf("invalid input role")
+		return fmt.Errorf("invalid input role")
 	}
 
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
-		return "", err
+		return err
 	}
 
 	usrRoleJSON, err := json.Marshal(userRole)
 	if err != nil {
-		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
+		return fmt.Errorf("unable to Marshal userRole struct : %v", err)
 	}
 
 	if e := ctx.PutStateWithoutKYC(key, usrRoleJSON); e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to put user role struct: %v", e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
-		return "", err
+		return err
 	}
 
-	return "", nil
+	return nil
 }
 
-func (s *SmartContract) DeleteUserRoles(ctx kalpsdk.TransactionContextInterface, userID string) (bool, error) {
+func (s *SmartContract) DeleteUserRoles(ctx kalpsdk.TransactionContextInterface, userID string) error {
 	logger.Log.Info("DeleteUserRoles........", userID)
 
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
-		return false, err
+		return err
 	} else if !signerKalp {
-		return false, ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized)
+		return ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized)
 	}
 
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.UserRoleMap})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
-		return false, err
+		return err
 	}
 
-	existingRoleBytes, err := ctx.GetState(key)
-	if err != nil || existingRoleBytes == nil {
-		return false, fmt.Errorf("user role not found: %v", err)
+	existingRoleBytes, e := ctx.GetState(key)
+	if e != nil || existingRoleBytes == nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("user role not found for userID %s", userID), http.StatusNotFound)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 
 	var userRole models.UserRole
 	if err := json.Unmarshal(existingRoleBytes, &userRole); err != nil {
-		return false, fmt.Errorf("failed to unmarshal user role: %v", err)
+		return fmt.Errorf("failed to unmarshal user role: %v", err)
 	}
 
 	if userRole.Role == constants.KalpFoundationRole {
-		return false, fmt.Errorf("foundation role cannot be deleted")
+		return fmt.Errorf("foundation role cannot be deleted")
 	}
 
 	if e := ctx.DelStateWithoutKYC(key); e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to delete user role struct: %v", e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
-		return false, err
+		return err
 	}
 
-	return true, nil
+	return nil
 }
 
 func (s *SmartContract) Allow(ctx kalpsdk.TransactionContextInterface, address string) error {
