@@ -7,6 +7,5 @@ import (
 var Log *kalpsdk.ChaincodeLogger
 
 func init() {
-	// Initialize the logger
 	Log = kalpsdk.NewLogger()
 }

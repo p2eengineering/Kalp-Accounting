@@ -84,6 +84,6 @@ func ErrInvalidUserAddress(address string) *CustomError {
 	return New(fmt.Sprintf("Invalid user address : %s ", address), http.StatusBadRequest)
 }
 
-func ErrFailedToGetKey(key, value string) *CustomError {
-	return New(fmt.Sprintf("FailedToGetKey for %s : %s", key, value), http.StatusInternalServerError)
+func ErrFailedToGetKey(key string) *CustomError {
+	return New(fmt.Sprintf("FailedToGetKey for %s", key), http.StatusInternalServerError)
 }

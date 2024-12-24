@@ -31,12 +31,12 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 
 	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
-		return false, ginierr.ErrFailedToGetKey("namekey", constants.NameKey)
+		return false, ginierr.ErrFailedToGetKey(constants.NameKey)
 	} else if bytes != nil {
 		return false, ginierr.New(fmt.Sprintf("cannot initialize again,%s already set: %s", constants.NameKey, string(bytes)), http.StatusBadRequest)
 	}
 	if bytes, e := ctx.GetState(constants.SymbolKey); e != nil {
-		return false, ginierr.ErrFailedToGetKey("symbolkey", constants.SymbolKey)
+		return false, ginierr.ErrFailedToGetKey(constants.SymbolKey)
 	} else if bytes != nil {
 		return false, ginierr.New(fmt.Sprintf("cannot initialize again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
@@ -253,7 +253,7 @@ func (s *SmartContract) Deny(ctx kalpsdk.TransactionContextInterface, address st
 func (s *SmartContract) Name(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	bytes, err := ctx.GetState(constants.NameKey)
 	if err != nil {
-		return "", ginierr.ErrFailedToGetKey("namekey", constants.NameKey)
+		return "", ginierr.ErrFailedToGetKey(constants.NameKey)
 	}
 	return string(bytes), nil
 }
@@ -261,7 +261,7 @@ func (s *SmartContract) Name(ctx kalpsdk.TransactionContextInterface) (string, e
 func (s *SmartContract) Symbol(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	bytes, err := ctx.GetState(constants.SymbolKey)
 	if err != nil {
-		return "", ginierr.ErrFailedToGetKey("symbolkey", constants.SymbolKey)
+		return "", ginierr.ErrFailedToGetKey(constants.SymbolKey)
 	}
 	return string(bytes), nil
 }
@@ -385,19 +385,18 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		}
 
 		if !helper.IsUserAddress(gasDeductionAccount.Sender) {
-			return false, ginierr.ErrInvalidAddress("gasDeductionAccount")
+			return false, ginierr.ErrInvalidAddress(gasDeductionAccount.Sender)
 		}
 
 		sender = gasDeductionAccount.Sender
 		recipient = constants.KalpFoundationAddress
-		actualAmount = amountInInt
 		gasFees = big.NewInt(0)
 
 		if !helper.IsAmountProper(amount) {
 			return false, ginierr.ErrInvalidAmount(amount)
 		}
 	} else {
-		return false, ginierr.ErrInvalidAddress("recipient")
+		return false, ginierr.ErrInvalidAddress(recipient)
 	}
 
 	actualAmount = new(big.Int).Sub(amountInInt, gasFees)
@@ -422,30 +421,25 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 
 	if calledContractAddress != s.GetName() {
 		if calledContractAddress != bridgeContract && calledContractAddress != vestingContract {
-			err := ginierr.New("The calling contract is not bridge contract or vesting contract", http.StatusBadRequest)
+			err := ginierr.New("The called contract is not bridge contract or vesting contract", http.StatusBadRequest)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}
 		sender = calledContractAddress
-		if signer, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
-			logger.Log.Error(err.FullError())
-			return false, err
-		}
 	}
 
 	logger.Log.Info("signer ==> ", signer, sender, recipient, helper.IsValidAddress(sender), helper.IsValidAddress(recipient))
 
 	if helper.IsContractAddress(signer) {
 		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
-	} else if !helper.IsValidAddress(signer) {
-		return false, ginierr.ErrInvalidAddress("signer")
+	} else if !helper.IsUserAddress(signer) {
+		return false, ginierr.ErrInvalidAddress(signer)
 	}
 	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
 	if !helper.IsValidAddress(sender) {
-		return false, ginierr.ErrInvalidAddress("sender")
+		return false, ginierr.ErrInvalidAddress(sender)
 	}
 
 	if denied, err := internal.IsDenied(ctx, signer); err != nil {
@@ -665,18 +659,8 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
-	if !kycSender {
-		err := ginierr.New("sender is not kyc'd", http.StatusForbidden)
-		logger.Log.Error(err.FullError())
-		return false, err
-	}
-	if !kycSpender {
-		err := ginierr.New("spender is not kyc'd", http.StatusForbidden)
-		logger.Log.Error(err.FullError())
-		return false, err
-	}
-	if !kycSigner {
-		err := ginierr.New("signer is not kyc'd", http.StatusForbidden)
+	if !(kycSender || kycSpender || kycSigner) {
+		err := ginierr.New("neither of sender, spender AND signer is KYC'd", http.StatusForbidden)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
@@ -915,7 +899,7 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 
 	allowance, err := models.GetAllowance(ctx, owner, spender)
 	if err != nil {
-		return "", fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err) //big.NewInt(0).String(), fmt.Errorf("internal error %v: failed to get allowance: %v", http.StatusBadRequest, err)
+		return "", fmt.Errorf("error code is %v: failed to get allowance: %v", http.StatusBadRequest, err)
 	}
 	return allowance, nil
 }

@@ -224,12 +224,12 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 	}
 
 	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
-		return ginierr.ErrFailedToGetKey("namekey", constants.NameKey)
+		return ginierr.ErrFailedToGetKey(constants.NameKey)
 	} else if bytes != nil {
 		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.NameKey, string(bytes)), http.StatusBadRequest)
 	}
 	if bytes, e := ctx.GetState(constants.SymbolKey); e != nil {
-		return ginierr.ErrFailedToGetKey("symbolkey", constants.SymbolKey)
+		return ginierr.ErrFailedToGetKey(constants.SymbolKey)
 	} else if bytes != nil {
 		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
