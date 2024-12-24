@@ -707,7 +707,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	}
 
 	if allowance.Cmp(amt) < 0 {
-		return false, ginierr.New("insufficient allowance for spender's account for the sender", http.StatusForbidden)
+		return false, ginierr.New(fmt.Sprintf("insufficient allowance for spender's account %s for the sender %s",spender,sender), http.StatusForbidden)
 	}
 	if spender == bridgeContract || spender == vestingContract {
 		if signer != sender {

@@ -95,8 +95,8 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	return contractAddress, nil
 }
 
-func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) ([]string, error) {
-	iterator, err := ctx.GetStateByPartialCompositeKey(constants.UserRolePrefix, []string{userID, constants.UserRoleMap})
+func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) ([]string, error) {
+	iterator, err := ctx.GetStateByPartialCompositeKey(constants.UserRolePrefix, []string{constants.UserRoleMap})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get data for gateway admin: %v", err)
 	}
@@ -151,7 +151,7 @@ func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID strin
 		}
 	}
 
-	return false, fmt.Errorf("no gateway admin address found")
+	return false, nil
 }
 
 func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
