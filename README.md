@@ -1,7 +1,6 @@
 # Gini Contract
 
 ## TODOs
-- TODO: use deny list in transferFrom and transfer
 - Can a valid Transfer or TransferFrom request have amount = 0?
 - Check this condition in Transfer !helper.IsValidAddress(signer) 
 - Deprecate GetUserID() after changes are made in kalp-sdk

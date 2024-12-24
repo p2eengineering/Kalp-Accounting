@@ -96,18 +96,22 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 }
 
 func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) ([]string, error) {
-	iterator, err := ctx.GetStateByPartialCompositeKey(constants.UserRolePrefix, []string{constants.UserRoleMap})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get data for gateway admin: %v", err)
+	iterator, e := ctx.GetStateByPartialCompositeKey(constants.UserRolePrefix, []string{})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get data for gateway admin: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return nil, err
 	}
 	defer iterator.Close()
 
 	gatewayAdmins := []string{}
 
 	for iterator.HasNext() {
-		response, err := iterator.Next()
-		if err != nil {
-			return nil, fmt.Errorf("error reading next item: %v", err)
+		response, e := iterator.Next()
+		if e != nil {
+			err := ginierr.NewInternalError(e, fmt.Sprintf("error reading next item: %v", e), http.StatusInternalServerError)
+			logger.Log.Errorf(err.FullError())
+			return nil, err
 		}
 
 		var userRole models.UserRole
@@ -125,16 +129,20 @@ func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) ([]string, 
 
 func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (bool, error) {
 	prefix := constants.UserRolePrefix
-	iterator, err := ctx.GetStateByPartialCompositeKey(prefix, []string{userID, constants.UserRoleMap})
-	if err != nil {
-		return false, fmt.Errorf("failed to get data for gateway admin: %v", err)
+	iterator, e := ctx.GetStateByPartialCompositeKey(prefix, []string{userID, constants.UserRoleMap})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get data for gateway admin: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
 	}
 	defer iterator.Close()
 
 	for iterator.HasNext() {
-		response, err := iterator.Next()
-		if err != nil {
-			return false, fmt.Errorf("error reading next item: %v", err)
+		response, e := iterator.Next()
+		if e != nil {
+			err := ginierr.NewInternalError(e, fmt.Sprintf("error reading next item: %v", e), http.StatusInternalServerError)
+			logger.Log.Errorf(err.FullError())
+			return false, err
 		}
 
 		var userRole models.UserRole
@@ -142,12 +150,8 @@ func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID strin
 			return false, fmt.Errorf("failed to parse user role data: %v", err)
 		}
 
-		if userRole.Id == userID {
-			if userRole.Role == constants.KalpGateWayAdminRole {
-				return true, nil
-			} else {
-				return false, nil
-			}
+		if userRole.Id == userID && userRole.Role == constants.KalpGateWayAdminRole {
+			return true, nil
 		}
 	}
 
@@ -224,11 +228,13 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 	}
 
 	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
+		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, e)
 		return ginierr.ErrFailedToGetKey(constants.NameKey)
 	} else if bytes != nil {
 		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.NameKey, string(bytes)), http.StatusBadRequest)
 	}
 	if bytes, e := ctx.GetState(constants.SymbolKey); e != nil {
+		logger.Log.Errorf("Error in GetState %s: %v", constants.SymbolKey, e)
 		return ginierr.ErrFailedToGetKey(constants.SymbolKey)
 	} else if bytes != nil {
 		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
@@ -282,10 +288,11 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount in
 		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
 	}
 
-	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
-	if err != nil {
-		return fmt.Errorf("failed to put owner with ID %s and account address %s: %v", constants.GINI, account, err)
-
+	e := sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to put owner with ID %s and account address %s: %v", constants.GINI, account, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 	return nil
 }
@@ -362,9 +369,11 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 				return fmt.Errorf("failed to marshal owner with  and account address %s to JSON: %v", account, err)
 			}
 
-			err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
-			if err != nil {
-				return fmt.Errorf("failed to put owner with  and account address %s: %v", account, err)
+			e := sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
+			if e != nil {
+				err := ginierr.NewInternalError(e, fmt.Sprintf("failed to update balance for account %s and amount %s", account, amount), http.StatusInternalServerError)
+				logger.Log.Errorf(err.FullError())
+				return err
 			}
 
 		}
@@ -408,20 +417,26 @@ func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (stri
 }
 
 func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
-	approvalKey, err := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
-	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with address %s and spender with address %s: %v", owner, spender, err)
+	approvalKey, e := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for owner with address %s and spender with address %s: %v", owner, spender, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 
-	approvalByte, err := sdk.GetState(approvalKey)
-	if err != nil {
-		return fmt.Errorf("failed to read current balance of owner with address %s and spender with address %s : %v", owner, spender, err)
+	approvalByte, e := sdk.GetState(approvalKey)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to read current balance of owner with address %s and spender with address %s : %v", owner, spender, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 	var approval models.Allow
 	if approvalByte != nil {
-		err = json.Unmarshal(approvalByte, &approval)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal balance for owner address : %v and spender address: %v: %v", owner, spender, err)
+		e = json.Unmarshal(approvalByte, &approval)
+		if e != nil {
+			err := ginierr.NewInternalError(e, fmt.Sprintf("failed to unmarshal balance for owner address : %v and spender address: %v: %v", owner, spender, e), http.StatusInternalServerError)
+			logger.Log.Errorf(err.FullError())
+			return err
 		}
 		approvalAmount, s := big.NewInt(0).SetString(approval.Amount, 10)
 		if !s {
@@ -441,9 +456,11 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
 
-	err = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to update data of smart contract for key %s: %v", approvalKey, err)
+	e = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to update data of smart contract for key %s: %v", approvalKey, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 	return nil
 }
@@ -461,10 +478,12 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key: user ID '%s', role '%s'", userRole.Id, userRole.Role), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(key, roleJson); e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to put user role: %s , id: %s ", role, id), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	return true, nil

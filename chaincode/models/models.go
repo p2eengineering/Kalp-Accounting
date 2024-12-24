@@ -7,6 +7,7 @@ import (
 	"gini-contract/chaincode/ginierr"
 	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/logger"
+	"net/http"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
@@ -47,9 +48,11 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amoun
 	if !helper.IsAmountProper(amount) {
 		return ginierr.ErrInvalidAmount(amount)
 	}
-	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{signer, spender})
-	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with address %s and spender with address %s: %v", signer, spender, err)
+	approvalKey, e := ctx.CreateCompositeKey(constants.Approval, []string{signer, spender})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for owner with address %s and spender with address %s: %v", signer, spender, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 
 	var approval = Allow{
@@ -63,9 +66,11 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amoun
 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
 
-	err = ctx.PutStateWithoutKYC(approvalKey, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to update data of smart contract: %v", err)
+	e = ctx.PutStateWithoutKYC(approvalKey, approvalJSON)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to update data of smart contract: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 
 	logger.Log.Debugf("owner %s approved a withdrawal allowance of %s for spender %s", signer, amount, spender)
@@ -74,19 +79,25 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amoun
 }
 
 func GetAllowance(ctx kalpsdk.TransactionContextInterface, signer string, spender string) (string, error) {
-	approvalKey, err := ctx.CreateCompositeKey(constants.Approval, []string{signer, spender})
-	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for owner with address %s and spender with address %s: %v", signer, spender, err)
+	approvalKey, e := ctx.CreateCompositeKey(constants.Approval, []string{signer, spender})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for owner with address %s and spender with address %s: %v", signer, spender, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return "", err
 	}
-	approvalByte, err := ctx.GetState(approvalKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to read current balance of owner with address %s and spender with address %s from world state: %v", signer, spender, err)
+	approvalByte, e := ctx.GetState(approvalKey)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to read current balance of owner with address %s and spender with address %s from world state: %v", signer, spender, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return "", err
 	}
 	var approval Allow
 	if approvalByte != nil {
-		err = json.Unmarshal(approvalByte, &approval)
-		if err != nil {
-			return "", fmt.Errorf("failed to unmarshal allow struct for owner %v and spender %v: %v", signer, spender, err)
+		e = json.Unmarshal(approvalByte, &approval)
+		if e != nil {
+			err := ginierr.NewInternalError(e, fmt.Sprintf("failed to unmarshal allow struct for owner %v and spender %v: %v", signer, spender, e), http.StatusInternalServerError)
+			logger.Log.Errorf(err.FullError())
+			return "", err
 		}
 	}
 	if approval.Amount == "" {

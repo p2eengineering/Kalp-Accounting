@@ -47,12 +47,14 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 
 	if kyced, e := ctx.GetKYC(constants.KalpFoundationAddress); e != nil {
 		err := ginierr.NewInternalError(e, "Error fetching KYC status of foundation", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
 		return false, err
 	} else if !kyced {
 		return false, ginierr.New("Foundation is not KYC'd", http.StatusBadRequest)
 	}
 	if kyced, e := ctx.GetKYC(constants.KalpGateWayAdminAddress); e != nil {
 		err := ginierr.NewInternalError(e, "Error fetching KYC status of Gateway Admin", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
 		return false, err
 	} else if !kyced {
 		return false, ginierr.New("Gateway Admin is not KYC'd", http.StatusBadRequest)
@@ -71,18 +73,22 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 
 	if e := ctx.PutStateWithoutKYC(constants.NameKey, []byte(name)); e != nil {
 		err := ginierr.NewInternalError(e, "failed to set token name: "+name, http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(constants.SymbolKey, []byte(symbol)); e != nil {
 		err := ginierr.NewInternalError(e, "failed to set symbol: "+symbol, http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(constants.GasFeesKey, []byte(constants.InitialGasFees)); e != nil {
 		err := ginierr.NewInternalError(e, "failed to set gas fees: "+constants.InitialGasFees, http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(constants.VestingContractKey, []byte(vestingContractAddress)); e != nil {
 		err := ginierr.NewInternalError(e, "failed to set vesting Contract: "+vestingContractAddress, http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if err := s.SetBridgeContract(ctx, constants.InitialBridgeContractAddress); err != nil {
@@ -90,35 +96,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 	logger.Log.Infoln("Initialize Invoked complete")
 	return true, nil
-}
-
-func (s *SmartContract) GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (string, error) {
-	prefix := constants.UserRolePrefix
-	iterator, err := ctx.GetStateByPartialCompositeKey(prefix, []string{})
-	if err != nil {
-		return "", fmt.Errorf("failed to get data for gateway admin: %v", err)
-	}
-	defer iterator.Close()
-
-	gatewayAdmins := []string{}
-
-	for iterator.HasNext() {
-		response, err := iterator.Next()
-		if err != nil {
-			return "", fmt.Errorf("error reading next item: %v", err)
-		}
-
-		var userRole models.UserRole
-		if err := json.Unmarshal(response.Value, &userRole); err != nil {
-			return "", fmt.Errorf("failed to parse user role data: %v", err)
-		}
-
-		gatewayAdmins = append(gatewayAdmins, userRole.Id)
-
-		fmt.Println("here are the gatewayAdmins ====================>", gatewayAdmins, userRole.Id)
-	}
-
-	return gatewayAdmins[0], nil
 }
 
 func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
@@ -421,7 +398,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 
 	if calledContractAddress != s.GetName() {
 		if calledContractAddress != bridgeContract && calledContractAddress != vestingContract {
-			err := ginierr.New("The called contract is not bridge contract or vesting contract", http.StatusBadRequest)
+			err := ginierr.New("The called contract is not bridge contract or vesting contract", http.StatusForbidden)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}
@@ -660,7 +637,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, err
 	}
 	if !(kycSender || kycSpender || kycSigner) {
-		err := ginierr.New("neither of sender, spender AND signer is KYC'd", http.StatusForbidden)
+		err := ginierr.New("None of the sender, spender, or signer is KYC'd", http.StatusForbidden)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
@@ -707,7 +684,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	}
 
 	if allowance.Cmp(amt) < 0 {
-		return false, ginierr.New(fmt.Sprintf("insufficient allowance for spender's account %s for the sender %s",spender,sender), http.StatusForbidden)
+		return false, ginierr.New(fmt.Sprintf("insufficient allowance for spender's account %s for the sender %s", spender, sender), http.StatusForbidden)
 	}
 	if spender == bridgeContract || spender == vestingContract {
 		if signer != sender {
