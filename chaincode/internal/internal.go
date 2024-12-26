@@ -32,7 +32,6 @@ func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, erro
 	return true, nil
 }
 
-// TODO: remove debug logs later
 func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	signedProposal, e := ctx.GetSignedProposal()
 	if signedProposal == nil {
