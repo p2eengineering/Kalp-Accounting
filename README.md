@@ -1,18 +1,9 @@
 # Gini Contract
 
 ## TODOs
-- TODO: call intialize for vesting contract address
-- TODO: Do we need to take bridge contract address as input in initialize
-- TODO: use deny list in transferFrom
-- Emit event after Update Allowance?
-- Setting roles in intialize for Foundation admin and gateway admin but its not getting used
-- Write setter getter for UserRole struct if we are going to use it
 - Can a valid Transfer or TransferFrom request have amount = 0?
-- In minting, check if name & symbol are initialized or check only one?
-- Why there is need to check for balance in minting? will checking name and symbol not cover all the cases?
 - Check this condition in Transfer !helper.IsValidAddress(signer) 
 - Deprecate GetUserID() after changes are made in kalp-sdk
-- Set Gini contract address in main()
 
 ## RemoveUtxo Implementation
 ```go
@@ -21,7 +12,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountV
 
 	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -30,7 +21,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountV
 	logger.Log.Debugf("queryString: %s\n", queryString)
 	resultsIterator, e := ctx.GetQueryResult(queryString)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error creating iterator while removing UTXO", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error creating iterator while removing UTXO", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -46,7 +37,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountV
 		logger.Log.Debugf("query key %s\n", queryResult.Key)
 
 		if e := json.Unmarshal(queryResult.Value, &u); e != nil {
-			err := ginierr.NewWithInternalError(e, "failed to unmarshal UTXO data while removing UTXO", http.StatusInternalServerError)
+			err := ginierr.NewInternalError(e, "failed to unmarshal UTXO data while removing UTXO", http.StatusInternalServerError)
 			logger.Log.Error(err.FullError())
 			return err
 		}
@@ -98,7 +89,7 @@ func RemoveUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountV
 			}
 			utxoJSON, e := json.Marshal(utxo)
 			if e != nil {
-				err := ginierr.NewWithInternalError(e, "failed to marshal UTXO data while removing UTXO", http.StatusInternalServerError)
+				err := ginierr.NewInternalError(e, "failed to marshal UTXO data while removing UTXO", http.StatusInternalServerError)
 				logger.Log.Error(err.FullError())
 				return err
 			}
@@ -123,7 +114,7 @@ func AddUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountVal 
 
 	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to create the composite key for owner:"+account, http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -138,7 +129,7 @@ func AddUtxo(ctx kalpsdk.TransactionContextInterface, account string, amountVal 
 
 	utxoJSON, e := json.Marshal(utxo)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to marshal UTXO data while adding UTXO", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to marshal UTXO data while adding UTXO", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -197,7 +188,7 @@ func UpdateAllowance(ctx kalpsdk.TransactionContextInterface, owner string, spen
 	}
 	approvalJSON, e := json.Marshal(approval)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to marshal approval data", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to marshal approval data", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -314,7 +305,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 
 	signer, err := ctx.GetUserID()
 	if err != nil {
-		err := ginierr.NewWithInternalError(err, "error getting signer", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(err, "error getting signer", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
@@ -358,13 +349,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		}
 		sender = callingContractAddress
 		if signer, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
+			err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}
 	} else {
 		if sender, e = ctx.GetUserID(); e != nil {
-			err := ginierr.NewWithInternalError(e, "error getting signer", http.StatusInternalServerError)
+			err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
 			logger.Log.Error(err.FullError())
 			return false, err
 		}
@@ -426,13 +417,13 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 
 	var kycSender, kycSigner bool
 	if kycSender, e = ctx.GetKYC(sender); e != nil {
-		err := ginierr.NewWithInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
 
 	if kycSigner, e = ctx.GetKYC(signer); e != nil {
-		err := ginierr.NewWithInternalError(e, "error fetching KYC for signer", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error fetching KYC for signer", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}

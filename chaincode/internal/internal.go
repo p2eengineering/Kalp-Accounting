@@ -16,8 +16,21 @@ import (
 	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
-	"golang.org/x/exp/slices"
 )
+
+func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to get public address", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	if signer != constants.KalpFoundationAddress {
+		return false, nil
+	}
+	return true, nil
+}
 
 // TODO: remove debug logs later
 func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
@@ -28,7 +41,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 		return "", err
 	}
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in getting signed proposal", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error in getting signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -46,7 +59,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	proposal := &peer.Proposal{}
 	e = proto.Unmarshal(data, proposal)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in parsing signed proposal", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error in parsing signed proposal", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -55,7 +68,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	payload := &common.Payload{}
 	e = proto.Unmarshal(proposal.Payload, payload)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "error in parsing payload", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error in parsing payload", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -63,7 +76,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 
 	paystring := payload.GetHeader().GetChannelHeader()
 	if len(paystring) == 0 {
-		err := ginierr.New("channel header is empty", http.StatusInternalServerError)
+		err := ginierr.New("channel header is empty", http.StatusNotFound)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
@@ -75,21 +88,74 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 
 	contractAddress := helper.FindContractAddress(printableASCIIPaystring)
 	if contractAddress == "" {
-		err := ginierr.New("contract address not found", http.StatusInternalServerError)
+		err := ginierr.New("contract address not found", http.StatusNotFound)
 		logger.Log.Error(err.FullError())
 		return "", err
 	}
 	return contractAddress, nil
 }
 
-// GetGatewayAdminAddress returns calling gateway admin's address
-func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) string {
-	return constants.KalpGateWayAdminAddress
+func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) ([]string, error) {
+	iterator, e := ctx.GetStateByPartialCompositeKey(constants.UserRolePrefix, []string{})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get data for gateway admin: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return nil, err
+	}
+	defer iterator.Close()
+
+	gatewayAdmins := []string{}
+
+	for iterator.HasNext() {
+		response, e := iterator.Next()
+		if e != nil {
+			err := ginierr.NewInternalError(e, fmt.Sprintf("error reading next item: %v", e), http.StatusInternalServerError)
+			logger.Log.Errorf(err.FullError())
+			return nil, err
+		}
+
+		var userRole models.UserRole
+		if err := json.Unmarshal(response.Value, &userRole); err != nil {
+			return nil, fmt.Errorf("failed to parse user role data: %v", err)
+		}
+
+		if userRole.Role == constants.KalpGateWayAdminRole {
+			gatewayAdmins = append(gatewayAdmins, userRole.Id)
+		}
+	}
+
+	return gatewayAdmins, nil
 }
 
-// GetKalpFoundationAdminAddress returns calling kalp foundation admin's address
-func GetKalpFoundationAdminAddress(ctx kalpsdk.TransactionContextInterface) string {
-	return constants.KalpFoundationAddress
+func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (bool, error) {
+	prefix := constants.UserRolePrefix
+	iterator, e := ctx.GetStateByPartialCompositeKey(prefix, []string{userID, constants.UserRoleMap})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get data for gateway admin: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
+	}
+	defer iterator.Close()
+
+	for iterator.HasNext() {
+		response, e := iterator.Next()
+		if e != nil {
+			err := ginierr.NewInternalError(e, fmt.Sprintf("error reading next item: %v", e), http.StatusInternalServerError)
+			logger.Log.Errorf(err.FullError())
+			return false, err
+		}
+
+		var userRole models.UserRole
+		if err := json.Unmarshal(response.Value, &userRole); err != nil {
+			return false, fmt.Errorf("failed to parse user role data: %v", err)
+		}
+
+		if userRole.Id == userID && userRole.Role == constants.KalpGateWayAdminRole {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
@@ -98,7 +164,7 @@ func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error 
 		return fmt.Errorf("failed to create composite key for deny list: %v", err)
 	}
 	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte("true")); err != nil {
-		return fmt.Errorf("failed to put state in deny list: %v", err)
+		return fmt.Errorf("failed to put data in deny list: %v", err)
 	}
 	if err := events.EmitDenied(ctx, address); err != nil {
 		return err
@@ -112,7 +178,7 @@ func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error
 		return fmt.Errorf("failed to create composite key for deny list: %v", err)
 	}
 	if err := ctx.PutStateWithoutKYC(addressDenyKey, []byte("false")); err != nil {
-		return fmt.Errorf("failed to put state in deny list: %v", err)
+		return fmt.Errorf("failed to put data in deny list: %v", err)
 	}
 	if err := events.EmitAllowed(ctx, address); err != nil {
 		return err
@@ -120,16 +186,14 @@ func AllowAddress(ctx kalpsdk.TransactionContextInterface, address string) error
 	return nil
 }
 
-// IsDenied checks if an address is denied
 func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, error) {
 	addressDenyKey, err := ctx.CreateCompositeKey(constants.DenyListKey, []string{address})
 	if err != nil {
 		return false, fmt.Errorf("failed to create composite key for deny list: %v", err)
 	}
 	if bytes, err := ctx.GetState(addressDenyKey); err != nil {
-		return false, fmt.Errorf("failed to get state from deny list: %v", err)
+		return false, fmt.Errorf("failed to get data from deny list: %v", err)
 	} else if bytes == nil {
-		// GetState() returns nil, nil when key is not found
 		return false, nil
 	} else if string(bytes) == "false" {
 		return false, nil
@@ -137,28 +201,25 @@ func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, er
 	return true, nil
 }
 
-// Mint mints given amount at a given address
 func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts []string) error {
 
 	logger.Log.Infof("Mint invoked.... with arguments", addresses, amounts)
 
-	// Validate input amount
 	accAmount1, ok := big.NewInt(0).SetString(amounts[0], 10)
 	if !ok {
 		return ginierr.ErrConvertingAmountToBigInt(amounts[0])
 	}
-	if accAmount1.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
+	if accAmount1.Cmp(big.NewInt(0)) != 1 {
 		return ginierr.ErrInvalidAmount(amounts[0])
 	}
 	accAmount2, ok := big.NewInt(0).SetString(amounts[1], 10)
 	if !ok {
 		return ginierr.ErrConvertingAmountToBigInt(amounts[1])
 	}
-	if accAmount1.Cmp(big.NewInt(0)) != 1 { // if amount is not greater than 0 return error
+	if accAmount1.Cmp(big.NewInt(0)) != 1 {
 		return ginierr.ErrInvalidAmount(amounts[1])
 	}
 
-	// Validate input address
 	if !helper.IsValidAddress(addresses[0]) {
 		return ginierr.ErrInvalidAddress(addresses[0])
 	}
@@ -166,7 +227,6 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 		return ginierr.ErrInvalidAddress(addresses[1])
 	}
 
-	// checking if contract is already initialized
 	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
 		logger.Log.Errorf("Error in GetState %s: %v", constants.NameKey, e)
 		return ginierr.ErrFailedToGetKey(constants.NameKey)
@@ -180,9 +240,6 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 		return ginierr.New(fmt.Sprintf("cannot mint again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
 
-	// TODO: check balance if required here
-
-	// Mint tokens
 	if err := MintUtxoHelperWithoutKYC(ctx, addresses[0], accAmount1); err != nil {
 		return err
 	}
@@ -194,7 +251,6 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 
 }
 
-// As of now, we are not supporting usecases where asset is owned by multiple owners.
 func MintUtxoHelperWithoutKYC(ctx kalpsdk.TransactionContextInterface, account string, amount *big.Int) error {
 	err := AddUtxo(ctx, account, amount)
 	if err != nil {
@@ -232,10 +288,11 @@ func AddUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount in
 		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
 	}
 
-	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
-	if err != nil {
-		return fmt.Errorf("failed to put owner with ID %s and account address %s to world state: %v", constants.GINI, account, err)
-
+	e := sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to put owner with ID %s and account address %s: %v", constants.GINI, account, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 	return nil
 }
@@ -258,7 +315,7 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 
 	resultsIterator, err := sdk.GetQueryResult(queryString)
 	if err != nil {
-		return fmt.Errorf("failed to read from world state: %v", err)
+		return fmt.Errorf("failed to read: %v", err)
 	}
 	var utxo []models.Utxo
 	amt := big.NewInt(0)
@@ -279,7 +336,7 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 		}
 		amt.Add(amt, am)
 		utxo = append(utxo, u)
-		if amt.Cmp(amount) == 0 || amt.Cmp(amount) == 1 { // >= amount {
+		if amt.Cmp(amount) == 0 || amt.Cmp(amount) == 1 {
 			break
 		}
 	}
@@ -292,16 +349,16 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 		if !s {
 			return fmt.Errorf("failed to set string")
 		}
-		if amount.Cmp(am) == 0 || amount.Cmp(am) == 1 { // >= utxo[i].Amount {
+		if amount.Cmp(am) == 0 || amount.Cmp(am) == 1 {
 			amount = amount.Sub(amount, am)
 			if err := sdk.DelStateWithoutKYC(utxo[i].Key); err != nil {
 				return fmt.Errorf("%v", err)
 			}
-		} else if amount.Cmp(am) == -1 { // < utxo[i].Amount {
+		} else if amount.Cmp(am) == -1 {
 			if err := sdk.DelStateWithoutKYC(utxo[i].Key); err != nil {
 				return fmt.Errorf("%v", err)
 			}
-			// Create a new utxo object
+
 			utxo := models.Utxo{
 				DocType: constants.UTXO,
 				Account: account,
@@ -312,9 +369,11 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 				return fmt.Errorf("failed to marshal owner with  and account address %s to JSON: %v", account, err)
 			}
 
-			err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
-			if err != nil {
-				return fmt.Errorf("failed to put owner with  and account address %s to world state: %v", account, err)
+			e := sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
+			if e != nil {
+				err := ginierr.NewInternalError(e, fmt.Sprintf("failed to update balance for account %s and amount %s", account, amount), http.StatusInternalServerError)
+				logger.Log.Errorf(err.FullError())
+				return err
 			}
 
 		}
@@ -329,7 +388,7 @@ func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (stri
 	logger.Log.Infof("queryString: %s\n", queryString)
 	resultsIterator, err := ctx.GetQueryResult(queryString)
 	if err != nil {
-		return "", fmt.Errorf("failed to read from world state: %v", err)
+		return "", fmt.Errorf("failed to read: %v", err)
 	}
 	amt := big.NewInt(0)
 	for resultsIterator.HasNext() {
@@ -351,28 +410,33 @@ func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (stri
 			amount.SetString(uamount, 10)
 		}
 
-		amt = amt.Add(amt, amount) // += u.Amount
-
+		amt = amt.Add(amt, amount)
 	}
 
 	return amt.String(), nil
 }
 
 func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
-	approvalKey, err := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
-	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
+	approvalKey, e := sdk.CreateCompositeKey(constants.Approval, []string{owner, spender})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for owner with address %s and spender with address %s: %v", owner, spender, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
-	// Get the current balance of the owner
-	approvalByte, err := sdk.GetState(approvalKey)
-	if err != nil {
-		return fmt.Errorf("failed to read current balance of owner with address %s and account address %s from world state: %v", owner, spender, err)
+
+	approvalByte, e := sdk.GetState(approvalKey)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to read current balance of owner with address %s and spender with address %s : %v", owner, spender, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 	var approval models.Allow
 	if approvalByte != nil {
-		err = json.Unmarshal(approvalByte, &approval)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal balance for account %v and token %v: %v", owner, spender, err)
+		e = json.Unmarshal(approvalByte, &approval)
+		if e != nil {
+			err := ginierr.NewInternalError(e, fmt.Sprintf("failed to unmarshal balance for owner address : %v and spender address: %v: %v", owner, spender, e), http.StatusInternalServerError)
+			logger.Log.Errorf(err.FullError())
+			return err
 		}
 		approvalAmount, s := big.NewInt(0).SetString(approval.Amount, 10)
 		if !s {
@@ -382,8 +446,8 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 		if !s {
 			return ginierr.ErrConvertingAmountToBigInt(spent)
 		}
-		if amountSpent.Cmp(approvalAmount) == 1 { // amountToAdd > approvalAmount {
-			return fmt.Errorf("failed to convert approvalAmount to float64")
+		if amountSpent.Cmp(approvalAmount) == 1 {
+			return fmt.Errorf("the amount spent :%s , is greater than allowance :%s ", spent, approval.Amount)
 		}
 		approval.Amount = fmt.Sprint(approvalAmount.Sub(approvalAmount, amountSpent))
 	}
@@ -391,10 +455,12 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 	if err != nil {
 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
-	// Update the state of the smart contract by adding the allowanceKey and value
-	err = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to update state of smart contract for key %s: %v", approvalKey, err)
+
+	e = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to update data of smart contract for key %s: %v", approvalKey, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
 	return nil
 }
@@ -411,103 +477,20 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	}
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to create the composite key for user role: "+role, http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key: user ID '%s', role '%s'", userRole.Id, userRole.Role), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	if e := ctx.PutStateWithoutKYC(key, roleJson); e != nil {
-		err := ginierr.NewWithInternalError(e, fmt.Sprintf("unable to put user role: %s struct in statedb", role), http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to put user role: %s , id: %s ", role, id), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 	return true, nil
 }
 
-// SetUserRoles is a smart contract function which is used to setup a role for user.
-func SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) (string, error) {
-	//check if contract has been intilized first
-
-	fmt.Println("SetUserRoles", data)
-
-	// Parse input data into Role struct.
-	var userRole models.UserRole
-	errs := json.Unmarshal([]byte(data), &userRole)
-	if errs != nil {
-		return "", fmt.Errorf("failed to parse data: %v", errs)
-	}
-
-	userValid, err := ValidateUserRole(ctx, constants.KalpFoundationRole)
-	if err != nil {
-		return "", fmt.Errorf("error in validating the role %v", err)
-	}
-	if !userValid {
-		return "", fmt.Errorf("error in setting role %s, only %s can set the roles", userRole.Role, constants.KalpFoundationRole)
-	}
-
-	// Validate input data.
-	if userRole.Id == "" {
-		return "", fmt.Errorf("user Id can not be null")
-	}
-
-	if userRole.Role == "" {
-		return "", fmt.Errorf("role can not be null")
-	}
-
-	ValidRoles := []string{constants.KalpFoundationRole, constants.KalpGateWayAdminRole}
-	if !slices.Contains(ValidRoles, userRole.Role) {
-		return "", fmt.Errorf("invalid input role")
-	}
-
-	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
-	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, err)
-	}
-	// Generate JSON representation of Role struct.
-	usrRoleJSON, err := json.Marshal(userRole)
-	if err != nil {
-		return "", fmt.Errorf("unable to Marshal userRole struct : %v", err)
-	}
-	// Store the Role struct in the state database
-	if err := ctx.PutStateWithoutKYC(key, usrRoleJSON); err != nil {
-		return "", fmt.Errorf("unable to put user role struct in statedb: %v", err)
-	}
-	return GetTransactionTimestamp(ctx)
-
-}
-
-// GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
-func GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, error) {
-	timestamp, err := ctx.GetTxTimestamp()
-	if err != nil {
-		return "", err
-	}
-
-	return timestamp.AsTime().String(), nil
-}
-
-func ValidateUserRole(ctx kalpsdk.TransactionContextInterface, Role string) (bool, error) {
-
-	// Check if operator is authorized to create Role.
-	operator, err := helper.GetUserId(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to get client id: %v", err)
-	}
-
-	fmt.Println("operator---------------", operator)
-	userRole, err1 := GetUserRoles(ctx, operator)
-	if err1 != nil {
-		return false, fmt.Errorf("error: %v", err1)
-	}
-
-	if userRole != Role {
-		return false, fmt.Errorf("this transaction can be performed by %v only", Role)
-	}
-	return true, nil
-}
-
-// GetUserRoles is a smart contract function which is used to get a role of a user.
 func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
-	// Get the asset from the ledger using id & check if asset exists
+
 	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{id, constants.UserRoleMap})
 	if err != nil {
 		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, err)
@@ -515,13 +498,12 @@ func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, e
 
 	userJSON, err := ctx.GetState(key)
 	if err != nil {
-		return "", fmt.Errorf("failed to read from world state: %v", err)
+		return "", fmt.Errorf("failed to read: %v", err)
 	}
 	if userJSON == nil {
 		return "", nil
 	}
 
-	// Unmarshal asset from JSON to struct
 	var userRole models.UserRole
 	err = json.Unmarshal(userJSON, &userRole)
 	if err != nil {

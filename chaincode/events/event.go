@@ -39,12 +39,12 @@ func EmitDenied(ctx kalpsdk.TransactionContextInterface, address string) error {
 	}
 	deniedEventJSON, e := json.Marshal(deniedEvent)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to marshal Denied event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to marshal Denied event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
 	if e := ctx.SetEvent(constants.Denied, deniedEventJSON); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to emit Denied event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to emit Denied event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -57,12 +57,12 @@ func EmitAllowed(ctx kalpsdk.TransactionContextInterface, address string) error 
 	}
 	allowedEventJSON, e := json.Marshal(allowedEvent)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to marshal Allowed event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to marshal Allowed event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
 	if e := ctx.SetEvent(constants.Allowed, allowedEventJSON); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to emit Allowed event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to emit Allowed event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -77,12 +77,12 @@ func EmitTransfer(ctx kalpsdk.TransactionContextInterface, from string, to strin
 	}
 	transferEventJSON, e := json.Marshal(transferEvent)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to marshal Transfer event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to marshal Transfer event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
 	if e := ctx.SetEvent(constants.Transfer, transferEventJSON); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to emit Transfer event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to emit Transfer event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -97,12 +97,12 @@ func EmitApproval(ctx kalpsdk.TransactionContextInterface, owner string, spender
 	}
 	approvalEventJSON, e := json.Marshal(approvalEvent)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to marshal Approval event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to marshal Approval event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
 	if e := ctx.SetEvent(constants.Approval, approvalEventJSON); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to emit Approval event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to emit Approval event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
@@ -116,12 +116,12 @@ func EmitMint(ctx kalpsdk.TransactionContextInterface, account string, value str
 	}
 	mintEventJSON, e := json.Marshal(mintEvent)
 	if e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to marshal Mint event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to marshal Mint event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
 	if e := ctx.SetEvent(constants.Mint, mintEventJSON); e != nil {
-		err := ginierr.NewWithInternalError(e, "failed to emit Mint event", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "failed to emit Mint event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
