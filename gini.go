@@ -10,7 +10,7 @@ import (
 	"gini-contract/chaincode"
 	"gini-contract/chaincode/constants"
 
-	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"github.com/muditp2e/kalp-sdk-public/kalpsdk"
 )
 
 func main() {

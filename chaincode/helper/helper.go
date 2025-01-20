@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"github.com/muditp2e/kalp-sdk-public/kalpsdk"
 )
 
 func ConvertToBigInt(value interface{}) (*big.Int, error) {

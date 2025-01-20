@@ -13,7 +13,7 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"github.com/muditp2e/kalp-sdk-public/kalpsdk"
 	"golang.org/x/exp/slices"
 )
 
@@ -400,7 +400,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, err
 	}
 
-	calledContractAddress, err := internal.GetCalledContractAddress(ctx)
+	calledContractAddress, err := ctx.GetCalledContractAddress()
 	logger.Log.Info("calledContractAddress => ", calledContractAddress, err, s.GetName(), vestingContract, bridgeContract)
 	if err != nil {
 		return false, err

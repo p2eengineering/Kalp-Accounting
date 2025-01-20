@@ -13,9 +13,9 @@ import (
 	"net/http"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/muditp2e/kalp-sdk-public/kalpsdk"
 )
 
 func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, error) {

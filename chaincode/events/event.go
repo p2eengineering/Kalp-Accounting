@@ -7,7 +7,7 @@ import (
 	"gini-contract/chaincode/logger"
 	"net/http"
 
-	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"github.com/muditp2e/kalp-sdk-public/kalpsdk"
 )
 
 type DeniedEvent struct {

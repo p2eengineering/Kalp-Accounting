@@ -4,10 +4,10 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
-	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
-	"github.com/p2eengineering/kalp-sdk-public/response"
+	"github.com/hyperledger/fabric-chaincode-go/v2/pkg/cid"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/muditp2e/kalp-sdk-public/kalpsdk"
+	"github.com/muditp2e/kalp-sdk-public/response"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -47,6 +47,18 @@ type TransactionContext struct {
 	}
 	delStateWithoutKYCReturnsOnCall map[int]struct {
 		result1 error
+	}
+	GetCalledContractAddressStub        func() (string, error)
+	getCalledContractAddressMutex       sync.RWMutex
+	getCalledContractAddressArgsForCall []struct {
+	}
+	getCalledContractAddressReturns struct {
+		result1 string
+		result2 error
+	}
+	getCalledContractAddressReturnsOnCall map[int]struct {
+		result1 string
+		result2 error
 	}
 	GetChannelIDStub        func() string
 	getChannelIDMutex       sync.RWMutex
@@ -490,6 +502,62 @@ func (fake *TransactionContext) DelStateWithoutKYCReturnsOnCall(i int, result1 e
 	fake.delStateWithoutKYCReturnsOnCall[i] = struct {
 		result1 error
 	}{result1}
+}
+
+func (fake *TransactionContext) GetCalledContractAddress() (string, error) {
+	fake.getCalledContractAddressMutex.Lock()
+	ret, specificReturn := fake.getCalledContractAddressReturnsOnCall[len(fake.getCalledContractAddressArgsForCall)]
+	fake.getCalledContractAddressArgsForCall = append(fake.getCalledContractAddressArgsForCall, struct {
+	}{})
+	stub := fake.GetCalledContractAddressStub
+	fakeReturns := fake.getCalledContractAddressReturns
+	fake.recordInvocation("GetCalledContractAddress", []interface{}{})
+	fake.getCalledContractAddressMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *TransactionContext) GetCalledContractAddressCallCount() int {
+	fake.getCalledContractAddressMutex.RLock()
+	defer fake.getCalledContractAddressMutex.RUnlock()
+	return len(fake.getCalledContractAddressArgsForCall)
+}
+
+func (fake *TransactionContext) GetCalledContractAddressCalls(stub func() (string, error)) {
+	fake.getCalledContractAddressMutex.Lock()
+	defer fake.getCalledContractAddressMutex.Unlock()
+	fake.GetCalledContractAddressStub = stub
+}
+
+func (fake *TransactionContext) GetCalledContractAddressReturns(result1 string, result2 error) {
+	fake.getCalledContractAddressMutex.Lock()
+	defer fake.getCalledContractAddressMutex.Unlock()
+	fake.GetCalledContractAddressStub = nil
+	fake.getCalledContractAddressReturns = struct {
+		result1 string
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *TransactionContext) GetCalledContractAddressReturnsOnCall(i int, result1 string, result2 error) {
+	fake.getCalledContractAddressMutex.Lock()
+	defer fake.getCalledContractAddressMutex.Unlock()
+	fake.GetCalledContractAddressStub = nil
+	if fake.getCalledContractAddressReturnsOnCall == nil {
+		fake.getCalledContractAddressReturnsOnCall = make(map[int]struct {
+			result1 string
+			result2 error
+		})
+	}
+	fake.getCalledContractAddressReturnsOnCall[i] = struct {
+		result1 string
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *TransactionContext) GetChannelID() string {
@@ -1742,6 +1810,8 @@ func (fake *TransactionContext) Invocations() map[string][][]interface{} {
 	defer fake.delStateWithKYCMutex.RUnlock()
 	fake.delStateWithoutKYCMutex.RLock()
 	defer fake.delStateWithoutKYCMutex.RUnlock()
+	fake.getCalledContractAddressMutex.RLock()
+	defer fake.getCalledContractAddressMutex.RUnlock()
 	fake.getChannelIDMutex.RLock()
 	defer fake.getChannelIDMutex.RUnlock()
 	fake.getClientIdentityMutex.RLock()

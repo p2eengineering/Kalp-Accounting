@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gini-contract/chaincode"
 	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/mocks"
 	"math/big"
 	"math/rand"
@@ -15,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
-	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
-	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
-	"github.com/p2eengineering/kalp-sdk-public/response"
+	"github.com/hyperledger/fabric-chaincode-go/v2/pkg/cid"
+	"github.com/hyperledger/fabric-protos-go-apiv2/ledger/queryresult"
+	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
+	"github.com/muditp2e/kalp-sdk-public/kalpsdk"
+	"github.com/muditp2e/kalp-sdk-public/response"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1598,6 +1599,7 @@ func TestCase11(t *testing.T) {
 	// t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
 	giniContract := chaincode.SmartContract{}
+	giniContract.Contract.Name = "klp-6b616c70627269646775-cc"
 
 	// ****************START define helper functions*********************
 	worldState := map[string][]byte{}
@@ -1677,25 +1679,57 @@ func TestCase11(t *testing.T) {
 	}
 	transactionContext.InvokeChaincodeStub = func(s1 string, b [][]byte, s2 string) response.Response {
 		if s1 == constants.InitialBridgeContractAddress && string(b[0]) == "BridgeToken" {
-			signer, _ := transactionContext.GetUserID()
+			signer, _ := helper.GetUserId(transactionContext)
 
 			giniContract.TransferFrom(transactionContext, signer, constants.InitialBridgeContractAddress, string(b[1]))
 			return response.Response{
-				Response: peer.Response{
+				Response: &peer.Response{
 					Status:  http.StatusOK,
 					Payload: []byte("true"),
 				},
 			}
 		}
 		return response.Response{
-			Response: peer.Response{
+			Response: &peer.Response{
 				Status:  http.StatusBadRequest,
 				Payload: []byte("false"),
 			},
 		}
 
 	}
+	transactionContext.GetStateByPartialCompositeKeyStub = func(s1 string, s2 []string) (kalpsdk.StateQueryIteratorInterface, error) {
+		partialKey := "_" + s1
+		for _, s := range s2 {
+			partialKey += "_" + s
+		}
+		partialKey += "_"
 
+		iteratorData := struct {
+			index int
+			data  []queryresult.KV
+		}{}
+		for key, val := range worldState {
+			if strings.HasPrefix(key, partialKey) {
+				iteratorData.data = append(iteratorData.data, queryresult.KV{Key: key, Value: val})
+			}
+		}
+		iterator := &mocks.StateQueryIterator{}
+		iterator.HasNextStub = func() bool {
+			return iteratorData.index < len(iteratorData.data)
+		}
+		iterator.NextStub = func() (*queryresult.KV, error) {
+			if iteratorData.index < len(iteratorData.data) {
+				iteratorData.index++
+				return &iteratorData.data[iteratorData.index-1], nil
+			}
+			return nil, fmt.Errorf("iterator out of bounds")
+		}
+		iterator.CloseStub = func() error {
+			return nil
+		}
+		return iterator, nil
+	}
+	transactionContext.GetCalledContractAddressReturns("klp-6b616c70627269646775-cc", nil)
 	// ****************END define helper functions*********************
 
 	// define users

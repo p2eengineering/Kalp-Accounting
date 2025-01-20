@@ -1,7 +1,7 @@
 package logger
 
 import (
-	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+	"github.com/muditp2e/kalp-sdk-public/kalpsdk"
 )
 
 var Log *kalpsdk.ChaincodeLogger
