@@ -1302,3 +1302,461 @@ func TestGetGatewayAdminAddress(t *testing.T) {
 		})
 	}
 }
+func TestIsGatewayAdminAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		userID         string
+		setupContext   func(*mocks.TransactionContext, map[string][]byte)
+		expectedResult bool
+		shouldError    bool
+		errorCheck     func(error) bool
+	}{
+		{
+			name:   "Success - User is a gateway admin",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Set up a gateway admin role
+				roleKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				roleData := []byte(fmt.Sprintf(`{"id":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"GatewayAdmin","docType":"UserRoleMap"}`))
+				worldState[roleKey] = roleData
+			},
+			expectedResult: false,
+			shouldError:    false,
+		},
+		{
+			name:   "Success - User is not a gateway admin",
+			userID: "2da4c4908a393a387b728206b18388bc529fa8d7",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Set up a regular user role (not a gateway admin)
+				roleKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", "2da4c4908a393a387b728206b18388bc529fa8d7")
+				roleData := []byte(fmt.Sprintf(`{"id":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"User","docType":"UserRoleMap"}`))
+				worldState[roleKey] = roleData
+			},
+			expectedResult: false,
+			shouldError:    false,
+		},
+		{
+			name:   "Success - No role set for the user",
+			userID: "2da4c4908a393a387b728206b18388bc529fa8d7",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// No setup, meaning no role is set for the user
+			},
+			expectedResult: false,
+			shouldError:    false,
+		},
+		{
+			name:   "Failure - GetStateByPartialCompositeKey error",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.GetStateByPartialCompositeKeyReturns(nil, errors.New("get state error"))
+			},
+			expectedResult: false,
+			shouldError:    true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "failed to get data for gateway admin")
+			},
+		},
+		{
+			name:   "Failure - Iterator.Next error",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(true)
+				iterator.NextReturns(nil, errors.New("iterator error"))
+				ctx.GetStateByPartialCompositeKeyReturns(iterator, nil)
+			},
+			expectedResult: false,
+			shouldError:    true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "error reading next item")
+			},
+		},
+		{
+			name:   "Failure - Invalid role data format",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				roleKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				worldState[roleKey] = []byte("invalid json")
+			},
+			expectedResult: false,
+			shouldError:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				if tt.name == "Failure - GetStateByPartialCompositeKey error" {
+					return nil, errors.New("failed to get state")
+				}
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				index := 0
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if tt.name == "Failure - Iterator.Next error" {
+						return nil, errors.New("iterator error")
+					}
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				iterator.CloseCalls(func() error {
+					return nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState)
+			}
+
+			// Execute test
+			result, err := internal.IsGatewayAdminAddress(transactionContext, tt.userID)
+
+			// Assert results
+			if tt.shouldError {
+				require.Error(t, err)
+
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedResult, result)
+			}
+		})
+	}
+}
+
+func TestUpdateAllowance(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte)
+		owner        string
+		spender      string
+		spent        string
+		shouldError  bool
+		errorCheck   func(error) bool
+	}{
+		{
+			testName: "Success - Update with valid spent amount",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Set up an initial allowance
+				approvalKey := "_Approval_16f8ff33ef05bb24fb9a30fa79e700f57a496184_2da4c4908a393a387b728206b18388bc529fa8d7_"
+				approval := models.Allow{
+					Owner:   "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Spender: "2da4c4908a393a387b728206b18388bc529fa8d7",
+					Amount:  "1000",
+					DocType: constants.Allowance,
+				}
+				approvalJSON, _ := json.Marshal(approval)
+				worldState[approvalKey] = approvalJSON
+				ctx.GetStateStub = func(key string) ([]byte, error) {
+					if key == approvalKey {
+						return approvalJSON, nil
+					}
+					return nil, nil
+				}
+
+			},
+			owner:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			spender:     "2da4c4908a393a387b728206b18388bc529fa8d7",
+			spent:       "500",
+			shouldError: false,
+		},
+		{
+			testName: "Success - Update with exact spent amount",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				approvalKey := "_Approval_16f8ff33ef05bb24fb9a30fa79e700f57a496184_2da4c4908a393a387b728206b18388bc529fa8d7_"
+				approval := models.Allow{
+					Owner:   "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Spender: "2da4c4908a393a387b728206b18388bc529fa8d7",
+					Amount:  "1000",
+					DocType: constants.Allowance,
+				}
+				approvalJSON, _ := json.Marshal(approval)
+				worldState[approvalKey] = approvalJSON
+				ctx.GetStateStub = func(key string) ([]byte, error) {
+					if key == approvalKey {
+						return approvalJSON, nil
+					}
+					return nil, nil
+				}
+			},
+			owner:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			spender:     "2da4c4908a393a387b728206b18388bc529fa8d7",
+			spent:       "1000",
+			shouldError: false,
+		},
+		{
+			testName: "Success - Update to Zero Amount",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				approvalKey := "_Approval_16f8ff33ef05bb24fb9a30fa79e700f57a496184_2da4c4908a393a387b728206b18388bc529fa8d7_"
+				approval := models.Allow{
+					Owner:   "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Spender: "2da4c4908a393a387b728206b18388bc529fa8d7",
+					Amount:  "1000",
+					DocType: constants.Allowance,
+				}
+				approvalJSON, _ := json.Marshal(approval)
+				worldState[approvalKey] = approvalJSON
+				ctx.GetStateStub = func(key string) ([]byte, error) {
+					if key == approvalKey {
+						return approvalJSON, nil
+					}
+					return nil, nil
+				}
+			},
+			owner:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			spender:     "2da4c4908a393a387b728206b18388bc529fa8d7",
+			spent:       "1000",
+			shouldError: false,
+		},
+		{
+			testName: "Failure - GetState error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.GetStateReturns(nil, errors.New("get state error"))
+			},
+			owner:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			spender:     "2da4c4908a393a387b728206b18388bc529fa8d7",
+			spent:       "500",
+			shouldError: true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "failed to read current balance of owner with address 16f8ff33ef05bb24fb9a30fa79e700f57a496184 and spender with address 2da4c4908a393a387b728206b18388bc529fa8d7")
+			},
+		},
+		{
+			testName: "Failure - Invalid allowance data format",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				approvalKey := "_Approval_16f8ff33ef05bb24fb9a30fa79e700f57a496184_2da4c4908a393a387b728206b18388bc529fa8d7_"
+				worldState[approvalKey] = []byte("invalid json")
+				ctx.GetStateStub = func(key string) ([]byte, error) {
+					if key == approvalKey {
+						return []byte("invalid json"), nil
+					}
+					return nil, nil
+				}
+
+			},
+			owner:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			spender:     "2da4c4908a393a387b728206b18388bc529fa8d7",
+			spent:       "500",
+			shouldError: true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "failed to unmarshal balance for owner address : 16f8ff33ef05bb24fb9a30fa79e700f57a496184 and spender address: 2da4c4908a393a387b728206b18388bc529fa8d7")
+			},
+		},
+		{
+			testName: "Failure - Spent amount greater than allowance",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				approvalKey := "_Approval_16f8ff33ef05bb24fb9a30fa79e700f57a496184_2da4c4908a393a387b728206b18388bc529fa8d7_"
+				approval := models.Allow{
+					Owner:   "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Spender: "2da4c4908a393a387b728206b18388bc529fa8d7",
+					Amount:  "100",
+					DocType: constants.Allowance,
+				}
+				approvalJSON, _ := json.Marshal(approval)
+				worldState[approvalKey] = approvalJSON
+				ctx.GetStateStub = func(key string) ([]byte, error) {
+					if key == approvalKey {
+						return approvalJSON, nil
+					}
+					return nil, nil
+				}
+			},
+			owner:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			spender:     "2da4c4908a393a387b728206b18388bc529fa8d7",
+			spent:       "1000",
+			shouldError: true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "the amount spent :1000 , is greater than allowance :100")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState)
+			}
+
+			// Execute test
+			err := internal.UpdateAllowance(transactionContext, tt.owner, tt.spender, tt.spent)
+
+			// Assert results
+			if tt.shouldError {
+				require.Error(t, err)
+				if tt.errorCheck != nil {
+					require.True(t, tt.errorCheck(err), "Error message does not match expected message")
+				}
+			} else {
+				require.NoError(t, err)
+				// Verify that the allowance was updated correctly
+				approvalKey, _ := transactionContext.CreateCompositeKey(constants.Approval, []string{tt.owner, tt.spender})
+				approvalBytes := worldState[approvalKey]
+				var approval models.Allow
+				err = json.Unmarshal(approvalBytes, &approval)
+				require.NoError(t, err)
+				expectedAmount, _ := new(big.Int).SetString(tt.spent, 10)
+				initialAmount, _ := new(big.Int).SetString("1000", 10)
+				if initialAmount.Cmp(expectedAmount) == 0 {
+					require.Equal(t, "0", approval.Amount, "allowance should be zero")
+
+				} else if initialAmount.Cmp(expectedAmount) == 1 {
+					remainAmount := initialAmount.Sub(initialAmount, expectedAmount)
+					require.Equal(t, remainAmount.String(), approval.Amount, "the balance is not correct")
+				}
+			}
+		})
+	}
+}
+
+func TestInitializeRoles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		userID      string
+		role        string
+		setupMock   func(*mocks.TransactionContext, map[string][]byte)
+		shouldError bool
+	}{
+		{
+			name:   "Success - Initialize Kalp Foundation role",
+			userID: constants.KalpFoundationAddress,
+			role:   constants.KalpFoundationRole,
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+
+			},
+			shouldError: false,
+		},
+		{
+			name:   "Success - Initialize Gateway Admin role",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			role:   constants.KalpGateWayAdminRole,
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+
+			},
+			shouldError: false,
+		},
+		{
+			name:   "Failure - CreateCompositeKey Error",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			role:   constants.KalpGateWayAdminRole,
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.CreateCompositeKeyReturns("", errors.New("failed to create composite key"))
+			},
+			shouldError: true,
+		},
+		{
+			name:   "Failure - PutState Error",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			role:   constants.KalpGateWayAdminRole,
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.PutStateWithoutKYCReturns(errors.New("failed to put state"))
+			},
+			shouldError: true,
+		},
+		{
+			name:   "Failure - Empty userID",
+			userID: "",
+			role:   constants.KalpGateWayAdminRole,
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+			},
+			shouldError: false,
+		},
+		{
+			name:   "Failure - Empty role",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			role:   "",
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+			},
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, worldState := setupTestContext()
+			if tt.setupMock != nil {
+				tt.setupMock(ctx, worldState)
+			}
+
+			result, err := internal.InitializeRoles(ctx, tt.userID, tt.role)
+
+			if tt.shouldError {
+				require.Error(t, err)
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.True(t, result)
+			}
+		})
+	}
+}
