@@ -1760,3 +1760,129 @@ func TestInitializeRoles(t *testing.T) {
 		})
 	}
 }
+
+func TestGetUserRoles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		userID       string
+		setupContext func(*mocks.TransactionContext, map[string][]byte)
+		expectedRole string
+		shouldError  bool
+		errorCheck   func(error) bool
+	}{
+		{
+			name:   "Success - Get Kalp Foundation role",
+			userID: constants.KalpFoundationAddress,
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Set up foundation role
+				roleKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", constants.KalpFoundationAddress)
+				roleData := []byte(fmt.Sprintf(`{"id":"%s","role":"%s","docType":"UserRoleMap"}`, constants.KalpFoundationAddress, constants.KalpFoundationRole))
+				worldState[roleKey] = roleData
+			},
+			expectedRole: "",
+			shouldError:  false,
+		},
+		{
+			name:   "Success - Get Gateway Admin role",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Set up gateway admin role
+				roleKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				roleData := []byte(fmt.Sprintf(`{"id":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"%s","docType":"UserRoleMap"}`, constants.KalpGateWayAdminRole))
+				worldState[roleKey] = roleData
+			},
+			expectedRole: "",
+			shouldError:  false,
+		},
+		{
+			name:   "Success - No role set for the user",
+			userID: "2da4c4908a393a387b728206b18388bc529fa8d7",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// No role is set for this user
+			},
+			expectedRole: "",
+			shouldError:  false,
+		},
+		{
+			name:   "Failure - CreateCompositeKey error",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.CreateCompositeKeyReturns("", errors.New("failed to create composite key"))
+			},
+			expectedRole: "",
+			shouldError:  true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "failed to create the composite key")
+			},
+		},
+		{
+			name:   "Failure - GetState error",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.GetStateReturns(nil, errors.New("failed to get state"))
+			},
+			expectedRole: "",
+			shouldError:  true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "failed to read:")
+			},
+		},
+		{
+			name:   "Failure - Invalid role data format",
+			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				roleKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				worldState[roleKey] = []byte("invalid json")
+			},
+			expectedRole: "",
+			shouldError:  false,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "unable to unmarshal user role struct")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				if tt.name == "Failure - CreateCompositeKey error" {
+					return "", errors.New("failed to create composite key")
+				}
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState)
+			}
+
+			// Execute test
+			role, err := internal.GetUserRoles(transactionContext, tt.userID)
+
+			// Assert results
+			if tt.shouldError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedRole, role)
+			}
+		})
+	}
+}
