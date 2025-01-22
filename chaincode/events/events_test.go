@@ -29,6 +29,14 @@ func TestEmitDenied(t *testing.T) {
 			shouldError: false,
 		},
 		{
+			name:    "Success - Empty address",
+			address: "",
+			setupMock: func(ctx *mocks.TransactionContext) {
+				ctx.SetEventReturns(nil)
+			},
+			shouldError: false,
+		},
+		{
 			name:    "Failure - SetEvent error",
 			address: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
 			setupMock: func(ctx *mocks.TransactionContext) {
