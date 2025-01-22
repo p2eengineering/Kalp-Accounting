@@ -459,3 +459,254 @@ func TestAddUtxo(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoveUtxo(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		account     string
+		amount      interface{}
+		setupMock   func(*mocks.TransactionContext, map[string][]byte)
+		shouldError bool
+	}{
+		{
+			name:    "Success - Remove exact UTXO amount",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  big.NewInt(1000),
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Setup existing UTXO
+				utxo := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "1000",
+				}
+				utxoJSON, _ := json.Marshal(utxo)
+				utxoKey := "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid_"
+				worldState[utxoKey] = utxoJSON
+
+				// Setup query iterator
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(true)
+				iterator.NextReturns(&queryresult.KV{
+					Key:   utxoKey,
+					Value: utxoJSON,
+				}, nil)
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			shouldError: false,
+		},
+		{
+			name:    "Success - Remove partial UTXO amount",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  big.NewInt(500),
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Setup existing UTXO with larger amount
+				utxo := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "1000",
+				}
+				utxoJSON, _ := json.Marshal(utxo)
+				utxoKey := "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid_"
+				worldState[utxoKey] = utxoJSON
+
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(true)
+				iterator.NextReturns(&queryresult.KV{
+					Key:   utxoKey,
+					Value: utxoJSON,
+				}, nil)
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			shouldError: false,
+		},
+		{
+			name:    "Success - Remove from multiple UTXOs",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  big.NewInt(1500),
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Setup two UTXOs
+				utxo1 := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "1000",
+				}
+				utxo2 := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "1000",
+				}
+				utxoJSON1, _ := json.Marshal(utxo1)
+				utxoJSON2, _ := json.Marshal(utxo2)
+
+				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = utxoJSON1
+				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid2_"] = utxoJSON2
+
+				results := []queryresult.KV{
+					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: utxoJSON1},
+					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid2_", Value: utxoJSON2},
+				}
+
+				currentIndex := 0
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextCalls(func() bool {
+					return currentIndex < len(results)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if currentIndex < len(results) {
+						result := &results[currentIndex]
+						currentIndex++
+						return result, nil
+					}
+					return nil, nil
+				})
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			shouldError: false,
+		},
+		{
+			name:    "Failure - Insufficient balance",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  big.NewInt(2000),
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Setup UTXO with less amount
+				utxo := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "1000",
+				}
+				utxoJSON, _ := json.Marshal(utxo)
+				utxoKey := "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid_"
+				worldState[utxoKey] = utxoJSON
+
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(true)
+				iterator.NextReturns(&queryresult.KV{
+					Key:   utxoKey,
+					Value: utxoJSON,
+				}, nil)
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			shouldError: false,
+		},
+		{
+			name:    "Failure - Query error",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  big.NewInt(1000),
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.GetQueryResultReturns(nil, errors.New("query error"))
+			},
+			shouldError: true,
+		},
+		{
+			name:    "Failure - Iterator.Next error",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  big.NewInt(1000),
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(true)
+				iterator.NextReturns(nil, errors.New("iterator error"))
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			shouldError: true,
+		},
+		{
+			name:    "Failure - Invalid UTXO JSON",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  "1000",
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(true)
+				iterator.NextReturns(&queryresult.KV{
+					Key:   "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid_",
+					Value: []byte("invalid json"),
+				}, nil)
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			shouldError: true,
+		},
+		{
+			name:    "Failure - DelState error",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  big.NewInt(1000),
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				utxo := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "1000",
+				}
+				utxoJSON, _ := json.Marshal(utxo)
+				utxoKey := "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid_"
+				worldState[utxoKey] = utxoJSON
+
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(true)
+				iterator.NextReturns(&queryresult.KV{
+					Key:   utxoKey,
+					Value: utxoJSON,
+				}, nil)
+				ctx.GetQueryResultReturns(iterator, nil)
+				ctx.DelStateWithoutKYCReturns(errors.New("delete error"))
+			},
+			shouldError: true,
+		},
+		{
+			name:    "Success - Zero amount",
+			account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:  big.NewInt(0),
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+			},
+			shouldError: false,
+		},
+		{
+			name:        "Failure - Negative amount",
+			account:     "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:      big.NewInt(-1000),
+			shouldError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, worldState := setupTestContext()
+			if tt.setupMock != nil {
+				tt.setupMock(ctx, worldState)
+			}
+
+			err := internal.RemoveUtxo(ctx, tt.account, tt.amount)
+
+			if tt.shouldError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+
+				if tt.name == "Success - Remove partial UTXO amount" {
+					// Verify remaining amount
+					for key, value := range worldState {
+						if strings.HasPrefix(key, "_UTXO_") {
+							var utxo models.Utxo
+							json.Unmarshal(value, &utxo)
+							remainingAmount, _ := new(big.Int).SetString(utxo.Amount, 10)
+							require.Equal(t, "500", remainingAmount.String())
+						}
+					}
+				}
+
+				if tt.name == "Success - Remove from multiple UTXOs" {
+					// Verify correct UTXOs were removed/updated
+					remainingUTXOs := 0
+					for key := range worldState {
+						if strings.HasPrefix(key, "_UTXO_") {
+							remainingUTXOs++
+						}
+					}
+					require.Equal(t, 1, remainingUTXOs)
+				}
+			}
+		})
+	}
+}
