@@ -3,12 +3,16 @@ package chaincode_test
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"gini-contract/chaincode"
 	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/models"
 	"gini-contract/mocks"
 	"math/rand"
+	"net/http"
 	"regexp"
 	"strings"
 	"testing"
@@ -2139,236 +2143,2267 @@ func SetWorldState(transactionContext *mocks.TransactionContext) {
 }
 
 /*
+	func TestTransfer_SenderIsContract_Invalid_TC_1(t *testing.T) {
+		t.Parallel()
 
-func TestTransfer_SenderIsContract_Invalid_TC_1(t *testing.T) {
-	t.Parallel()
+		// Arrange - Setup the transaction context, contract, and world state
+		transactionContext := &mocks.TransactionContext{}
+		giniContract := chaincode.SmartContract{}
+		admin := constants.KalpFoundationAddress
 
-	// Arrange - Setup the transaction context, contract, and world state
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	admin := constants.KalpFoundationAddress
+		SetWorldState(transactionContext)
 
-	SetWorldState(transactionContext)
+		transactionContext.GetUserIDReturns(admin, nil)
+		transactionContext.GetKYCReturns(true, nil)
+		ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
 
-	transactionContext.GetUserIDReturns(admin, nil)
-	transactionContext.GetKYCReturns(true, nil)
-	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
+		gas, err := giniContract.GetGasFees(transactionContext)
+		require.NoError(t, err)
+		require.Equal(t, "1000000000000000", gas)
 
-	gas, err := giniContract.GetGasFees(transactionContext)
-	require.NoError(t, err)
-	require.Equal(t, "1000000000000000", gas)
+		sender := "klp-Contract1-cc"
+		recipient := "User2"
+		amount := "100"
 
-	sender := "klp-Contract1-cc"
-	recipient := "User2"
-	amount := "100"
+		// Setup transaction context to return Contract1 as the signer
+		transactionContext.GetUserIDReturns(sender, nil)
 
-	// Setup transaction context to return Contract1 as the signer
-	transactionContext.GetUserIDReturns(sender, nil)
+		// Act - Attempt the transfer
+		ok, err = giniContract.Transfer(transactionContext, recipient, amount)
 
-	// Act - Attempt the transfer
-	ok, err = giniContract.Transfer(transactionContext, recipient, amount)
+		// Assert - Expect an error and no successful transfer
+		require.Error(t, err)
+		require.Equal(t, false, ok)
+		require.Equal(t, err,
+			&ginierr.CustomError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "signer cannot be a contract",
+			})
+	}
 
-	// Assert - Expect an error and no successful transfer
-	require.Error(t, err)
-	require.Equal(t, false, ok)
-	require.Equal(t, err,
-		&ginierr.CustomError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "signer cannot be a contract",
-		})
-}
+	func TestTransfer_InvalidSenderAddress(t *testing.T) {
+		t.Parallel()
+		transactionContext := &mocks.TransactionContext{}
+		giniContract := chaincode.SmartContract{}
 
-func TestTransfer_InvalidSenderAddress(t *testing.T) {
-	t.Parallel()
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
+		SetWorldState(transactionContext)
 
-	SetWorldState(transactionContext)
+		// Arrange
+		sender := "Invalid"
+		recipient := "User2"
+		amount := "100"
+		admin := constants.KalpFoundationAddress
 
-	// Arrange
-	sender := "Invalid"
-	recipient := "User2"
-	amount := "100"
-	admin := constants.KalpFoundationAddress
+		transactionContext.GetUserIDReturns(admin, nil)
+		transactionContext.GetKYCReturns(true, nil)
+		ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
 
-	transactionContext.GetUserIDReturns(admin, nil)
-	transactionContext.GetKYCReturns(true, nil)
-	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
+		// Setup transaction context to return an invalid sender address
+		transactionContext.GetUserIDReturns(sender, nil)
+		gas, err := giniContract.GetGasFees(transactionContext)
+		require.NoError(t, err)
+		require.Equal(t, "1000000000000000", gas)
 
-	// Setup transaction context to return an invalid sender address
-	transactionContext.GetUserIDReturns(sender, nil)
-	gas, err := giniContract.GetGasFees(transactionContext)
-	require.NoError(t, err)
-	require.Equal(t, "1000000000000000", gas)
+		// Act
+		ok, err = giniContract.Transfer(transactionContext, recipient, amount)
 
-	// Act
-	ok, err = giniContract.Transfer(transactionContext, recipient, amount)
+		// Assert
+		require.Error(t, err)
+		require.Equal(t, false, ok)
+		require.Equal(t, err,
+			&ginierr.CustomError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "invalid sender address",
+			})
+	}
 
-	// Assert
-	require.Error(t, err)
-	require.Equal(t, false, ok)
-	require.Equal(t, err,
-		&ginierr.CustomError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "invalid sender address",
-		})
-}
+	func TestTransfer_InvalidRecipientAddress(t *testing.T) {
+		t.Parallel()
 
-func TestTransfer_InvalidRecipientAddress(t *testing.T) {
-	t.Parallel()
+		// Arrange
+		transactionContext := &mocks.TransactionContext{}
+		giniContract := chaincode.SmartContract{}
+		sender := "User1"
+		recipient := "Invalid"
+		amount := "100"
 
-	// Arrange
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	sender := "User1"
-	recipient := "Invalid"
-	amount := "100"
+		// Setup transaction context to return a valid sender
+		transactionContext.GetUserIDReturns(sender, nil)
 
-	// Setup transaction context to return a valid sender
-	transactionContext.GetUserIDReturns(sender, nil)
+		// Act
+		ok, err := giniContract.Transfer(transactionContext, recipient, amount)
 
-	// Act
-	ok, err := giniContract.Transfer(transactionContext, recipient, amount)
+		// Assert
+		require.Error(t, err)
+		require.Equal(t, false, ok)
+		require.Equal(t, err,
+			&ginierr.CustomError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "invalid recipient address",
+			})
+	}
 
-	// Assert
-	require.Error(t, err)
-	require.Equal(t, false, ok)
-	require.Equal(t, err,
-		&ginierr.CustomError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "invalid recipient address",
-		})
-}
+	func TestTransfer_SenderIsContract_Invalid_TC2(t *testing.T) {
+		t.Parallel()
 
-func TestTransfer_SenderIsContract_Invalid_TC2(t *testing.T) {
-	t.Parallel()
+		// Arrange
+		transactionContext := &mocks.TransactionContext{}
+		giniContract := chaincode.SmartContract{}
+		sender := "Contract1"
+		recipient := "User2"
+		amount := "100"
 
-	// Arrange
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	sender := "Contract1"
-	recipient := "User2"
-	amount := "100"
+		// Setup transaction context to return Contract1 as the signer
+		transactionContext.GetUserIDReturns(sender, nil)
 
-	// Setup transaction context to return Contract1 as the signer
-	transactionContext.GetUserIDReturns(sender, nil)
+		// Act
+		ok, err := giniContract.Transfer(transactionContext, recipient, amount)
 
-	// Act
-	ok, err := giniContract.Transfer(transactionContext, recipient, amount)
+		// Assert
+		require.Error(t, err)
+		require.Equal(t, false, ok)
+		require.Equal(t, err,
+			&ginierr.CustomError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "signer cannot be a contract",
+			})
+	}
 
-	// Assert
-	require.Error(t, err)
-	require.Equal(t, false, ok)
-	require.Equal(t, err,
-		&ginierr.CustomError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "signer cannot be a contract",
-		})
-}
+	func TestTransfer_SenderAndRecipientAreContracts(t *testing.T) {
+		t.Parallel()
 
-func TestTransfer_SenderAndRecipientAreContracts(t *testing.T) {
-	t.Parallel()
+		// Arrange
+		transactionContext := &mocks.TransactionContext{}
+		giniContract := chaincode.SmartContract{}
+		sender := "Contract1"
+		recipient := "Contract2"
+		amount := "100"
 
-	// Arrange
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	sender := "Contract1"
-	recipient := "Contract2"
-	amount := "100"
+		// Setup transaction context to return Contract1 as the signer
+		transactionContext.GetUserIDReturns(sender, nil)
 
-	// Setup transaction context to return Contract1 as the signer
-	transactionContext.GetUserIDReturns(sender, nil)
+		// Act
+		ok, err := giniContract.Transfer(transactionContext, recipient, amount)
 
-	// Act
-	ok, err := giniContract.Transfer(transactionContext, recipient, amount)
+		// Assert
+		require.Error(t, err)
+		require.Equal(t, false, ok)
+		require.Equal(t, err,
+			&ginierr.CustomError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "both sender and recipient cannot be contracts",
+			})
+	}
 
-	// Assert
-	require.Error(t, err)
-	require.Equal(t, false, ok)
-	require.Equal(t, err,
-		&ginierr.CustomError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "both sender and recipient cannot be contracts",
-		})
-}
+	func TestTransfer_AmountIsNegative(t *testing.T) {
+		t.Parallel()
 
-func TestTransfer_AmountIsNegative(t *testing.T) {
-	t.Parallel()
+		// Arrange
+		transactionContext := &mocks.TransactionContext{}
+		giniContract := chaincode.SmartContract{}
+		sender := "User1"
+		recipient := "User2"
+		amount := "-100"
 
-	// Arrange
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	sender := "User1"
-	recipient := "User2"
-	amount := "-100"
+		// Setup transaction context to return User1 as the signer
+		transactionContext.GetUserIDReturns(sender, nil)
 
-	// Setup transaction context to return User1 as the signer
-	transactionContext.GetUserIDReturns(sender, nil)
+		// Act
+		ok, err := giniContract.Transfer(transactionContext, recipient, amount)
 
-	// Act
-	ok, err := giniContract.Transfer(transactionContext, recipient, amount)
+		// Assert
+		require.Error(t, err)
+		require.Equal(t, false, ok)
+		require.Equal(t, err,
+			&ginierr.CustomError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "amount cannot be negative",
+			})
+	}
 
-	// Assert
-	require.Error(t, err)
-	require.Equal(t, false, ok)
-	require.Equal(t, err,
-		&ginierr.CustomError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "amount cannot be negative",
-		})
-}
+	func TestTransfer_SignerIsNotKYCed(t *testing.T) {
+		t.Parallel()
 
-func TestTransfer_SignerIsNotKYCed(t *testing.T) {
-	t.Parallel()
+		// Arrange
+		transactionContext := &mocks.TransactionContext{}
+		giniContract := chaincode.SmartContract{}
+		sender := "User1"
+		recipient := "User2"
+		amount := "100"
 
-	// Arrange
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	sender := "User1"
-	recipient := "User2"
-	amount := "100"
+		// Setup transaction context to simulate non-KYCed user
+		transactionContext.GetUserIDReturns(sender, nil)
+		transactionContext.GetKYCReturns(false, nil)
 
-	// Setup transaction context to simulate non-KYCed user
-	transactionContext.GetUserIDReturns(sender, nil)
-	transactionContext.GetKYCReturns(false, nil)
+		// Act
+		ok, err := giniContract.Transfer(transactionContext, recipient, amount)
 
-	// Act
-	ok, err := giniContract.Transfer(transactionContext, recipient, amount)
+		// Assert
+		require.Error(t, err)
+		require.Equal(t, false, ok)
+		require.Equal(t, err,
+			&ginierr.CustomError{
+				StatusCode: http.StatusForbidden,
+				Message:    "signer is not KYCed",
+			})
+	}
 
-	// Assert
-	require.Error(t, err)
-	require.Equal(t, false, ok)
-	require.Equal(t, err,
-		&ginierr.CustomError{
-			StatusCode: http.StatusForbidden,
-			Message:    "signer is not KYCed",
-		})
-}
+	func TestTransfer_SenderIsNotKYCed(t *testing.T) {
+		t.Parallel()
 
-func TestTransfer_SenderIsNotKYCed(t *testing.T) {
-	t.Parallel()
+		// Arrange
+		transactionContext := &mocks.TransactionContext{}
+		giniContract := chaincode.SmartContract{}
+		sender := "User1"
+		recipient := "User2"
+		amount := "100"
 
-	// Arrange
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	sender := "User1"
-	recipient := "User2"
-	amount := "100"
+		// Setup transaction context to simulate non-KYCed sender
+		transactionContext.GetUserIDReturns(sender, nil)
+		transactionContext.GetKYCReturns(false, nil)
 
-	// Setup transaction context to simulate non-KYCed sender
-	transactionContext.GetUserIDReturns(sender, nil)
-	transactionContext.GetKYCReturns(false, nil)
+		// Act
+		ok, err := giniContract.Transfer(transactionContext, recipient, amount)
 
-	// Act
-	ok, err := giniContract.Transfer(transactionContext, recipient, amount)
-
-	// Assert
-	require.Error(t, err)
-	require.Equal(t, false, ok)
-	require.Equal(t, err,
-		&ginierr.CustomError{
-			StatusCode: http.StatusForbidden,
-			Message:    "sender is not KYCed",
-		})
-}
+		// Assert
+		require.Error(t, err)
+		require.Equal(t, false, ok)
+		require.Equal(t, err,
+			&ginierr.CustomError{
+				StatusCode: http.StatusForbidden,
+				Message:    "sender is not KYCed",
+			})
+	}
 */
+func TestName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		worldState    map[string][]byte
+		getStateErr   error
+		expectedName  string
+		expectedError error
+	}{
+		{
+			testName: "Success - Get token name",
+			worldState: map[string][]byte{
+				constants.NameKey: []byte("GINI Token"),
+			},
+			getStateErr:   nil,
+			expectedName:  "GINI Token",
+			expectedError: nil,
+		},
+		{
+			testName:      "Failure - GetState error",
+			worldState:    map[string][]byte{},
+			getStateErr:   errors.New("get state error"),
+			expectedName:  "",
+			expectedError: ginierr.ErrFailedToGetKey(constants.NameKey),
+		},
+		{
+			testName:      "Failure - Name not initialized",
+			worldState:    map[string][]byte{},
+			getStateErr:   nil,
+			expectedName:  "",
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := chaincode.SmartContract{}
+
+			// Setup GetState stub
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				if tt.getStateErr != nil {
+					return nil, tt.getStateErr
+				}
+				return tt.worldState[key], nil
+			}
+
+			// Execute test
+			name, err := giniContract.Name(transactionContext)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedName, name)
+			}
+		})
+	}
+}
+
+func TestDecimals(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	transactionContext := &mocks.TransactionContext{}
+	giniContract := chaincode.SmartContract{}
+
+	// Execute test
+	decimals := giniContract.Decimals(transactionContext)
+
+	// Assert
+	require.Equal(t, uint8(18), decimals, "Decimals should return 18")
+}
+
+func TestGetGasFees(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		worldState    map[string][]byte
+		getStateErr   error
+		expectedFees  string
+		expectedError error
+	}{
+		{
+			testName: "Success - Get gas fees",
+			worldState: map[string][]byte{
+				constants.GasFeesKey: []byte("1000000000000000"),
+			},
+			getStateErr:   nil,
+			expectedFees:  "1000000000000000",
+			expectedError: nil,
+		},
+		{
+			testName:      "Failure - GetState error",
+			worldState:    map[string][]byte{},
+			getStateErr:   errors.New("failed to get state"),
+			expectedFees:  "",
+			expectedError: fmt.Errorf("failed to get Gas Fee: failed to get state"),
+		},
+		{
+			testName:      "Failure - Gas fee not set",
+			worldState:    map[string][]byte{},
+			getStateErr:   nil,
+			expectedFees:  "",
+			expectedError: fmt.Errorf("gas fee not set"),
+		},
+		{
+			testName: "Success - Zero gas fees",
+			worldState: map[string][]byte{
+				constants.GasFeesKey: []byte("0"),
+			},
+			getStateErr:   nil,
+			expectedFees:  "0",
+			expectedError: nil,
+		},
+		{
+			testName: "Success - Large gas fees",
+			worldState: map[string][]byte{
+				constants.GasFeesKey: []byte("999999999999999999999999999999"),
+			},
+			getStateErr:   nil,
+			expectedFees:  "999999999999999999999999999999",
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := chaincode.SmartContract{}
+
+			// Setup GetState stub
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				if tt.getStateErr != nil {
+					return nil, tt.getStateErr
+				}
+				return tt.worldState[key], nil
+			}
+
+			// Execute test
+			fees, err := giniContract.GetGasFees(transactionContext)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+				require.Equal(t, tt.expectedFees, fees)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedFees, fees)
+			}
+		})
+	}
+}
+
+// TestGetGasFees_AfterInitialization tests the gas fees value after contract initialization
+func TestGetGasFees_AfterInitialization(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	transactionContext := &mocks.TransactionContext{}
+	giniContract := chaincode.SmartContract{}
+	worldState := map[string][]byte{}
+
+	// Setup stubs
+	transactionContext.GetStateStub = func(key string) ([]byte, error) {
+		return worldState[key], nil
+	}
+	transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+		worldState[key] = value
+		return nil
+	}
+	transactionContext.GetKYCReturns(true, nil)
+
+	// Initialize contract
+	SetUserID(transactionContext, constants.KalpFoundationAddress)
+	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// Get gas fees after initialization
+	fees, err := giniContract.GetGasFees(transactionContext)
+	require.NoError(t, err)
+	require.Equal(t, constants.InitialGasFees, fees,
+		"Gas fees should match initial value after initialization")
+}
+
+// TestGetGasFees_AfterSetGasFees tests getting gas fees after setting a new value
+func TestGetGasFees_AfterSetGasFees(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	transactionContext := &mocks.TransactionContext{}
+	giniContract := chaincode.SmartContract{}
+	worldState := map[string][]byte{}
+
+	// Setup stubs
+	transactionContext.GetStateStub = func(key string) ([]byte, error) {
+		return worldState[key], nil
+	}
+	transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+		worldState[key] = value
+		return nil
+	}
+	transactionContext.GetKYCReturns(true, nil)
+
+	// Initialize contract
+	SetUserID(transactionContext, constants.KalpFoundationAddress)
+	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// Set new gas fees
+	newGasFees := "2000000000000000"
+	err = giniContract.SetGasFees(transactionContext, newGasFees)
+	require.NoError(t, err)
+
+	// Get gas fees after setting new value
+	fees, err := giniContract.GetGasFees(transactionContext)
+	require.NoError(t, err)
+	require.Equal(t, newGasFees, fees,
+		"Gas fees should match newly set value")
+}
+
+func TestSetGasFees(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		gasFees       string
+		expectedError error
+	}{
+		{
+			testName: "Success - Set gas fees by foundation",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			gasFees:       "2000000000000000",
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - Non-foundation user attempts to set gas fees",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				// First initialize with foundation
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+
+				// Then switch to non-foundation user
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+			},
+			gasFees:       "2000000000000000",
+			expectedError: ginierr.New("Only Kalp Foundation can set the gas fees", http.StatusUnauthorized),
+		},
+		{
+			testName: "Failure - PutState error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				ctx.PutStateWithoutKYCReturns(errors.New("failed to put state"))
+			},
+			gasFees:       "2000000000000000",
+			expectedError: ginierr.ErrFailedToPutState(errors.New("failed to put state")),
+		},
+		{
+			testName: "Success - Set zero gas fees",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			gasFees:       "0",
+			expectedError: nil,
+		},
+		{
+			testName: "Success - Set very large gas fees",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			gasFees:       "999999999999999999999999999999",
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - GetUserID error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				clientIdentity := &mocks.ClientIdentity{}
+				clientIdentity.GetIDReturns("", errors.New("failed to get ID"))
+				ctx.GetClientIdentityReturns(clientIdentity)
+			},
+			gasFees:       "2000000000000000",
+			expectedError: ginierr.ErrFailedToGetPublicAddress,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				var kvs []queryresult.KV
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				index := 0
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			err := giniContract.SetGasFees(transactionContext, tt.gasFees)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+
+				// Verify gas fees were updated correctly
+				currentFees, err := giniContract.GetGasFees(transactionContext)
+				require.NoError(t, err)
+				require.Equal(t, tt.gasFees, currentFees,
+					"Gas fees should have been updated to new value")
+			}
+		})
+	}
+}
+
+// TestSetGasFees_FullLifecycle tests the complete lifecycle of setting gas fees
+func TestSetGasFees_FullLifecycle(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	transactionContext := &mocks.TransactionContext{}
+	giniContract := chaincode.SmartContract{}
+	worldState := map[string][]byte{}
+
+	// Setup stubs
+	transactionContext.GetStateStub = func(key string) ([]byte, error) {
+		return worldState[key], nil
+	}
+	transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+		worldState[key] = value
+		return nil
+	}
+	transactionContext.GetKYCReturns(true, nil)
+
+	// Initialize contract
+	SetUserID(transactionContext, constants.KalpFoundationAddress)
+	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// Verify initial gas fees
+	initialFees, err := giniContract.GetGasFees(transactionContext)
+	require.NoError(t, err)
+	require.Equal(t, constants.InitialGasFees, initialFees)
+
+	// Set new gas fees
+	newGasFees := "2000000000000000"
+	err = giniContract.SetGasFees(transactionContext, newGasFees)
+	require.NoError(t, err)
+
+	// Verify updated gas fees
+	currentFees, err := giniContract.GetGasFees(transactionContext)
+	require.NoError(t, err)
+	require.Equal(t, newGasFees, currentFees)
+
+	// Try to set gas fees with non-foundation user
+	SetUserID(transactionContext, "0b87970433b22494faff1cc7a819e71bddc788bv")
+	err = giniContract.SetGasFees(transactionContext, "3000000000000000")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to get public address, status code:500")
+
+	// Verify gas fees remained unchanged
+	currentFees, err = giniContract.GetGasFees(transactionContext)
+	require.NoError(t, err)
+	require.Equal(t, newGasFees, currentFees)
+}
+
+func TestTotalSupply(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	transactionContext := &mocks.TransactionContext{}
+	giniContract := &chaincode.SmartContract{}
+
+	// Execute test
+	totalSupply, err := giniContract.TotalSupply(transactionContext)
+
+	// Assert
+	require.NoError(t, err)
+	require.Equal(t, constants.TotalSupply, totalSupply,
+		"Total supply should match the constant value")
+}
+func TestSetUserRoles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		roleData      string
+		expectedError error
+	}{
+		{
+			testName: "Success - Set Gateway Admin role",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			roleData:      `{"user":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"KalpGatewayAdmin"}`,
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - Non-foundation user",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`,
+			expectedError: ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized),
+		},
+		{
+			testName: "Failure - Invalid role data JSON",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			roleData:      `invalid-json`,
+			expectedError: fmt.Errorf("failed to parse data"),
+		},
+		{
+			testName: "Failure - Missing user ID",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			roleData:      `{"user":"","role":"KalpGatewayAdmin"}`,
+			expectedError: fmt.Errorf("user Id can not be null"),
+		},
+		{
+			testName: "Failure - Invalid user address",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			roleData:      `{"user":"invalid-address","role":"KalpGatewayAdmin"}`,
+			expectedError: ginierr.ErrInvalidUserAddress("invalid-address"),
+		},
+	}
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			err := giniContract.SetUserRoles(transactionContext, tt.roleData)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+
+				// Verify role was set correctly
+				var userRole models.UserRole
+				json.Unmarshal([]byte(tt.roleData), &userRole)
+				roleKey, _ := transactionContext.CreateCompositeKey(constants.UserRolePrefix,
+					[]string{userRole.Id, constants.UserRoleMap})
+
+				storedRoleBytes := worldState[roleKey]
+				require.NotNil(t, storedRoleBytes)
+
+				var storedRole models.UserRole
+				json.Unmarshal(storedRoleBytes, &storedRole)
+				require.Equal(t, userRole.Id, storedRole.Id)
+				require.Equal(t, userRole.Role, storedRole.Role)
+			}
+		})
+	}
+}
+
+func TestDeleteUserRoles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		userID        string
+		expectedError error
+	}{
+		{
+			testName: "Success - Delete user role",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+
+				// Set up a role to delete
+				err = contract.SetUserRoles(ctx, `{"user":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"KalpGatewayAdmin"}`)
+				require.NoError(t, err)
+			},
+			userID:        "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - Non-foundation user",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+			},
+			userID:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedError: ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized),
+		},
+		{
+			testName: "Failure - Role not found",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			userID:        "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedError: ginierr.NewInternalError(nil, "user role not found for userID 16f8ff33ef05bb24fb9a30fa79e700f57a496184", http.StatusNotFound),
+		},
+		{
+			testName: "Failure - Cannot delete foundation role",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			userID:        constants.KalpFoundationAddress,
+			expectedError: fmt.Errorf("foundation role cannot be deleted"),
+		},
+	}
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.DelStateWithoutKYCStub = func(key string) error {
+				delete(worldState, key)
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			err := giniContract.DeleteUserRoles(transactionContext, tt.userID)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+
+				// Verify role was deleted
+				roleKey, _ := transactionContext.CreateCompositeKey(constants.UserRolePrefix,
+					[]string{tt.userID, constants.UserRoleMap})
+
+				_, exists := worldState[roleKey]
+				require.False(t, exists, "Role should have been deleted")
+			}
+		})
+	}
+}
+
+func TestAllow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		address       string
+		expectedError error
+	}{
+		{
+			testName: "Success - Allow previously denied address",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+
+				// Deny the address first
+				err = contract.Deny(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				require.NoError(t, err)
+			},
+			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - Address not previously denied",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedError: ginierr.ErrNotDenied("16f8ff33ef05bb24fb9a30fa79e700f57a496184"),
+		},
+		{
+			testName: "Success - Allow after multiple operations",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+
+				// Deny -> Allow -> Deny sequence
+				err = contract.Deny(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				require.NoError(t, err)
+				err = contract.Allow(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				require.NoError(t, err)
+				err = contract.Deny(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				require.NoError(t, err)
+			},
+			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.DelStateWithoutKYCStub = func(key string) error {
+				delete(worldState, key)
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			err := giniContract.Allow(transactionContext, tt.address)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+
+				if tt.testName != "Failure - Address not previously denied" {
+					// Verify denied status hasn't changed for error cases
+					deniedKey, _ := transactionContext.CreateCompositeKey(constants.Denied, []string{tt.address})
+					deniedStatus := worldState[deniedKey]
+					require.NotNil(t, deniedStatus, "Denied status should not have changed")
+				}
+			} else {
+				require.NoError(t, err)
+
+				// Verify address is no longer denied
+				deniedKey, _ := transactionContext.CreateCompositeKey(constants.Denied, []string{tt.address})
+				deniedStatus := worldState[deniedKey]
+				require.Nil(t, deniedStatus, "Address should no longer be denied")
+			}
+		})
+	}
+}
+
+// TestAllow_FullLifecycle tests the complete lifecycle of denying and allowing an address
+func TestAllow_FullLifecycle(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	transactionContext := &mocks.TransactionContext{}
+	giniContract := &chaincode.SmartContract{}
+	worldState := map[string][]byte{}
+
+	// Setup stubs
+	transactionContext.GetStateStub = func(key string) ([]byte, error) {
+		return worldState[key], nil
+	}
+	transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+		worldState[key] = value
+		return nil
+	}
+	transactionContext.DelStateWithoutKYCStub = func(key string) error {
+		delete(worldState, key)
+		return nil
+	}
+	transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+		key := "_" + prefix + "_"
+		for _, attr := range attrs {
+			key += attr + "_"
+		}
+		return key, nil
+	}
+
+	// Setup identity and KYC
+	SetUserID(transactionContext, constants.KalpFoundationAddress)
+	transactionContext.GetKYCReturns(true, nil)
+
+	// Initialize contract
+	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	testAddress := "16f8ff33ef05bb24fb9a30fa79e700f57a496184"
+
+	// Test full lifecycle
+	// 1. Verify initial state
+	deniedKey, _ := transactionContext.CreateCompositeKey(constants.Denied, []string{testAddress})
+	require.Nil(t, worldState[deniedKey], "Address should not be denied initially")
+
+	// 2. Deny the address
+	err = giniContract.Deny(transactionContext, testAddress)
+	require.NoError(t, err)
+
+	// 3. Allow the address
+	err = giniContract.Allow(transactionContext, testAddress)
+	require.NoError(t, err)
+	require.Nil(t, worldState[deniedKey], "Address should not be denied after allowing")
+
+	// 4. Try to allow again (should fail)
+	err = giniContract.Allow(transactionContext, testAddress)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "NotDenied")
+
+	// 5. Deny again
+	err = giniContract.Deny(transactionContext, testAddress)
+	require.NoError(t, err)
+
+	// 6. Allow again
+	err = giniContract.Allow(transactionContext, testAddress)
+	require.NoError(t, err)
+	require.Nil(t, worldState[deniedKey], "Address should not be denied after allowing again")
+}
+
+func TestDeny(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		address       string
+		expectedError error
+	}{
+		{
+			testName: "Success - Deny new address",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - Non-foundation user attempts to deny",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				// Initialize with foundation first
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+
+				// Switch to non-foundation user
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+			},
+			address:       "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedError: ginierr.New("Only Kalp Foundation can Deny", http.StatusUnauthorized),
+		},
+		{
+			testName: "Failure - Attempt to deny foundation address",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			address:       constants.KalpFoundationAddress,
+			expectedError: ginierr.New("admin cannot be denied", http.StatusBadRequest),
+		},
+		{
+			testName: "Failure - Address already denied",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+
+				// Deny the address first
+				err = contract.Deny(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				require.NoError(t, err)
+			},
+			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedError: ginierr.ErrAlreadyDenied("16f8ff33ef05bb24fb9a30fa79e700f57a496184"),
+		},
+		{
+			testName: "Failure - GetUserID error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				clientIdentity := &mocks.ClientIdentity{}
+				clientIdentity.GetIDReturns("", errors.New("failed to get ID"))
+				ctx.GetClientIdentityReturns(clientIdentity)
+			},
+			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedError: ginierr.ErrFailedToGetPublicAddress,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.DelStateWithoutKYCStub = func(key string) error {
+				delete(worldState, key)
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			err := giniContract.Deny(transactionContext, tt.address)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+
+				if tt.testName != "Success - Deny new address" {
+					// Verify denied status hasn't changed for error cases
+					deniedKey, _ := transactionContext.CreateCompositeKey(constants.Denied, []string{tt.address})
+					if worldState[deniedKey] != nil {
+						require.Equal(t, []byte("true"), worldState[deniedKey],
+							"Denied status should not have changed")
+					}
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestGetVestingContract(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName         string
+		setupContext     func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		expectedContract string
+		expectedError    error
+	}{
+		{
+			testName: "Success - Get vesting contract after initialization",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract with vesting contract address
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			expectedContract: "klp-6b616c70627169646775-cc",
+			expectedError:    nil,
+		},
+		{
+			testName: "Failure - GetState error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				ctx.GetStateReturns(nil, errors.New("failed to get state"))
+			},
+			expectedContract: "",
+			expectedError:    ginierr.ErrFailedToGetState(errors.New("failed to get state")),
+		},
+		{
+			testName: "Success - Empty state before initialization",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				// No initialization, empty state
+			},
+			expectedContract: "",
+			expectedError:    nil,
+		},
+		{
+			testName: "Success - Get after multiple operations",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize with first address
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			expectedContract: "klp-6b616c70627169646775-cc",
+			expectedError:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				if tt.testName == "Failure - GetState error" {
+					return nil, errors.New("failed to get state")
+				}
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			contract, err := giniContract.GetVestingContract(transactionContext)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+				require.Equal(t, tt.expectedContract, contract)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedContract, contract)
+			}
+		})
+	}
+}
+
+// TestGetVestingContract_StateConsistency tests the consistency of the vesting contract address across operations
+func TestGetVestingContract_StateConsistency(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	transactionContext := &mocks.TransactionContext{}
+	giniContract := &chaincode.SmartContract{}
+	worldState := map[string][]byte{}
+
+	// Setup stubs
+	transactionContext.GetStateStub = func(key string) ([]byte, error) {
+		return worldState[key], nil
+	}
+	transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+		worldState[key] = value
+		return nil
+	}
+	transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+		key := "_" + prefix + "_"
+		for _, attr := range attrs {
+			key += attr + "_"
+		}
+		return key, nil
+	}
+
+	// Setup identity and KYC
+	SetUserID(transactionContext, constants.KalpFoundationAddress)
+	transactionContext.GetKYCReturns(true, nil)
+
+	// 1. Check initial state
+	contract, err := giniContract.GetVestingContract(transactionContext)
+	require.NoError(t, err)
+	require.Empty(t, contract, "Vesting contract should be empty before initialization")
+
+	// 2. Initialize contract
+	vestingContract := "klp-6b616c70627169646775-cc"
+	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", vestingContract)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// 3. Verify vesting contract after initialization
+	contract, err = giniContract.GetVestingContract(transactionContext)
+	require.NoError(t, err)
+	require.Equal(t, vestingContract, contract,
+		"Vesting contract should match initialized value")
+
+	// 4. Verify persistence
+	contract, err = giniContract.GetVestingContract(transactionContext)
+	require.NoError(t, err)
+	require.Equal(t, vestingContract, contract,
+		"Vesting contract should persist across calls")
+}
+func TestSetBridgeContract(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		bridgeAddr    string
+		expectedError error
+	}{
+		{
+			testName: "Success - Set bridge contract by foundation",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			bridgeAddr:    "klp-newbridge-cc",
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - Non-foundation user attempts to set bridge contract",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				// Initialize with foundation first
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+
+				// Switch to non-foundation user
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+			},
+			bridgeAddr:    "klp-newbridge-cc",
+			expectedError: ginierr.New("Only Kalp Foundation can set the bridge contract", http.StatusUnauthorized),
+		},
+		{
+			testName: "Failure - GetUserID error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				clientIdentity := &mocks.ClientIdentity{}
+				clientIdentity.GetIDReturns("", errors.New("failed to get ID"))
+				ctx.GetClientIdentityReturns(clientIdentity)
+			},
+			bridgeAddr:    "klp-newbridge-cc",
+			expectedError: ginierr.ErrFailedToGetPublicAddress,
+		},
+		{
+			testName: "Success - Update existing bridge contract",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				// Set initial bridge contract
+				err = contract.SetBridgeContract(ctx, "klp-oldbridge-cc")
+				require.NoError(t, err)
+			},
+			bridgeAddr:    "klp-newbridge-cc",
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				if tt.testName == "Failure - PutState error" {
+					return errors.New("failed to put state")
+				}
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			err := giniContract.SetBridgeContract(transactionContext, tt.bridgeAddr)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+
+				// If error occurred, verify bridge contract hasn't changed
+				if tt.testName != "Success - Set bridge contract by foundation" {
+					currentBridge, _ := giniContract.GetBridgeContract(transactionContext)
+					require.NotEqual(t, tt.bridgeAddr, currentBridge,
+						"Bridge contract should not have changed due to error")
+				}
+			} else {
+				require.NoError(t, err)
+
+				// Verify bridge contract was updated correctly
+				currentBridge, err := giniContract.GetBridgeContract(transactionContext)
+				require.NoError(t, err)
+				require.Equal(t, tt.bridgeAddr, currentBridge,
+					"Bridge contract should have been updated to new value")
+			}
+		})
+	}
+}
+
+func TestGetBridgeContract(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName         string
+		setupContext     func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		expectedContract string
+		expectedError    error
+	}{
+		{
+			testName: "Success - Get bridge contract after initialization",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			expectedContract: constants.InitialBridgeContractAddress,
+			expectedError:    nil,
+		},
+		{
+			testName: "Success - Get bridge contract after update",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				// Update bridge contract
+				err = contract.SetBridgeContract(ctx, "klp-newbridge-cc")
+				require.NoError(t, err)
+			},
+			expectedContract: "klp-newbridge-cc",
+			expectedError:    nil,
+		},
+		{
+			testName: "Failure - GetState error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				ctx.GetStateReturns(nil, errors.New("failed to get state"))
+			},
+			expectedContract: "",
+			expectedError:    ginierr.ErrFailedToGetState(errors.New("failed to get state")),
+		},
+		{
+			testName: "Success - Empty state before initialization",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				// No initialization, empty state
+			},
+			expectedContract: "",
+			expectedError:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				if tt.testName == "Failure - GetState error" {
+					return nil, errors.New("failed to get state")
+				}
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			contract, err := giniContract.GetBridgeContract(transactionContext)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+				require.Equal(t, tt.expectedContract, contract)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedContract, contract)
+			}
+		})
+	}
+}
+
+func TestSymbol(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName       string
+		setupContext   func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		expectedSymbol string
+		expectedError  error
+	}{
+		{
+			testName: "Success - Get symbol after initialization",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			expectedSymbol: "GINI",
+			expectedError:  nil,
+		},
+		{
+			testName: "Failure - GetState error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				ctx.GetStateReturns(nil, errors.New("failed to get state"))
+			},
+			expectedSymbol: "",
+			expectedError:  ginierr.ErrFailedToGetKey(constants.SymbolKey),
+		},
+		{
+			testName: "Success - Empty state before initialization",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				// No initialization, empty state
+			},
+			expectedSymbol: "",
+			expectedError:  nil,
+		},
+		{
+			testName: "Success - Custom symbol",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				// Initialize contract with custom symbol
+				ok, err := contract.Initialize(ctx, "Kalp Token", "KLP", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			expectedSymbol: "KLP",
+			expectedError:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				if tt.testName == "Failure - GetState error" {
+					return nil, errors.New("failed to get state")
+				}
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			symbol, err := giniContract.Symbol(transactionContext)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+				require.Equal(t, tt.expectedSymbol, symbol)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedSymbol, symbol)
+			}
+		})
+	}
+}
+
+func TestApprove(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName       string
+		setupContext   func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		spender        string
+		amount         string
+		expectedResult bool
+		expectedError  error
+	}{
+		{
+			testName: "Success - Valid approval",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+			},
+			spender:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:         "1000",
+			expectedResult: true,
+			expectedError:  nil,
+		},
+		{
+			testName: "Success - Update existing allowance",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				// Set initial allowance
+				ok, err = contract.Approve(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7", "500")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			spender:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:         "1000",
+			expectedResult: true,
+			expectedError:  nil,
+		},
+		{
+			testName: "Failure - Invalid spender address",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+			},
+			spender:        "invalid-address",
+			amount:         "1000",
+			expectedResult: false,
+			expectedError:  ginierr.ErrInvalidAddress("invalid-address"),
+		},
+		{
+			testName: "Failure - Invalid amount",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+			},
+			spender:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:         "invalid-amount",
+			expectedResult: false,
+			expectedError:  ginierr.ErrInvalidAmount("invalid-amount"),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs (include all necessary stubs as before)
+			setupTestStubs(transactionContext, worldState)
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			result, err := giniContract.Approve(transactionContext, tt.spender, tt.amount)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+				require.Equal(t, tt.expectedResult, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedResult, result)
+
+				// Verify allowance was set correctly
+				owner, err := helper.GetUserId(transactionContext)
+				require.NoError(t, err)
+				allowance, err := giniContract.Allowance(transactionContext, owner, tt.spender)
+				require.NoError(t, err)
+				require.Equal(t, tt.amount, allowance)
+			}
+		})
+	}
+}
+
+func TestAllowance(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName       string
+		setupContext   func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		owner          string
+		spender        string
+		expectedAmount string
+		expectedError  error
+	}{
+		{
+			testName: "Success - Get existing allowance",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				// Set allowance
+				ok, err = contract.Approve(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7", "1000")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			owner:          "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			spender:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedAmount: "1000",
+			expectedError:  nil,
+		},
+		{
+			testName: "Success - No existing allowance",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+			},
+			owner:          "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			spender:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedAmount: "0",
+			expectedError:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs (include all necessary stubs as before)
+			setupTestStubs(transactionContext, worldState)
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			amount, err := giniContract.Allowance(transactionContext, tt.owner, tt.spender)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+				require.Equal(t, tt.expectedAmount, amount)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedAmount, amount)
+			}
+		})
+	}
+}
+
+// Helper function to setup common test stubs
+func setupTestStubs(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+	ctx.GetStateStub = func(key string) ([]byte, error) {
+		return worldState[key], nil
+	}
+	ctx.PutStateWithoutKYCStub = func(key string, value []byte) error {
+		worldState[key] = value
+		return nil
+	}
+	ctx.DelStateWithoutKYCStub = func(key string) error {
+		delete(worldState, key)
+		return nil
+	}
+	ctx.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+		key := "_" + prefix + "_"
+		for _, attr := range attrs {
+			key += attr + "_"
+		}
+		return key, nil
+	}
+	ctx.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+		iterator := &mocks.StateQueryIterator{}
+		var kvs []queryresult.KV
+
+		prefix := "_" + objectType + "_"
+		if len(keys) > 0 {
+			prefix += keys[0] + "_"
+		}
+
+		index := 0
+		for key, value := range worldState {
+			if strings.HasPrefix(key, prefix) {
+				kvs = append(kvs, queryresult.KV{
+					Key:   key,
+					Value: value,
+				})
+			}
+		}
+
+		iterator.HasNextCalls(func() bool {
+			return index < len(kvs)
+		})
+		iterator.NextCalls(func() (*queryresult.KV, error) {
+			if index < len(kvs) {
+				kv := kvs[index]
+				index++
+				return &kv, nil
+			}
+			return nil, nil
+		})
+		return iterator, nil
+	}
+}
