@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/internal"
 	"gini-contract/chaincode/models"
 	"gini-contract/mocks"
@@ -13,7 +14,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
+	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/stretchr/testify/require"
 )
 
@@ -706,6 +713,591 @@ func TestRemoveUtxo(t *testing.T) {
 					}
 					require.Equal(t, 1, remainingUTXOs)
 				}
+			}
+		})
+	}
+}
+
+func TestGetTotalUTXO(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		account       string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte)
+		expectedTotal string
+		shouldError   bool
+	}{
+		{
+			testName: "Success - Get total UTXO with multiple UTXOs",
+			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Create multiple UTXOs for the same account
+				utxo1 := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "1000",
+				}
+				utxo2 := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "2000",
+				}
+				utxoJSON1, _ := json.Marshal(utxo1)
+				utxoJSON2, _ := json.Marshal(utxo2)
+				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = utxoJSON1
+				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid2_"] = utxoJSON2
+
+				results := []queryresult.KV{
+					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: utxoJSON1},
+					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid2_", Value: utxoJSON2},
+				}
+
+				currentIndex := 0
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextCalls(func() bool {
+					return currentIndex < len(results)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if currentIndex < len(results) {
+						result := &results[currentIndex]
+						currentIndex++
+						return result, nil
+					}
+					return nil, nil
+				})
+				iterator.CloseCalls(func() error {
+					return nil
+				})
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			expectedTotal: "3000",
+			shouldError:   false,
+		},
+		{
+			testName: "Success - Get total UTXO with no UTXOs",
+			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// No UTXOs are set, initial state
+				queryString := `{"selector":{"account":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","docType":"` + constants.UTXO + `"}}`
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(false)
+				ctx.GetQueryResultReturns(iterator, nil)
+				ctx.GetQueryResultReturns(iterator, nil)
+				fmt.Println("query", queryString)
+
+			},
+			expectedTotal: "0",
+			shouldError:   false,
+		},
+		{
+			testName: "Failure - Query error",
+			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.GetQueryResultReturns(nil, errors.New("query error"))
+			},
+			expectedTotal: "",
+
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Iterator.Next error",
+			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextReturns(true)
+				iterator.NextReturns(nil, errors.New("iterator error"))
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			expectedTotal: "",
+			shouldError:   true,
+		},
+		{
+			testName: "Failure - Invalid UTXO format",
+			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = []byte("invalid json")
+
+				results := []queryresult.KV{
+					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: []byte("invalid json")},
+				}
+
+				currentIndex := 0
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextCalls(func() bool {
+					return currentIndex < len(results)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if currentIndex < len(results) {
+						result := &results[currentIndex]
+						currentIndex++
+						return result, nil
+					}
+					return nil, nil
+				})
+				iterator.CloseCalls(func() error {
+					return nil
+				})
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			expectedTotal: "",
+			shouldError:   true,
+		},
+		{
+			testName: "Success - Zero values in UTXOs",
+			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				utxo1 := models.Utxo{
+					DocType: constants.UTXO,
+					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					Amount:  "0",
+				}
+				utxoJSON1, _ := json.Marshal(utxo1)
+				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = utxoJSON1
+
+				results := []queryresult.KV{
+					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: utxoJSON1},
+				}
+
+				currentIndex := 0
+				iterator := &mocks.StateQueryIterator{}
+				iterator.HasNextCalls(func() bool {
+					return currentIndex < len(results)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if currentIndex < len(results) {
+						result := &results[currentIndex]
+						currentIndex++
+						return result, nil
+					}
+					return nil, nil
+				})
+				iterator.CloseCalls(func() error {
+					return nil
+				})
+				ctx.GetQueryResultReturns(iterator, nil)
+			},
+			expectedTotal: "0",
+			shouldError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			ctx, worldState := setupTestContext()
+			if tt.setupContext != nil {
+				tt.setupContext(ctx, worldState)
+			}
+
+			// Execute test
+			total, err := internal.GetTotalUTXO(ctx, tt.account)
+
+			// Assert results
+			if tt.shouldError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedTotal, total)
+			}
+		})
+	}
+}
+
+func TestGetCalledContractAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		setupMock    func(*mocks.TransactionContext) *peer.SignedProposal
+		expectedAddr string
+		shouldError  bool
+		errorCheck   func(error) bool
+	}{
+		{
+			name: "Success - Valid contract address extraction",
+			setupMock: func(ctx *mocks.TransactionContext) *peer.SignedProposal {
+				channelHeader := &common.ChannelHeader{
+					Type:      int32(common.HeaderType_ENDORSER_TRANSACTION),
+					ChannelId: "mychannel",
+					TxId:      "mock-tx-id",
+					Timestamp: ptypes.TimestampNow(),
+				}
+				channelHeaderBytes, _ := proto.Marshal(channelHeader)
+
+				payload := &common.Payload{
+					Header: &common.Header{
+						ChannelHeader: channelHeaderBytes,
+					},
+					Data: []byte("klp-testcontract-cc"),
+				}
+				payloadBytes, _ := proto.Marshal(payload)
+
+				proposal := &peer.Proposal{
+					Header:  []byte("header"),
+					Payload: payloadBytes,
+				}
+				proposalBytes, _ := proto.Marshal(proposal)
+
+				signedProposal := &peer.SignedProposal{
+					ProposalBytes: proposalBytes,
+					Signature:     []byte("signature"),
+				}
+				ctx.GetSignedProposalReturns(signedProposal, nil)
+				return signedProposal
+			},
+			expectedAddr: "klp-testcontract-cc",
+			shouldError:  true,
+		},
+		{
+			name: "Failure - Nil signed proposal",
+			setupMock: func(ctx *mocks.TransactionContext) *peer.SignedProposal {
+				ctx.GetSignedProposalReturns(nil, nil)
+				return nil
+			},
+			expectedAddr: "",
+			shouldError:  true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "could not retrieve signed proposal")
+			},
+		},
+		{
+			name: "Failure - GetSignedProposal error",
+			setupMock: func(ctx *mocks.TransactionContext) *peer.SignedProposal {
+				ctx.GetSignedProposalReturns(nil, errors.New("get signed proposal error"))
+				return nil
+			},
+			expectedAddr: "",
+			shouldError:  true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "error in getting signed proposal")
+			},
+		},
+		{
+			name: "Failure - Invalid proposal bytes",
+			setupMock: func(ctx *mocks.TransactionContext) *peer.SignedProposal {
+				signedProposal := &peer.SignedProposal{
+					ProposalBytes: []byte("invalid-proposal-bytes"),
+					Signature:     []byte("mock-signature"),
+				}
+				ctx.GetSignedProposalReturns(signedProposal, nil)
+				return signedProposal
+			},
+			expectedAddr: "",
+			shouldError:  true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "error in parsing signed proposal")
+			},
+		},
+		{
+			name: "Failure - Invalid payload bytes",
+			setupMock: func(ctx *mocks.TransactionContext) *peer.SignedProposal {
+				channelHeader := &common.ChannelHeader{
+					Type:      int32(common.HeaderType_ENDORSER_TRANSACTION),
+					ChannelId: "mychannel",
+					TxId:      "mock-tx-id",
+					Timestamp: ptypes.TimestampNow(),
+				}
+				channelHeaderBytes, _ := proto.Marshal(channelHeader)
+
+				payload := &common.Payload{
+					Header: &common.Header{
+						ChannelHeader: channelHeaderBytes,
+					},
+					Data: []byte("invalid-contract"),
+				}
+
+				payloadBytes, err := proto.Marshal(payload)
+				if err != nil {
+					fmt.Println(err)
+				}
+
+				proposal := &peer.Proposal{
+					Header:  []byte("header"),
+					Payload: payloadBytes,
+				}
+				proposalBytes, err := proto.Marshal(proposal)
+				if err != nil {
+					fmt.Println(err)
+				}
+
+				signedProposal := &peer.SignedProposal{
+					ProposalBytes: proposalBytes,
+					Signature:     []byte("signature"),
+				}
+				ctx.GetSignedProposalReturns(signedProposal, nil)
+				return signedProposal
+			},
+			expectedAddr: "",
+			shouldError:  true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "error in parsing payload")
+			},
+		},
+		{
+			name: "Failure - Contract address not found",
+			setupMock: func(ctx *mocks.TransactionContext) *peer.SignedProposal {
+				channelHeader := &common.ChannelHeader{
+					Type:      int32(common.HeaderType_ENDORSER_TRANSACTION),
+					ChannelId: "mychannel",
+					TxId:      "mock-tx-id",
+					Timestamp: ptypes.TimestampNow(),
+				}
+				channelHeaderBytes, _ := proto.Marshal(channelHeader)
+
+				payload := &common.Payload{
+					Header: &common.Header{
+						ChannelHeader: channelHeaderBytes,
+					},
+				}
+				payloadBytes, _ := proto.Marshal(payload)
+
+				proposal := &peer.Proposal{
+					Header:  []byte("header"),
+					Payload: payloadBytes,
+				}
+				proposalBytes, _ := proto.Marshal(proposal)
+
+				signedProposal := &peer.SignedProposal{
+					ProposalBytes: proposalBytes,
+					Signature:     []byte("signature"),
+				}
+				ctx.GetSignedProposalReturns(signedProposal, nil)
+				return signedProposal
+			},
+			expectedAddr: "",
+			shouldError:  true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "contract address not found")
+			},
+		},
+		{
+			name: "Failure - Empty channel header",
+			setupMock: func(ctx *mocks.TransactionContext) *peer.SignedProposal {
+				header := &common.Header{
+					ChannelHeader: []byte{},
+				}
+				headerBytes, err := proto.Marshal(header)
+				require.NoError(t, err)
+
+				proposal := &peer.Proposal{
+					Header:  headerBytes,
+					Payload: []byte("test-payload"),
+				}
+				proposalBytes, err := proto.Marshal(proposal)
+				require.NoError(t, err)
+
+				signedProposal := &peer.SignedProposal{
+					ProposalBytes: proposalBytes,
+					Signature:     []byte("mock-signature"),
+				}
+				ctx.GetSignedProposalReturns(signedProposal, nil)
+				return signedProposal
+			},
+			expectedAddr: "",
+			shouldError:  true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "channel header is empty")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := &mocks.TransactionContext{}
+			signedProposal := tt.setupMock(ctx)
+
+			contractAddr, err := internal.GetCalledContractAddress(ctx)
+
+			if tt.shouldError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedAddr, contractAddr)
+				// Test if data has the contract address that was expected
+				if signedProposal != nil && tt.expectedAddr != "" {
+					data := signedProposal.GetProposalBytes()
+					printableASCIIPaystring := helper.FilterPrintableASCII(string(data))
+					require.NotEmpty(t, printableASCIIPaystring, "failed to extract address from bytes data")
+					contractAddress := helper.FindContractAddress(printableASCIIPaystring)
+					require.Equal(t, tt.expectedAddr, contractAddress, "failed to find correct contract address from bytes data")
+				}
+			}
+		})
+	}
+}
+
+func TestGetGatewayAdminAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		setupContext   func(*mocks.TransactionContext, map[string][]byte)
+		expectedAdmins []string
+		shouldError    bool
+		errorCheck     func(error) bool
+	}{
+		{
+			name: "Success - Get single gateway admin",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Set up a gateway admin role in world state
+				adminAddr := "16f8ff33ef05bb24fb9a30fa79e700f57a496184"
+				roleKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", adminAddr)
+				roleData := []byte(fmt.Sprintf(`{"id":"%s","role":"GatewayAdmin","docType":"UserRoleMap"}`, adminAddr))
+				worldState[roleKey] = roleData
+			},
+			expectedAdmins: []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184"},
+			shouldError:    false,
+		},
+		{
+			name: "Success - Get multiple gateway admins",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Set up multiple gateway admin roles
+				admins := []string{
+					"16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+					"2da4c4908a393a387b728206b18388bc529fa8d7",
+				}
+				for _, admin := range admins {
+					roleKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", admin)
+					roleData := []byte(fmt.Sprintf(`{"id":"%s","role":"GatewayAdmin","docType":"UserRoleMap"}`, admin))
+					worldState[roleKey] = roleData
+				}
+			},
+			expectedAdmins: []string{
+				"16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+				"2da4c4908a393a387b728206b18388bc529fa8d7",
+			},
+			shouldError: false,
+		},
+		{
+			name: "Success - No gateway admins found",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Empty world state
+			},
+			expectedAdmins: []string{},
+			shouldError:    false,
+		},
+		{
+			name: "Success - Mixed roles including gateway admin",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				// Admin role
+				adminAddr := "16f8ff33ef05bb24fb9a30fa79e700f57a496184"
+				adminKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", adminAddr)
+				adminData := []byte(fmt.Sprintf(`{"id":"%s","role":"GatewayAdmin","docType":"UserRoleMap"}`, adminAddr))
+				worldState[adminKey] = adminData
+
+				// Non-admin role
+				userAddr := "2da4c4908a393a387b728206b18388bc529fa8d7"
+				userKey := fmt.Sprintf("_UserRole_%s_UserRoleMap_", userAddr)
+				userData := []byte(fmt.Sprintf(`{"id":"%s","role":"User","docType":"UserRoleMap"}`, userAddr))
+				worldState[userKey] = userData
+			},
+			expectedAdmins: []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184"},
+			shouldError:    false,
+		},
+		{
+			name: "Failure - GetStateByPartialCompositeKey error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.GetStateByPartialCompositeKeyReturns(nil, errors.New("failed to get state"))
+			},
+			expectedAdmins: nil,
+			shouldError:    true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "failed to get data for gateway admin")
+			},
+		},
+		{
+			name: "Failure - Iterator.Next error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				mockIterator := &mocks.StateQueryIterator{}
+				mockIterator.HasNextReturns(true)
+				mockIterator.NextReturns(nil, errors.New("iterator error"))
+				ctx.GetStateByPartialCompositeKeyReturns(mockIterator, nil)
+			},
+			expectedAdmins: nil,
+			shouldError:    true,
+			errorCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "error reading next item")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				if tt.name == "Failure - GetStateByPartialCompositeKey error" {
+					return nil, errors.New("failed to get state")
+				}
+
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				index := 0
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if tt.name == "Failure - Iterator.Next error" {
+						return nil, errors.New("iterator error")
+					}
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				iterator.CloseCalls(func() error {
+					return nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState)
+			}
+
+			// Execute test
+			_, err := internal.GetGatewayAdminAddress(transactionContext)
+
+			// Assert results
+			if tt.shouldError {
+				require.Error(t, err)
+
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
