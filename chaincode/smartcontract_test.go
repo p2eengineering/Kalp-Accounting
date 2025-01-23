@@ -4301,6 +4301,17 @@ func TestApprove(t *testing.T) {
 			expectedResult: false,
 			expectedError:  ginierr.ErrInvalidAmount("invalid-amount"),
 		},
+		{
+			testName: "Failure - GetUserId returns error ",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "")
+				ctx.GetKYCReturns(true, nil)
+			},
+			spender:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:         "1000",
+			expectedResult: false,
+			expectedError:  ginierr.ErrFailedToGetPublicAddress,
+		},
 	}
 
 	for _, tt := range tests {
