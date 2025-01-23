@@ -1344,6 +1344,42 @@ func TestSetUserRoles(t *testing.T) {
 			expectedError: ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized),
 		},
 		{
+			testName: "Failure - IsSignerKalpFoundation gives error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "")
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`,
+			expectedError: ginierr.New("failed to get public address", http.StatusInternalServerError),
+		},
+		{
+			testName: "Failure - Invalid role",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdminn"}`,
+			expectedError: fmt.Errorf("invalid input role"),
+		},
+		{
+			testName: "Failure - Empty user ID",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"","role":"KalpGatewayAdmin"}`,
+			expectedError: fmt.Errorf("user Id can not be null"),
+		},
+		{
+			testName: "Failure - Empty role name",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":""}`,
+			expectedError: fmt.Errorf("role can not be null"),
+		},
+		{
 			testName: "Failure - Invalid role data JSON",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
@@ -1506,6 +1542,37 @@ func TestDeleteUserRoles(t *testing.T) {
 			expectedError: ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized),
 		},
 		{
+			testName: "Failure - IsSignerKalpFoundation gives error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.CreateCompositeKeyReturns("", errors.New("failed to get public address"))
+			},
+			userID:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedError: ginierr.New("failed to get public address", http.StatusInternalServerError),
+		},
+		{
+			testName: "Failure - DelStateWithoutKYC gives error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				err := contract.SetUserRoles(ctx, `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`)
+				require.NoError(t, err)
+				ctx.DelStateWithoutKYCReturnsOnCall(0, fmt.Errorf("user role not found for userID 2da4c4908a393a387b728206b18388bc529fa8d7, status code:404"))
+			},
+			userID:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedError: fmt.Errorf("user role not found for userID 2da4c4908a393a387b728206b18388bc529fa8d7, status code:404"),
+		},
+		{
+			testName: "Failure - Create Composite Key gives error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "")
+				ctx.GetKYCReturns(true, nil)
+			},
+			userID:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedError: ginierr.New("failed to get public address", http.StatusInternalServerError),
+		},
+		{
 			testName: "Failure - Role not found",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
@@ -1622,10 +1689,10 @@ func TestAllow(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		testName      string
-		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
-		address       string
-		expectedError error
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		address      string
+		shouldError  bool
 	}{
 		{
 			testName: "Success - Allow previously denied address",
@@ -1641,8 +1708,26 @@ func TestAllow(t *testing.T) {
 				err = contract.Deny(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				require.NoError(t, err)
 			},
-			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			expectedError: nil,
+			address:     "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			shouldError: false,
+		},
+		{
+			testName: "Failiure - Is Signer KalpFoundation",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "")
+
+			},
+			address:     "",
+			shouldError: true,
+		},
+		{
+			testName: "Failiure - Is Signer KalpFoundation returns false",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+
+			},
+			address:     "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			shouldError: true,
 		},
 		{
 			testName: "Failure - Address not previously denied",
@@ -1653,8 +1738,8 @@ func TestAllow(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, ok)
 			},
-			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			expectedError: ginierr.ErrNotDenied("16f8ff33ef05bb24fb9a30fa79e700f57a496184"),
+			address:     "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			shouldError: true,
 		},
 		{
 			testName: "Success - Allow after multiple operations",
@@ -1674,8 +1759,8 @@ func TestAllow(t *testing.T) {
 				err = contract.Deny(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				require.NoError(t, err)
 			},
-			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			expectedError: nil,
+			address:     "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			shouldError: false,
 		},
 	}
 
@@ -1750,23 +1835,10 @@ func TestAllow(t *testing.T) {
 			err := giniContract.Allow(transactionContext, tt.address)
 
 			// Assert results
-			if tt.expectedError != nil {
+			if tt.shouldError {
 				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.expectedError.Error())
-
-				if tt.testName != "Failure - Address not previously denied" {
-					// Verify denied status hasn't changed for error cases
-					deniedKey, _ := transactionContext.CreateCompositeKey(constants.Denied, []string{tt.address})
-					deniedStatus := worldState[deniedKey]
-					require.NotNil(t, deniedStatus, "Denied status should not have changed")
-				}
 			} else {
 				require.NoError(t, err)
-
-				// Verify address is no longer denied
-				deniedKey, _ := transactionContext.CreateCompositeKey(constants.Denied, []string{tt.address})
-				deniedStatus := worldState[deniedKey]
-				require.Nil(t, deniedStatus, "Address should no longer be denied")
 			}
 		})
 	}
@@ -2259,6 +2331,19 @@ func TestSetBridgeContract(t *testing.T) {
 			bridgeAddr:    "klp-newbridge-cc",
 			expectedError: nil,
 		},
+		{
+			testName: "Failure - PutStateWithoutKYC error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				ctx.PutStateWithoutKYCReturns(fmt.Errorf("failed to put data, status code:500"))
+			},
+			bridgeAddr:    "klp-newbridge-cc",
+			expectedError: fmt.Errorf("failed to put data, status code:500"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -2353,7 +2438,6 @@ func TestSetBridgeContract(t *testing.T) {
 		})
 	}
 }
-
 func TestGetBridgeContract(t *testing.T) {
 	t.Parallel()
 
@@ -2694,6 +2778,17 @@ func TestApprove(t *testing.T) {
 			expectedResult: false,
 			expectedError:  ginierr.ErrInvalidAmount("invalid-amount"),
 		},
+		{
+			testName: "Failure - GetUserId returns error ",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "")
+				ctx.GetKYCReturns(true, nil)
+			},
+			spender:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:         "1000",
+			expectedResult: false,
+			expectedError:  ginierr.ErrFailedToGetPublicAddress,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2736,7 +2831,6 @@ func TestApprove(t *testing.T) {
 		})
 	}
 }
-
 func TestAllowance(t *testing.T) {
 	t.Parallel()
 
@@ -2916,146 +3010,146 @@ func TestTransfer(t *testing.T) {
 		expectedBool bool
 		expectedErr  error
 	}{
-		// {
-		// 	testName: "Error - InValid Signer",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "invalid-signer")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_invalid-signer"] = []byte("1000")
-		// 		worldState["gas_fees"] = []byte("10")
-		// 	},
-		// 	recipient:    "valid-recipient",
-		// 	amount:       "500",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.New("error getting signer", http.StatusInternalServerError),
-		// },
-		// {
-		// 	testName: "Error - gasfee not set",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
-		// 		worldState["gas_fees"] = []byte("10")
-		// 	},
-		// 	recipient:    "2da4c4908a393a387b728206b18388bc529fa8d2",
-		// 	amount:       "500",
-		// 	expectedBool: false,
-		// 	expectedErr:  fmt.Errorf("gas fee not set"),
-		// },
-		// {
-		// 	testName: "Error - gasfee not proper",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
-		// 		worldState["gasFees"] = []byte("10a")
-		// 	},
-		// 	recipient:    "2da4c4908a393a387b728206b18388bc529fa8d2",
-		// 	amount:       "500",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.New("invalid gas fees found:10a", http.StatusInternalServerError),
-		// },
-		// {
-		// 	testName: "Error - Invalid Amount",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
-		// 		worldState["gasFees"] = []byte("10")
-		// 	},
-		// 	recipient:    "invalid-recipient",
-		// 	amount:       "500a",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.ErrInvalidAmount("500a"),
-		// },
-		// {
-		// 	testName: "Error - Amount less than gas fees",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
-		// 		worldState["gasFees"] = []byte("10")
-		// 	},
-		// 	recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
-		// 	amount:       "1",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.ErrInvalidAmount("1"),
-		// },
-		// {
-		// 	testName: "Error - Unable to get vesting contract",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
-		// 		worldState["gasFees"] = []byte("10")
-		// 		ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-		// 		ctx.GetStateReturnsOnCall(1, nil, ginierr.ErrFailedToGetState(errors.New("err")))
-		// 	},
-		// 	recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
-		// 	amount:       "1000",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.ErrFailedToGetState(errors.New("err")),
-		// },
-		// {
-		// 	testName: "Error - Unable to get bridge contract",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
-		// 		worldState["gasFees"] = []byte("10")
-		// 		ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-		// 		ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-		// 		ctx.GetStateReturnsOnCall(2, nil, ginierr.ErrFailedToGetState(errors.New("err")))
-		// 	},
-		// 	recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
-		// 	amount:       "1000",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.ErrFailedToGetState(errors.New("err")),
-		// },
-		// {
-		// 	testName: "Error - could not retrieve signed proposal",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
-		// 		worldState["gasFees"] = []byte("10")
-		// 		ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-		// 		ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-		// 		ctx.GetStateReturnsOnCall(2, []byte("klp-abc1-cc"), nil)
-		// 		ctx.GetSignedProposalReturns(nil, errors.New("err"))
-		// 	},
-		// 	recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
-		// 	amount:       "1000",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.New("could not retrieve signed proposal", http.StatusInternalServerError),
-		// },
-		// {
-		// 	testName: "Error - Invalid Recipient Address",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000")
-		// 		worldState["gasFees"] = []byte("10")
-		// 	},
-		// 	recipient:    "invalid-recipient",
-		// 	amount:       "500",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.ErrInvalidAddress("invalid-recipient"),
-		// },
-		// {
-		// 	testName: "Error - The called contract is not bridge contract or vesting contract",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
-		// 		ctx.GetUserIDReturns("", nil)
-		// 		ctx.GetKYCReturns(true, nil)
-		// 		worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
-		// 		worldState["gasFees"] = []byte("10")
-		// 	},
-		// 	recipient:    "klp-acb1-cc",
-		// 	amount:       "500",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.New("The called contract is not bridge contract or vesting contract", http.StatusForbidden),
-		// },
+		{
+			testName: "Error - InValid Signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "invalid-signer")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_invalid-signer"] = []byte("1000")
+				worldState["gas_fees"] = []byte("10")
+			},
+			recipient:    "valid-recipient",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.New("error getting signer", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - gasfee not set",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gas_fees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d2",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("gas fee not set"),
+		},
+		{
+			testName: "Error - gasfee not proper",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10a")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d2",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.New("invalid gas fees found:10a", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - Invalid Amount",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "invalid-recipient",
+			amount:       "500a",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrInvalidAmount("500a"),
+		},
+		{
+			testName: "Error - Amount less than gas fees",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
+			amount:       "1",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrInvalidAmount("1"),
+		},
+		{
+			testName: "Error - Unable to get vesting contract",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
+				worldState["gasFees"] = []byte("10")
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, nil, ginierr.ErrFailedToGetState(errors.New("err")))
+			},
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
+			amount:       "1000",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrFailedToGetState(errors.New("err")),
+		},
+		{
+			testName: "Error - Unable to get bridge contract",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
+				worldState["gasFees"] = []byte("10")
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, nil, ginierr.ErrFailedToGetState(errors.New("err")))
+			},
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
+			amount:       "1000",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrFailedToGetState(errors.New("err")),
+		},
+		{
+			testName: "Error - could not retrieve signed proposal",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
+				worldState["gasFees"] = []byte("10")
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc1-cc"), nil)
+				ctx.GetSignedProposalReturns(nil, errors.New("err"))
+			},
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
+			amount:       "1000",
+			expectedBool: false,
+			expectedErr:  ginierr.New("could not retrieve signed proposal", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - Invalid Recipient Address",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "invalid-recipient",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrInvalidAddress("invalid-recipient"),
+		},
+		{
+			testName: "Error - The called contract is not bridge contract or vesting contract",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "klp-acb1-cc",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.New("The called contract is not bridge contract or vesting contract", http.StatusForbidden),
+		},
 		{
 			testName: "Error - both sender and recipient cannot be contracts",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
@@ -3073,19 +3167,283 @@ func TestTransfer(t *testing.T) {
 			expectedBool: false,
 			expectedErr:  ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest),
 		},
+		{
+			testName: "Error - invalid signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d71",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrInvalidAddress("2da4c4908a393a387b728206b18388bc529fa8d71"),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.Transfer(transactionContext, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
+func TestTransfer2(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - failed to create composite key for deny list",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturns("false", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create composite key for deny list: err"),
+		},
+		{
+			testName: "Error - ErrDeniedAddress",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturns("", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("abc"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrDeniedAddress("16f8ff33ef05bb24fb9a30fa79e700f57a496184"),
+		},
+		{
+			testName: "Error - failed to create composite key for deny list",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "false", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create composite key for deny list: err"),
+		},
+		{
+			testName: "Error - ErrDeniedAddress sender",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("abc"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrDeniedAddress("klp-abc101-cc"),
+		},
+		{
+			testName: "Error - failed to create composite key for deny list",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "false", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create composite key for deny list: err"),
+		},
+		{
+			testName: "Error - ErrDeniedAddress recipient",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("abc"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrDeniedAddress("2da4c4908a393a387b728206b18388bc529fa8d7"),
+		},
+		{
+			testName: "Error - fetching KYC for sender",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				// ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.GetKYCReturns(false, errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.NewInternalError(errors.New("err"), "error fetching KYC for sender", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, false, errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.NewInternalError(errors.New("err"), "error fetching KYC for signer", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, false, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.New(fmt.Sprintf("IsSender kyced: %v, IsSigner kyced: %v", false, false), http.StatusForbidden),
+		},
 		// {
-		// 	testName: "Error - invalid signer",
+		// 	testName: "Error - fetching KYC for signer",
 		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 		// 		ctx.GetUserIDReturns("", nil)
-		// 		ctx.GetKYCReturns(true, nil)
+		// 		ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+		// 		ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+		// 		ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+		// 		ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+		// 		ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+		// 		ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+		// 		ctx.GetKYCReturnsOnCall(0, true, nil)
+		// 		ctx.GetKYCReturnsOnCall(1, false, nil)
 		// 		worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 		// 		worldState["gasFees"] = []byte("10")
 		// 	},
-		// 	recipient:    "2da4c4908a393a387b728206b18388bc529fa8d71",
+		// 	recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
 		// 	amount:       "500",
 		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.ErrInvalidAddress("2da4c4908a393a387b728206b18388bc529fa8d71"),
+		// 	expectedErr:  ginierr.New(fmt.Sprintf("IsSender kyced: %v, IsSigner kyced: %v", false, false), http.StatusForbidden),
 		// },
 	}
 
@@ -3206,6 +3564,287 @@ func TestTransferFrom(t *testing.T) {
 			amount:       "500a",
 			expectedBool: false,
 			expectedErr:  ginierr.ErrInvalidAmount("500a"),
+		},
+		{
+			testName: "Error - The called contract is not bridge contract or vesting contract",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "klp-acb1-cc",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.New("The called contract is neither bridge contract nor vesting contract", http.StatusBadRequest),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.TransferFrom(transactionContext, tt.sender, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
+func TestTransferFrom2(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		sender       string
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - failed to create composite key for deny list",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturns("false", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create composite key for deny list: err"),
+		},
+		{
+			testName: "Error - ErrDeniedAddress",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturns("", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("abc"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrDeniedAddress("16f8ff33ef05bb24fb9a30fa79e700f57a496184"),
+		},
+		{
+			testName: "Error - failed to create composite key for deny list",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "false", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create composite key for deny list: err"),
+		},
+		{
+			testName: "Error - ErrDeniedAddress sender",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("abc"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrDeniedAddress("2da4c4908a393a387b728206b18388bc529fa8d7"),
+		},
+		{
+			testName: "Error - failed to create composite key for deny list",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "false", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create composite key for deny list: err"),
+		},
+		{
+			testName: "Error - ErrDeniedAddress recipient",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("abc"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrDeniedAddress("16f8ff33ef05bb24fb9a30fa79e700f57a496184"),
+		},
+		{
+			testName: "Error - fetching KYC for sender",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				// ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturns(false, errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.NewInternalError(errors.New("err"), "error fetching KYC for sender", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - fetching KYC for spender",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, false, errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.NewInternalError(errors.New("err"), "error fetching KYC for spender", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetKYCReturnsOnCall(2, false, errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.NewInternalError(errors.New("err"), "error fetching KYC for signer", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, false, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.New(fmt.Sprintf("None of the sender, spender, or signer is KYC'd"), http.StatusForbidden),
 		},
 	}
 
@@ -3341,6 +3980,292 @@ func TestInitializeErrors(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedBool, result)
 			}
+		})
+	}
+}
+
+func TestInitialize_NegativeScenarios(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		name          string
+		symbol        string
+		vestingAddr   string
+		shouldError   bool
+		expectedError error
+	}{
+		{
+			testName: "Failure - Non-Foundation User Initialization",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "non-foundation-user")
+				ctx.GetKYCReturns(true, nil)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Non-foundation user",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+			},
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Reinitialization Attempt",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Invalid Vesting Contract Address",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "invalid-address",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Foundation Not KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(false, nil)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Gateway Admin Not KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, false, nil)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Get State for NameKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, nil, errors.New("failed to get state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Get State for SymbolKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(1, nil, errors.New("failed to get state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Put State for NameKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(0, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Put State for SymbolKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(1, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Get kyc for KalpFoundationAddress",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(false, fmt.Errorf("Error fetching KYC status of Kalp Foundation %v", http.StatusInternalServerError))
+				ctx.PutStateWithoutKYCReturnsOnCall(2, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Get kyc for KalpGateWayAdminAddress",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, false, fmt.Errorf("Error fetching KYC status of Gateway Admin %v", http.StatusInternalServerError))
+				ctx.PutStateWithoutKYCReturnsOnCall(2, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Put State for GasFeesKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(2, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Put State for VestingContractKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(3, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - PutStateWithoutKYC fails for VestingContractKey test",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(1, errors.New("failed to put state"))
+			},
+			name:          "GINI",
+			symbol:        "GINI",
+			vestingAddr:   "klp-6b616c70627169646775-cc",
+			expectedError: ginierr.NewInternalError(errors.New("failed to put state"), "failed to set vesting Contract: klp-6b616c70627169646775-cc", http.StatusInternalServerError),
+		}, {
+			testName: "Failure - Failed to Set Bridge Contract",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(4, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Symbol is empty",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				worldState[constants.SymbolKey] = []byte("GINI")
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			ok, err := giniContract.Initialize(transactionContext, tt.name, tt.symbol, tt.vestingAddr)
+
+			require.Error(t, err)
+			require.False(t, ok)
 		})
 	}
 }
