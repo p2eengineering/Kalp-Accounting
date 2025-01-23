@@ -2879,6 +2879,24 @@ func TestSetUserRoles(t *testing.T) {
 			expectedError: ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized),
 		},
 		{
+			testName: "Failure - IsSignerKalpFoundation gives error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "")
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`,
+			expectedError: ginierr.New("failed to get public address", http.StatusInternalServerError),
+		},
+		{
+			testName: "Failure - Invalid role",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdminn"}`,
+			expectedError: fmt.Errorf("invalid input role"),
+		},
+		{
 			testName: "Failure - Empty user ID",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
@@ -4632,6 +4650,30 @@ func TestInitialize_NegativeScenarios(t *testing.T) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
 				worldState[constants.SymbolKey] = []byte("GINI")
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Pushing Symbol to World State fails",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(1, errors.New("failed to set symbol:"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Pushing GasFees Key to World State fails",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(2, errors.New("failed to set gas fees: "))
 			},
 			name:        "GINI",
 			symbol:      "GINI",
