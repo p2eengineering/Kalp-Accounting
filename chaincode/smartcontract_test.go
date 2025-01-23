@@ -3077,6 +3077,37 @@ func TestDeleteUserRoles(t *testing.T) {
 			expectedError: ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized),
 		},
 		{
+			testName: "Failure - IsSignerKalpFoundation gives error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.CreateCompositeKeyReturns("", errors.New("failed to get public address"))
+			},
+			userID:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedError: ginierr.New("failed to get public address", http.StatusInternalServerError),
+		},
+		{
+			testName: "Failure - DelStateWithoutKYC gives error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				err := contract.SetUserRoles(ctx, `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`)
+				require.NoError(t, err)
+				ctx.DelStateWithoutKYCReturnsOnCall(0, fmt.Errorf("user role not found for userID 2da4c4908a393a387b728206b18388bc529fa8d7, status code:404"))
+			},
+			userID:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedError: fmt.Errorf("user role not found for userID 2da4c4908a393a387b728206b18388bc529fa8d7, status code:404"),
+		},
+		{
+			testName: "Failure - Create Composite Key gives error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "")
+				ctx.GetKYCReturns(true, nil)
+			},
+			userID:        "2da4c4908a393a387b728206b18388bc529fa8d7",
+			expectedError: ginierr.New("failed to get public address", http.StatusInternalServerError),
+		},
+		{
 			testName: "Failure - Role not found",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
