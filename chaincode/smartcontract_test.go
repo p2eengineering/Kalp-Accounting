@@ -3866,6 +3866,19 @@ func TestSetBridgeContract(t *testing.T) {
 			bridgeAddr:    "klp-newbridge-cc",
 			expectedError: nil,
 		},
+		{
+			testName: "Failure - PutStateWithoutKYC error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				ctx.PutStateWithoutKYCReturns(fmt.Errorf("failed to put data, status code:500"))
+			},
+			bridgeAddr:    "klp-newbridge-cc",
+			expectedError: fmt.Errorf("failed to put data, status code:500"),
+		},
 	}
 
 	for _, tt := range tests {
