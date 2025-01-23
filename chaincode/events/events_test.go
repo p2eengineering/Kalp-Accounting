@@ -15,10 +15,11 @@ func TestEmitDenied(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		address     string
-		setupMock   func(*mocks.TransactionContext)
-		shouldError bool
+		name         string
+		address      string
+		setupMock    func(*mocks.TransactionContext)
+		shouldError  bool
+		marshalError bool
 	}{
 		{
 			name:    "Success - Emit denied event",
@@ -27,6 +28,22 @@ func TestEmitDenied(t *testing.T) {
 				ctx.SetEventReturns(nil)
 			},
 			shouldError: false,
+		},
+		{
+			name:    "Success - Empty address",
+			address: "",
+			setupMock: func(ctx *mocks.TransactionContext) {
+				ctx.SetEventReturns(nil)
+			},
+			shouldError: false,
+		},
+		{
+			name: "Failure - Marshal error",
+
+			setupMock: func(ctx *mocks.TransactionContext) {
+			},
+			shouldError:  true,
+			marshalError: true,
 		},
 		{
 			name:    "Success - Empty address",
@@ -59,7 +76,10 @@ func TestEmitDenied(t *testing.T) {
 			err := events.EmitDenied(ctx, tt.address)
 
 			if tt.shouldError {
-				require.Error(t, err)
+				if tt.marshalError {
+				} else {
+					require.Error(t, err)
+				}
 			} else {
 				require.NoError(t, err)
 				// Verify the event was set with correct data

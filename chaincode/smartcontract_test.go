@@ -2879,6 +2879,24 @@ func TestSetUserRoles(t *testing.T) {
 			expectedError: ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized),
 		},
 		{
+			testName: "Failure - Empty user ID",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"","role":"KalpGatewayAdmin"}`,
+			expectedError: fmt.Errorf("user Id can not be null"),
+		},
+		{
+			testName: "Failure - Empty role name",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+			},
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":""}`,
+			expectedError: fmt.Errorf("role can not be null"),
+		},
+		{
 			testName: "Failure - Invalid role data JSON",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
@@ -4405,5 +4423,254 @@ func setupTestStubs(ctx *mocks.TransactionContext, worldState map[string][]byte)
 			return nil, nil
 		})
 		return iterator, nil
+	}
+}
+
+func TestInitialize_NegativeScenarios(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		name          string
+		symbol        string
+		vestingAddr   string
+		shouldError   bool
+		expectedError error
+	}{
+		{
+			testName: "Failure - Non-Foundation User Initialization",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "non-foundation-user")
+				ctx.GetKYCReturns(true, nil)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Non-foundation user",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil)
+			},
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Reinitialization Attempt",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Invalid Vesting Contract Address",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "invalid-address",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Foundation Not KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(false, nil)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Gateway Admin Not KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, false, nil)
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Get State for NameKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(0, nil, errors.New("failed to get state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Get State for SymbolKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(1, nil, errors.New("failed to get state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Put State for NameKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(0, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Put State for SymbolKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(1, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Put State for GasFeesKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(2, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Put State for VestingContractKey",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(3, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - PutStateWithoutKYC fails for VestingContractKey test",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(3, errors.New("failed to put state"))
+			},
+			name:          "GINI",
+			symbol:        "GINI",
+			vestingAddr:   "klp-6b616c70627169646775-cc",
+			expectedError: ginierr.NewInternalError(errors.New("failed to put state"), "failed to set vesting Contract: klp-6b616c70627169646775-cc", http.StatusInternalServerError),
+		}, {
+			testName: "Failure - Failed to Set Bridge Contract",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ctx.PutStateWithoutKYCReturnsOnCall(4, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			giniContract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			// Setup stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				var kvs []queryresult.KV
+
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				index := 0
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, giniContract)
+			}
+
+			// Execute test
+			ok, err := giniContract.Initialize(transactionContext, tt.name, tt.symbol, tt.vestingAddr)
+
+			require.Error(t, err)
+			require.False(t, ok)
+		})
 	}
 }
