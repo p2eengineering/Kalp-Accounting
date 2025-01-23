@@ -4555,6 +4555,31 @@ func TestInitialize_NegativeScenarios(t *testing.T) {
 			shouldError: true,
 		},
 		{
+			testName: "Failure - Failed to Get kyc for KalpFoundationAddress",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(false, fmt.Errorf("Error fetching KYC status of Kalp Foundation %v", http.StatusInternalServerError))
+				ctx.PutStateWithoutKYCReturnsOnCall(2, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
+			testName: "Failure - Failed to Get kyc for KalpGateWayAdminAddress",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, false, fmt.Errorf("Error fetching KYC status of Gateway Admin %v", http.StatusInternalServerError))
+				ctx.PutStateWithoutKYCReturnsOnCall(2, errors.New("failed to put state"))
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
+		{
 			testName: "Failure - Failed to Put State for GasFeesKey",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
@@ -4583,7 +4608,7 @@ func TestInitialize_NegativeScenarios(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
-				ctx.PutStateWithoutKYCReturnsOnCall(3, errors.New("failed to put state"))
+				ctx.PutStateWithoutKYCReturnsOnCall(1, errors.New("failed to put state"))
 			},
 			name:          "GINI",
 			symbol:        "GINI",
