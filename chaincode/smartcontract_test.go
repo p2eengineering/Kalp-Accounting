@@ -4626,6 +4626,18 @@ func TestInitialize_NegativeScenarios(t *testing.T) {
 			vestingAddr: "klp-6b616c70627169646775-cc",
 			shouldError: true,
 		},
+		{
+			testName: "Failure - Symbol is empty",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				worldState[constants.SymbolKey] = []byte("GINI")
+			},
+			name:        "GINI",
+			symbol:      "GINI",
+			vestingAddr: "klp-6b616c70627169646775-cc",
+			shouldError: true,
+		},
 	}
 
 	for _, tt := range tests {
