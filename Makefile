@@ -1,5 +1,5 @@
 
-.PHONY: help test cover generate
+.PHONY: help test cover
 
 help:
 	@echo "Usage:"
