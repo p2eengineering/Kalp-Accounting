@@ -3479,6 +3479,553 @@ func TestTransfer2(t *testing.T) {
 	}
 }
 
+func TestTransfer3(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.New("insufficient balance in sender's account for amount", http.StatusBadRequest),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+			transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+				// Simulated mock data based on the query string
+				mockWorldState := []map[string]interface{}{
+					{"amount": "-10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+				}
+
+				// Filter the mock world state based on the queryString if necessary.
+				// For simplicity, assuming all records match the query string.
+				filteredData := make([]*queryresult.KV, len(mockWorldState))
+				for i, record := range mockWorldState {
+					recordBytes, err := json.Marshal(record)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal record: %v", err)
+					}
+					filteredData[i] = &queryresult.KV{
+						Key:   "klp-abc101-cc",
+						Value: recordBytes,
+					}
+				}
+
+				// Mock iterator
+				mockIterator := &mocks.StateQueryIterator{}
+				iteratorIndex := 0
+
+				// Define HasNext and Next methods for the iterator
+				mockIterator.HasNextStub = func() bool {
+					return iteratorIndex < len(filteredData)
+				}
+				mockIterator.NextStub = func() (*queryresult.KV, error) {
+					if iteratorIndex < len(filteredData) {
+						item := filteredData[iteratorIndex]
+						iteratorIndex++
+						return item, nil
+					}
+					return nil, fmt.Errorf("no more items")
+				}
+				mockIterator.CloseStub = func() error {
+					// No operation needed for closing the mock iterator
+					return nil
+				}
+
+				return mockIterator, nil
+			}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.Transfer(transactionContext, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
+func TestTransfer4(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create the composite key for owner 0b87970433b22494faff1cc7a819e71bddc7880c: err"),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create the composite key for owner 2da4c4908a393a387b728206b18388bc529fa8d7: err"),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "500",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create the composite key for owner %s: err", constants.KalpFoundationAddress),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create the composite key for owner 2da4c4908a393a387b728206b18388bc529fa8d7: err"),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "0b87970433b22494faff1cc7a819e71bddc7880d",
+			amount:       "500",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "0b87970433b22494faff1cc7a819e71bddc7880d",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "0b87970433b22494faff1cc7a819e71bddc7880d",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "0b87970433b22494faff1cc7a819e71bddc7880d",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			contract.Contract.Name = "klp-abc101-cc"
+
+			worldState := map[string][]byte{}
+			transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+				// Simulated mock data based on the query string
+				mockWorldState := []map[string]interface{}{
+					{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+				}
+
+				// Filter the mock world state based on the queryString if necessary.
+				// For simplicity, assuming all records match the query string.
+				filteredData := make([]*queryresult.KV, len(mockWorldState))
+				for i, record := range mockWorldState {
+					recordBytes, err := json.Marshal(record)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal record: %v", err)
+					}
+					filteredData[i] = &queryresult.KV{
+						Key:   "klp-abc101-cc",
+						Value: recordBytes,
+					}
+				}
+
+				// Mock iterator
+				mockIterator := &mocks.StateQueryIterator{}
+				iteratorIndex := 0
+
+				// Define HasNext and Next methods for the iterator
+				mockIterator.HasNextStub = func() bool {
+					return iteratorIndex < len(filteredData)
+				}
+				mockIterator.NextStub = func() (*queryresult.KV, error) {
+					if iteratorIndex < len(filteredData) {
+						item := filteredData[iteratorIndex]
+						iteratorIndex++
+						return item, nil
+					}
+					return nil, fmt.Errorf("no more items")
+				}
+				mockIterator.CloseStub = func() error {
+					// No operation needed for closing the mock iterator
+					return nil
+				}
+
+				return mockIterator, nil
+			}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.Transfer(transactionContext, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
 func TestTransferFrom(t *testing.T) {
 	t.Parallel()
 
@@ -3880,6 +4427,1554 @@ func TestTransferFrom2(t *testing.T) {
 	}
 }
 
+func TestTransferFrom3(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		sender       string
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New(""))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to create composite key for deny list: "),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New(""))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.NewInternalError(errors.New(""), "failed to create the composite key for owner with address 16f8ff33ef05bb24fb9a30fa79e700f57a496184 and spender with address 16f8ff33ef05bb24fb9a30fa79e700f57a496184: ", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000a",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrConvertingAmountToBigInt("1000a"),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10a"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.New("invalid gas fees found:10a", http.StatusInternalServerError),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  ginierr.New("insufficient allowance for spender's account 16f8ff33ef05bb24fb9a30fa79e700f57a496184 for the sender 16f8ff33ef05bb24fb9a30fa79e700f57a496184", http.StatusForbidden),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			contract.Contract.Name = "klp-abc101-cc"
+
+			worldState := map[string][]byte{}
+			transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+				// Simulated mock data based on the query string
+				mockWorldState := []map[string]interface{}{
+					{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+				}
+
+				// Filter the mock world state based on the queryString if necessary.
+				// For simplicity, assuming all records match the query string.
+				filteredData := make([]*queryresult.KV, len(mockWorldState))
+				for i, record := range mockWorldState {
+					recordBytes, err := json.Marshal(record)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal record: %v", err)
+					}
+					filteredData[i] = &queryresult.KV{
+						Key:   "klp-abc101-cc",
+						Value: recordBytes,
+					}
+				}
+
+				// Mock iterator
+				mockIterator := &mocks.StateQueryIterator{}
+				iteratorIndex := 0
+
+				// Define HasNext and Next methods for the iterator
+				mockIterator.HasNextStub = func() bool {
+					return iteratorIndex < len(filteredData)
+				}
+				mockIterator.NextStub = func() (*queryresult.KV, error) {
+					if iteratorIndex < len(filteredData) {
+						item := filteredData[iteratorIndex]
+						iteratorIndex++
+						return item, nil
+					}
+					return nil, fmt.Errorf("no more items")
+				}
+				mockIterator.CloseStub = func() error {
+					// No operation needed for closing the mock iterator
+					return nil
+				}
+
+				return mockIterator, nil
+			}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.TransferFrom(transactionContext, tt.sender, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
+func TestTransferFrom4(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		sender       string
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  ginierr.New("insufficient balance in sender's account for amount + gas fees", http.StatusBadRequest),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			contract.Contract.Name = "klp-abc101-cc"
+
+			worldState := map[string][]byte{}
+			transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+				// Simulated mock data based on the query string
+				mockWorldState := []map[string]interface{}{
+					{"amount": "1", "account": "klp-abc101-cc", "docType": constants.UTXO},
+				}
+
+				// Filter the mock world state based on the queryString if necessary.
+				// For simplicity, assuming all records match the query string.
+				filteredData := make([]*queryresult.KV, len(mockWorldState))
+				for i, record := range mockWorldState {
+					recordBytes, err := json.Marshal(record)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal record: %v", err)
+					}
+					filteredData[i] = &queryresult.KV{
+						Key:   "klp-abc101-cc",
+						Value: recordBytes,
+					}
+				}
+
+				// Mock iterator
+				mockIterator := &mocks.StateQueryIterator{}
+				iteratorIndex := 0
+
+				// Define HasNext and Next methods for the iterator
+				mockIterator.HasNextStub = func() bool {
+					return iteratorIndex < len(filteredData)
+				}
+				mockIterator.NextStub = func() (*queryresult.KV, error) {
+					if iteratorIndex < len(filteredData) {
+						item := filteredData[iteratorIndex]
+						iteratorIndex++
+						return item, nil
+					}
+					return nil, fmt.Errorf("no more items")
+				}
+				mockIterator.CloseStub = func() error {
+					// No operation needed for closing the mock iterator
+					return nil
+				}
+
+				return mockIterator, nil
+			}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.TransferFrom(transactionContext, tt.sender, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
+func TestTransferFrom5(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		sender       string
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			recipient:    "2da4c4908a393a387b728206b18388bc529fa8d7",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  ginierr.New("If bridge or vesting contract is the spender then , sender and signer should be same", http.StatusBadRequest),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			// contract.Contract.Name = "klp-abc101-cc"
+
+			worldState := map[string][]byte{}
+			transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+				// Simulated mock data based on the query string
+				mockWorldState := []map[string]interface{}{
+					{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+				}
+
+				// Filter the mock world state based on the queryString if necessary.
+				// For simplicity, assuming all records match the query string.
+				filteredData := make([]*queryresult.KV, len(mockWorldState))
+				for i, record := range mockWorldState {
+					recordBytes, err := json.Marshal(record)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal record: %v", err)
+					}
+					filteredData[i] = &queryresult.KV{
+						Key:   "klp-abc101-cc",
+						Value: recordBytes,
+					}
+				}
+
+				// Mock iterator
+				mockIterator := &mocks.StateQueryIterator{}
+				iteratorIndex := 0
+
+				// Define HasNext and Next methods for the iterator
+				mockIterator.HasNextStub = func() bool {
+					return iteratorIndex < len(filteredData)
+				}
+				mockIterator.NextStub = func() (*queryresult.KV, error) {
+					if iteratorIndex < len(filteredData) {
+						item := filteredData[iteratorIndex]
+						iteratorIndex++
+						return item, nil
+					}
+					return nil, fmt.Errorf("no more items")
+				}
+				mockIterator.CloseStub = func() error {
+					// No operation needed for closing the mock iterator
+					return nil
+				}
+
+				return mockIterator, nil
+			}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.TransferFrom(transactionContext, tt.sender, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
+func TestTransferFrom6(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		sender       string
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "5",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "5",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "5",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "5",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(7, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "5",
+			expectedBool: true,
+			expectedErr:  nil,
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		// {
+		// 	testName: "Error - None of the sender, spender, or signer is KYC'd",
+		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+		// 		allow := models.Allow{
+		// 			Owner:   "0x123456789",
+		// 			Amount:  "1000",
+		// 			DocType: "Allowance",
+		// 			Spender: "0x987654321",
+		// 		}
+		// 		jsonData, _ := json.Marshal(allow)
+		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+		// 		ctx.GetUserIDReturns("", nil)
+		// 		ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+		// 		ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+		// 		ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+		// 		ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+		// 		ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+		// 		ctx.GetKYCReturnsOnCall(0, false, nil)
+		// 		ctx.GetKYCReturnsOnCall(1, true, nil)
+		// 		ctx.GetStateReturnsOnCall(6, jsonData, nil)
+		// 		ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+		// 		worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+		// 		worldState["gasFees"] = []byte("10")
+		// 	},
+		// 	sender:       constants.KalpFoundationAddress,
+		// 	recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+		// 	amount:       "5",
+		// 	expectedBool: false,
+		// 	expectedErr:  fmt.Errorf(""),
+		// },
+		// {
+		// 	testName: "Error - None of the sender, spender, or signer is KYC'd",
+		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+		// 		allow := models.Allow{
+		// 			Owner:   "0x123456789",
+		// 			Amount:  "1000",
+		// 			DocType: "Allowance",
+		// 			Spender: "0x987654321",
+		// 		}
+		// 		jsonData, _ := json.Marshal(allow)
+		// 		SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+		// 		ctx.GetUserIDReturns("", nil)
+		// 		ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+		// 		ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+		// 		ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+		// 		ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+		// 		ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+		// 		ctx.GetKYCReturnsOnCall(0, false, nil)
+		// 		ctx.GetKYCReturnsOnCall(1, true, nil)
+		// 		ctx.GetStateReturnsOnCall(6, jsonData, nil)
+		// 		ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+		// 		ctx.CreateCompositeKeyReturnsOnCall(7, "", errors.New("err"))
+		// 		worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+		// 		worldState["gasFees"] = []byte("10")
+		// 	},
+		// 	sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+		// 	recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+		// 	amount:       "5",
+		// 	expectedBool: false,
+		// 	expectedErr:  fmt.Errorf(""),
+		// },
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			contract.Contract.Name = "klp-abc101-cc"
+
+			worldState := map[string][]byte{}
+			transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+				// Simulated mock data based on the query string
+				mockWorldState := []map[string]interface{}{
+					{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+				}
+
+				// Filter the mock world state based on the queryString if necessary.
+				// For simplicity, assuming all records match the query string.
+				filteredData := make([]*queryresult.KV, len(mockWorldState))
+				for i, record := range mockWorldState {
+					recordBytes, err := json.Marshal(record)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal record: %v", err)
+					}
+					filteredData[i] = &queryresult.KV{
+						Key:   "klp-abc101-cc",
+						Value: recordBytes,
+					}
+				}
+
+				// Mock iterator
+				mockIterator := &mocks.StateQueryIterator{}
+				iteratorIndex := 0
+
+				// Define HasNext and Next methods for the iterator
+				mockIterator.HasNextStub = func() bool {
+					return iteratorIndex < len(filteredData)
+				}
+				mockIterator.NextStub = func() (*queryresult.KV, error) {
+					if iteratorIndex < len(filteredData) {
+						item := filteredData[iteratorIndex]
+						iteratorIndex++
+						return item, nil
+					}
+					return nil, fmt.Errorf("no more items")
+				}
+				mockIterator.CloseStub = func() error {
+					// No operation needed for closing the mock iterator
+					return nil
+				}
+
+				return mockIterator, nil
+			}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.TransferFrom(transactionContext, tt.sender, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
+func TestTransferFrom7(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		sender       string
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			recipient:    constants.KalpFoundationAddress,
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       constants.KalpFoundationAddress,
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "50",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       constants.KalpFoundationAddress,
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "50",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       constants.KalpFoundationAddress,
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "50",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       constants.KalpFoundationAddress,
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "5",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			sender:       constants.KalpFoundationAddress,
+			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "10",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    constants.KalpFoundationAddress,
+			sender:       "16f8ff33ef05bb24fb9a30fa79e700f57a496185",
+			amount:       "10",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			contract.Contract.Name = "klp-abc101-cc"
+
+			worldState := map[string][]byte{}
+			transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+				// Simulated mock data based on the query string
+				mockWorldState := []map[string]interface{}{
+					{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+				}
+
+				// Filter the mock world state based on the queryString if necessary.
+				// For simplicity, assuming all records match the query string.
+				filteredData := make([]*queryresult.KV, len(mockWorldState))
+				for i, record := range mockWorldState {
+					recordBytes, err := json.Marshal(record)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal record: %v", err)
+					}
+					filteredData[i] = &queryresult.KV{
+						Key:   "klp-abc101-cc",
+						Value: recordBytes,
+					}
+				}
+
+				// Mock iterator
+				mockIterator := &mocks.StateQueryIterator{}
+				iteratorIndex := 0
+
+				// Define HasNext and Next methods for the iterator
+				mockIterator.HasNextStub = func() bool {
+					return iteratorIndex < len(filteredData)
+				}
+				mockIterator.NextStub = func() (*queryresult.KV, error) {
+					if iteratorIndex < len(filteredData) {
+						item := filteredData[iteratorIndex]
+						iteratorIndex++
+						return item, nil
+					}
+					return nil, fmt.Errorf("no more items")
+				}
+				mockIterator.CloseStub = func() error {
+					// No operation needed for closing the mock iterator
+					return nil
+				}
+
+				return mockIterator, nil
+			}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.TransferFrom(transactionContext, tt.sender, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
 func TestInitializeErrors(t *testing.T) {
 	t.Parallel()
 
@@ -3918,41 +6013,6 @@ func TestInitializeErrors(t *testing.T) {
 			expectedBool: false,
 			expectedErr:  ginierr.ErrFailedToGetKey(constants.NameKey),
 		},
-
-		// {
-		// 	testName: "Error - Name Already Set",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		ctx.GetStateReturnsOnCall(0, []byte("existing-name"), nil)
-		// 		ctx.GetStateReturnsOnCall(1, nil, nil)
-		// 	},
-		// 	name:         "GINI",
-		// 	symbol:       "GINI",
-		// 	vestingAddr:  "klp-abc-cc",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.New("cannot initialize again,name already set: existing-name", http.StatusBadRequest),
-		// },
-		// {
-		// 	testName: "Error - Invalid Vesting Contract Address",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		ctx.GetStateReturns(nil, nil)
-		// 	},
-		// 	name:         "GINI",
-		// 	symbol:       "GINI",
-		// 	vestingAddr:  "klp-ab12hc-cc",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.ErrInvalidContractAddress("invalid-contract-address"),
-		// },
-		// {
-		// 	testName: "Error - Foundation Not KYC'd",
-		// 	setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-		// 		ctx.GetKYCReturnsOnCall(0, false, nil)
-		// 	},
-		// 	name:         "GINI",
-		// 	symbol:       "GINI",
-		// 	vestingAddr:  "klp-abc-cc",
-		// 	expectedBool: false,
-		// 	expectedErr:  ginierr.New("Foundation is not KYC'd", http.StatusBadRequest),
-		// },
 	}
 
 	for _, tt := range tests {
