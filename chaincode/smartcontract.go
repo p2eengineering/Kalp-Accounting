@@ -329,6 +329,44 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 	return true, nil
 }
 
+func (s *SmartContract) GasFeesTransfer(ctx kalpsdk.TransactionContextInterface, gasFeesAccount string, amount string) (bool, error) {
+	signer, err := helper.GetUserId(ctx)
+	if err != nil {
+		err := ginierr.NewInternalError(err, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	if signer != constants.KalpGateWayAdminAddress {
+		return false, fmt.Errorf("signer is not gateway admin : %s", signer)
+	}
+
+	amountInInt, ok := big.NewInt(0).SetString(amount, 10)
+	if !ok || amountInInt.Cmp(big.NewInt(0)) != 1 {
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
+
+	// gasFeesAccountBalance, err := s.balance(ctx, gasFeesAccount)
+	// if err != nil {
+	// 	return false, err
+	// }
+
+	// if gasFeesAccountBalance.Cmp(amountInInt) < 0 {
+	// 	return false, ginierr.New("insufficient balance in gasFeesAccount's account for amount", http.StatusBadRequest)
+	// }
+
+	if gasFeesAccount != constants.KalpFoundationAddress {
+		if err = internal.RemoveUtxo(ctx, gasFeesAccount, amountInInt); err != nil {
+			return false, err
+		}
+		if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amountInInt); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+
+}
+
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, amount string) (bool, error) {
 	logger.Log.Info("Transfer operation initiated", recipient, amount)
 
