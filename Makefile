@@ -1,5 +1,5 @@
 
-.PHONY: help test cover generate
+.PHONY: help test cover
 
 help:
 	@echo "Usage:"
@@ -7,7 +7,6 @@ help:
 	@echo "Targets:"
 	@echo "  test          Runs all the tests in the sub folders."
 	@echo "  cover         Opens the html which shows the coverage report"
-	@echo "  generate      Generates mock files for unit tests"
 
 test:
 	rm -f coverage.out
@@ -15,6 +14,3 @@ test:
 
 cover:
 	go tool cover -html=coverage.out
-
-generate:
-	go generate ./...
