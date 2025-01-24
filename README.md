@@ -10,7 +10,7 @@ You can run all tests in the project by executing the following command:
 make test
 ```
 
-To visualize code coverage in the project by executing the following command:
+You can visualize code coverage in the project by executing the following command:
 
 ```bash
 make cover
