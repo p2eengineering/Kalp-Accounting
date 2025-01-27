@@ -341,10 +341,10 @@ func (s *SmartContract) GasFeesTransfer(ctx kalpsdk.TransactionContextInterface,
 		return false, fmt.Errorf("signer is not gateway admin : %s", signer)
 	}
 
-	amountInInt, ok := big.NewInt(0).SetString(amount, 10)
-	if !ok || amountInInt.Cmp(big.NewInt(0)) != 1 {
-		return false, ginierr.ErrInvalidAmount(amount)
-	}
+	// amountInInt, ok := big.NewInt(0).SetString(amount, 10)
+	// if !ok || amountInInt.Cmp(big.NewInt(0)) != 1 {
+	// 	return false, ginierr.ErrInvalidAmount(amount)
+	// }
 
 	// gasFeesAccountBalance, err := s.balance(ctx, gasFeesAccount)
 	// if err != nil {
@@ -356,10 +356,10 @@ func (s *SmartContract) GasFeesTransfer(ctx kalpsdk.TransactionContextInterface,
 	// }
 
 	if gasFeesAccount != constants.KalpFoundationAddress {
-		if err = internal.RemoveUtxo(ctx, gasFeesAccount, amountInInt); err != nil {
+		if err = internal.RemoveUtxoForGasFees(ctx, gasFeesAccount, amount); err != nil {
 			return false, err
 		}
-		if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amountInInt); err != nil {
+		if err = internal.AddUtxoForGasFees(ctx, constants.KalpFoundationAddress, amount); err != nil {
 			return false, err
 		}
 	}
