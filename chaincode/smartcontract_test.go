@@ -2831,6 +2831,167 @@ func TestApprove(t *testing.T) {
 		})
 	}
 }
+
+func TestIncreaseAllowance(t *testing.T) {
+
+	t.Parallel()
+
+	tests := []struct {
+		testName string
+
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+
+		spender string
+
+		delta string
+
+		expectedResult bool
+
+		expectedError error
+
+		finalAllowance string
+	}{
+
+		// --- Success Cases ---
+
+		{
+
+			testName: "Success - Increase from zero allowance",
+
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+
+				SetUserID(ctx, constants.KalpFoundationAddress)
+
+				ctx.GetKYCReturns(true, nil)
+
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+
+				require.NoError(t, err)
+
+				require.True(t, ok)
+
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+
+			},
+
+			spender: "2da4c4908a393a387b728206b18388bc529fa8d7",
+
+			delta: "500",
+
+			expectedResult: true,
+
+			expectedError: nil,
+
+			finalAllowance: "500",
+		},
+
+		// --- Failure Cases ---
+
+		{
+
+			testName: "Failure - Invalid delta (non-numeric)",
+
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+
+				ctx.GetKYCReturns(true, nil)
+
+			},
+
+			spender: "2da4c4908a393a387b728206b18388bc529fa8d7",
+
+			delta: "invalid-delta",
+
+			expectedResult: false,
+
+			expectedError: ginierr.ErrInvalidAmount("invalid-delta"),
+		},
+
+		{
+
+			testName: "Failure - Error fetching current allowance",
+
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+
+				// Force error in GetAllowance by not initializing the contract
+
+				ctx.GetStateStub = func(key string) ([]byte, error) {
+
+					return nil, fmt.Errorf("state not found")
+
+				}
+
+			},
+
+			spender: "2da4c4908a393a387b728206b18388bc529fa8d7",
+
+			delta: "100",
+
+			expectedResult: false,
+
+			expectedError: fmt.Errorf("failed to fetch allowance"),
+		},
+	}
+
+	for _, tt := range tests {
+
+		tt := tt
+
+		t.Run(tt.testName, func(t *testing.T) {
+
+			t.Parallel()
+
+			transactionContext := &mocks.TransactionContext{}
+
+			giniContract := &chaincode.SmartContract{}
+
+			worldState := map[string][]byte{}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+
+				tt.setupContext(transactionContext, worldState, giniContract)
+
+			}
+
+			result, err := giniContract.IncreaseAllowance(transactionContext, tt.spender, tt.delta)
+
+			if tt.expectedError != nil {
+
+				require.Error(t, err)
+
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+
+				require.Equal(t, tt.expectedResult, result)
+
+			} else {
+
+				require.NoError(t, err)
+
+				require.Equal(t, tt.expectedResult, result)
+
+				owner, err := helper.GetUserId(transactionContext)
+
+				require.NoError(t, err)
+
+				allowance, err := giniContract.Allowance(transactionContext, owner, tt.spender)
+
+				require.NoError(t, err)
+
+				require.Equal(t, tt.finalAllowance, allowance)
+
+			}
+
+		})
+
+	}
+
+}
+
 func TestAllowance(t *testing.T) {
 	t.Parallel()
 
