@@ -387,7 +387,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 			return false, err
 		}
 		gatewayMaxGasFee, ok := big.NewInt(0).SetString(strGatewayMaxGasFee, 10)
-		if !ok || gatewayMaxGasFee.Cmp(big.NewInt(0)) != 1 {
+		if !ok || gatewayMaxGasFee.Cmp(big.NewInt(0)) < 0 {
 			return false, ginierr.ErrInvalidAmount(strGatewayMaxGasFee)
 		}
 
