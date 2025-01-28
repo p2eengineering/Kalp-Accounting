@@ -94,67 +94,46 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	return contractAddress, nil
 }
 
-func GetGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface) ([]string, error) {
-	iterator, e := ctx.GetStateByPartialCompositeKey(constants.UserRolePrefix, []string{})
-	if e != nil {
-		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get data for gateway admin: %v", e), http.StatusInternalServerError)
-		logger.Log.Errorf(err.FullError())
-		return nil, err
-	}
-	defer iterator.Close()
-
-	gatewayAdmins := []string{}
-
-	for iterator.HasNext() {
-		response, e := iterator.Next()
-		if e != nil {
-			err := ginierr.NewInternalError(e, fmt.Sprintf("error reading next item: %v", e), http.StatusInternalServerError)
-			logger.Log.Errorf(err.FullError())
-			return nil, err
-		}
-
-		var userRole models.UserRole
-		if err := json.Unmarshal(response.Value, &userRole); err != nil {
-			return nil, fmt.Errorf("failed to parse user role data: %v", err)
-		}
-
-		if userRole.Role == constants.KalpGateWayAdminRole {
-			gatewayAdmins = append(gatewayAdmins, userRole.Id)
-		}
-	}
-
-	return gatewayAdmins, nil
-}
 
 func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (bool, error) {
-	prefix := constants.UserRolePrefix
-	iterator, e := ctx.GetStateByPartialCompositeKey(prefix, []string{userID, constants.UserRoleMap})
+    // Construct the key to fetch the gateway admin role
+	key, e := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{userID})
 	if e != nil {
-		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get data for gateway admin: %v", e), http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
-	defer iterator.Close()
 
-	for iterator.HasNext() {
-		response, e := iterator.Next()
-		if e != nil {
-			err := ginierr.NewInternalError(e, fmt.Sprintf("error reading next item: %v", e), http.StatusInternalServerError)
-			logger.Log.Errorf(err.FullError())
-			return false, err
-		}
+    // Fetch the state from the context
+    data, err := ctx.GetState(key)
+    if err != nil {
+        wrappedErr := ginierr.NewInternalError(err, fmt.Sprintf("Failed to fetch gateway admin data for userID: %s", userID), http.StatusInternalServerError)
+        logger.Log.Errorf(wrappedErr.FullError())
+        return false, wrappedErr
+    }
 
-		var userRole models.UserRole
-		if err := json.Unmarshal(response.Value, &userRole); err != nil {
-			return false, fmt.Errorf("failed to parse user role data: %v", err)
-		}
+    if data == nil {
+        // No data found for the given key
+        logger.Log.Infof("No data found for userID: %s", userID)
+        return false, nil
+    }
 
-		if userRole.Id == userID && userRole.Role == constants.KalpGateWayAdminRole {
-			return true, nil
-		}
-	}
+    // Unmarshal the state data into a UserRole model
+    var userRole models.UserRole
+    if err := json.Unmarshal(data, &userRole); err != nil {
+        wrappedErr := ginierr.NewInternalError(err, "Failed to unmarshal user role data", http.StatusInternalServerError)
+        logger.Log.Errorf(wrappedErr.FullError())
+        return false, wrappedErr
+    }
 
-	return false, nil
+    // Check if the user has the Gateway Admin role
+    if userRole.Id == userID && userRole.Role == constants.KalpGateWayAdminRole {
+        return true, nil
+    }
+
+    // No matching role found
+    logger.Log.Infof("No Gateway Admin role found for userID: %s", userID)
+    return false, nil
 }
 
 func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
@@ -204,6 +183,13 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 
 	logger.Log.Infof("Mint invoked.... with arguments", addresses, amounts)
 
+	if len(addresses) < 2 || len(amounts) < 2 {
+		return ginierr.New("addresses and amounts arrays cannot be empty", http.StatusBadRequest)
+	}
+	if len(addresses) != len(amounts) {
+		return ginierr.New("length of addresses and amounts arrays must be equal", http.StatusBadRequest)
+	}
+
 	accAmount1, ok := big.NewInt(0).SetString(amounts[0], 10)
 	if !ok {
 		return ginierr.ErrConvertingAmountToBigInt(amounts[0])
@@ -215,7 +201,7 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 	if !ok {
 		return ginierr.ErrConvertingAmountToBigInt(amounts[1])
 	}
-	if accAmount1.Cmp(big.NewInt(0)) != 1 {
+	if accAmount2.Cmp(big.NewInt(0)) != 1 {
 		return ginierr.ErrInvalidAmount(amounts[1])
 	}
 
@@ -425,31 +411,41 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 
 	approvalByte, e := sdk.GetState(approvalKey)
 	if e != nil {
-		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to read current balance of owner with address %s and spender with address %s : %v", owner, spender, e), http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to read current allowance of owner with address %s and spender with address %s : %v", owner, spender, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return err
 	}
-	var approval models.Allow
-	if approvalByte != nil {
-		e = json.Unmarshal(approvalByte, &approval)
-		if e != nil {
-			err := ginierr.NewInternalError(e, fmt.Sprintf("failed to unmarshal balance for owner address : %v and spender address: %v: %v", owner, spender, e), http.StatusInternalServerError)
-			logger.Log.Errorf(err.FullError())
-			return err
-		}
-		approvalAmount, s := big.NewInt(0).SetString(approval.Amount, 10)
-		if !s {
-			return ginierr.ErrConvertingAmountToBigInt(approval.Amount)
-		}
-		amountSpent, s := big.NewInt(0).SetString(spent, 10)
-		if !s {
-			return ginierr.ErrConvertingAmountToBigInt(spent)
-		}
-		if amountSpent.Cmp(approvalAmount) == 1 {
-			return fmt.Errorf("the amount spent :%s , is greater than allowance :%s ", spent, approval.Amount)
-		}
-		approval.Amount = fmt.Sprint(approvalAmount.Sub(approvalAmount, amountSpent))
+
+	if approvalByte == nil {
+		err := ginierr.New(fmt.Sprintf("no allowance exists for owner with address %s and spender with address %s", owner, spender), http.StatusBadRequest)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
+
+	var approval models.Allow
+	e = json.Unmarshal(approvalByte, &approval)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to unmarshal allowance for owner address : %s and spender address: %s: %v", owner, spender, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	approvalAmount, s := big.NewInt(0).SetString(approval.Amount, 10)
+	if !s {
+		return ginierr.ErrConvertingAmountToBigInt(approval.Amount)
+	}
+
+	amountSpent, s := big.NewInt(0).SetString(spent, 10)
+	if !s {
+		return ginierr.ErrConvertingAmountToBigInt(spent)
+	}
+
+	if amountSpent.Cmp(approvalAmount) == 1 {
+		return fmt.Errorf("the amount spent :%s, is greater than allowance :%s", spent, approval.Amount)
+	}
+
+	approval.Amount = fmt.Sprint(approvalAmount.Sub(approvalAmount, amountSpent))
+
 	approvalJSON, err := json.Marshal(approval)
 	if err != nil {
 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
@@ -461,6 +457,7 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 		logger.Log.Errorf(err.FullError())
 		return err
 	}
+
 	return nil
 }
 
@@ -474,7 +471,7 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	if err != nil {
 		return false, ginierr.New("error in marshaling user role: "+role, http.StatusInternalServerError)
 	}
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
+	key, e := ctx.CreateCompositeKey(role, []string{userRole.Id})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key: user ID '%s', role '%s'", userRole.Id, userRole.Role), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -486,28 +483,4 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 		return false, err
 	}
 	return true, nil
-}
-
-func GetUserRoles(ctx kalpsdk.TransactionContextInterface, id string) (string, error) {
-
-	key, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{id, constants.UserRoleMap})
-	if err != nil {
-		return "", fmt.Errorf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, err)
-	}
-
-	userJSON, err := ctx.GetState(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to read: %v", err)
-	}
-	if userJSON == nil {
-		return "", nil
-	}
-
-	var userRole models.UserRole
-	err = json.Unmarshal(userJSON, &userRole)
-	if err != nil {
-		return "", fmt.Errorf("unable to unmarshal user role struct : %v", err)
-	}
-
-	return userRole.Role, nil
 }
