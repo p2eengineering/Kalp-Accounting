@@ -41,7 +41,11 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, ginierr.New(fmt.Sprintf("cannot initialize again,%s already set: %s", constants.SymbolKey, string(bytes)), http.StatusBadRequest)
 	}
 
-	if !helper.IsContractAddress(vestingContractAddress) {
+	isContract, err := helper.IsContractAddress(vestingContractAddress)
+	if err != nil {
+		return false, err
+	}
+	if !isContract {
 		return false, ginierr.ErrInvalidContractAddress(vestingContractAddress)
 	}
 
@@ -120,7 +124,12 @@ func (s *SmartContract) SetGatewayAdmin(ctx kalpsdk.TransactionContextInterface,
 		return fmt.Errorf("user Id can not be null")
 	}
 
-	if !helper.IsUserAddress(userRole.Id) {
+	isUser, err := helper.IsUserAddress(userRole.Id)
+	if err != nil {
+		return err
+	}
+
+	if !isUser {
 		return ginierr.ErrInvalidUserAddress(userRole.Id)
 	}
 
@@ -141,7 +150,7 @@ func (s *SmartContract) SetGatewayAdmin(ctx kalpsdk.TransactionContextInterface,
 		return ginierr.New("User is not KYC'd", http.StatusBadRequest)
 	}
 
-	key, e := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{userRole.Id})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.KalpGateWayAdminRole})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -171,7 +180,7 @@ func (s *SmartContract) DeleteGatewayAdmin(ctx kalpsdk.TransactionContextInterfa
 		return ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized)
 	}
 
-	key, e := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{userID})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KalpGateWayAdminRole})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -298,7 +307,11 @@ func (s *SmartContract) SetGasFees(ctx kalpsdk.TransactionContextInterface, gasF
 func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
 	logger.Log.Infoln("BalanceOf... with arguments", account)
 
-	if !helper.IsValidAddress(account) {
+	isValidAddress, err := helper.IsValidAddress(account)
+	if err != nil {
+		return "0", err
+	}
+	if !isValidAddress {
 		return "0", ginierr.ErrInvalidAddress(account)
 	}
 	amt, err := internal.GetTotalUTXO(ctx, account)
@@ -370,7 +383,11 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
 
-	if helper.IsValidAddress(recipient) {
+	isValidAddress, err := helper.IsValidAddress(recipient)
+	if err != nil {
+		return false, err
+	}
+	if isValidAddress {
 		if amountInInt.Cmp(gasFees) < 0 {
 			return false, ginierr.ErrInvalidAmount(amount)
 		}
@@ -382,7 +399,12 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 			return false, fmt.Errorf("failed to unmarshal recipient: %v", err)
 		}
 
-		if !helper.IsUserAddress(gasDeductionAccount.Sender) {
+		isUser, err := helper.IsUserAddress(gasDeductionAccount.Sender)
+		if err != nil {
+			return false, err
+		}
+
+		if !isUser {
 			return false, ginierr.ErrInvalidAddress(gasDeductionAccount.Sender)
 		}
 
@@ -395,7 +417,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 			return false, err
 		}
 		gatewayMaxGasFee, ok := big.NewInt(0).SetString(strGatewayMaxGasFee, 10)
-		if !ok || gatewayMaxGasFee.Cmp(big.NewInt(0)) != 1 {
+		if !ok || gatewayMaxGasFee.Cmp(big.NewInt(0)) < 0{
 			return false, ginierr.ErrInvalidAmount(strGatewayMaxGasFee)
 		}
 
@@ -435,17 +457,41 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		sender = calledContractAddress
 	}
 
-	logger.Log.Info("signer ==> ", signer, sender, recipient, helper.IsValidAddress(sender), helper.IsValidAddress(recipient))
-
-	if helper.IsContractAddress(signer) {
+	isContract, err := helper.IsContractAddress(signer)
+	if err != nil {
+		return false, err
+	}
+	if isContract {
 		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
-	} else if !helper.IsUserAddress(signer) {
+	}
+
+	isUser, err := helper.IsUserAddress(signer)
+	if err != nil {
+		return false, err
+	}
+
+	if !isUser {
 		return false, ginierr.ErrInvalidAddress(signer)
 	}
-	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
+
+	isSenderContract, err := helper.IsContractAddress(sender)
+	if err != nil {
+		return false, err
+	}
+
+	isRecipientContract, err := helper.IsContractAddress(recipient)
+	if err != nil {
+		return false, err
+	}
+
+	if isSenderContract && isRecipientContract {
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
-	if !helper.IsValidAddress(sender) {
+	isValidAddress, err = helper.IsValidAddress(sender)
+	if err != nil {
+		return false, err
+	}
+	if !isValidAddress {
 		return false, ginierr.ErrInvalidAddress(sender)
 	}
 
@@ -581,19 +627,46 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, err
 	}
 
-	if helper.IsContractAddress(signer) {
+	isContract, err := helper.IsContractAddress(signer)
+	if err != nil {
+		return false, err
+	}
+	if isContract {
 		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
 	}
-	if !helper.IsUserAddress(signer) {
+	isUser, err := helper.IsUserAddress(signer)
+	if err != nil {
+		return false, err
+	}
+
+	if !isUser {
 		return false, ginierr.ErrInvalidUserAddress(signer)
 	}
-	if helper.IsContractAddress(sender) && helper.IsContractAddress(recipient) {
+	isSenderContract, err := helper.IsContractAddress(sender)
+	if err != nil {
+		return false, err
+	}
+
+	isRecipientContract, err := helper.IsContractAddress(recipient)
+	if err != nil {
+		return false, err
+	}
+
+	if isSenderContract && isRecipientContract {
 		return false, ginierr.New("both sender and recipient cannot be contracts", http.StatusBadRequest)
 	}
-	if !helper.IsValidAddress(sender) {
+	isValidAddress, err := helper.IsValidAddress(sender)
+	if err != nil {
+		return false, err
+	}
+	if !isValidAddress {
 		return false, ginierr.ErrInvalidAddress(sender)
 	}
-	if !helper.IsValidAddress(recipient) {
+	isValidAddress, err = helper.IsValidAddress(recipient)
+	if err != nil {
+		return false, err
+	}
+	if !isValidAddress {
 		return false, ginierr.ErrInvalidAddress(recipient)
 	}
 	if !helper.IsAmountProper(amount) {
@@ -629,7 +702,11 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 			return false, err
 		}
 	}
-	if !helper.IsValidAddress(spender) {
+	isValidAddress, err = helper.IsValidAddress(spender)
+	if err != nil {
+		return false, err
+	}
+	if !isValidAddress {
 		return false, ginierr.ErrInvalidAddress(spender)
 	}
 

@@ -94,46 +94,42 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 	return contractAddress, nil
 }
 
-
 func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (bool, error) {
-    // Construct the key to fetch the gateway admin role
-	key, e := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{userID})
+	// Construct the key to fetch the gateway admin role
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KalpGateWayAdminRole})
 	if e != nil {
-		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s, role %s and userID %s: %v", constants.UserRolePrefix, constants.KalpGateWayAdminRole, userID, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
 
-    // Fetch the state from the context
-    data, err := ctx.GetState(key)
-    if err != nil {
-        wrappedErr := ginierr.NewInternalError(err, fmt.Sprintf("Failed to fetch gateway admin data for userID: %s", userID), http.StatusInternalServerError)
-        logger.Log.Errorf(wrappedErr.FullError())
-        return false, wrappedErr
-    }
+	// Fetch the state from the context
+	data, err := ctx.GetState(key)
+	if err != nil {
+		wrappedErr := ginierr.NewInternalError(err, fmt.Sprintf("Failed to fetch gateway admin role for userID: %s", userID), http.StatusInternalServerError)
+		logger.Log.Errorf(wrappedErr.FullError())
+		return false, wrappedErr
+	}
 
-    if data == nil {
-        // No data found for the given key
-        logger.Log.Infof("No data found for userID: %s", userID)
-        return false, nil
-    }
+	if data == nil {
+		// No data found for the given key
+		logger.Log.Infof("No role exists for userID: %s", userID)
+		return false, nil
+	}
 
-    // Unmarshal the state data into a UserRole model
-    var userRole models.UserRole
-    if err := json.Unmarshal(data, &userRole); err != nil {
-        wrappedErr := ginierr.NewInternalError(err, "Failed to unmarshal user role data", http.StatusInternalServerError)
-        logger.Log.Errorf(wrappedErr.FullError())
-        return false, wrappedErr
-    }
+	// Unmarshal the state data into a UserRole model
+	var userRole models.UserRole
+	if err := json.Unmarshal(data, &userRole); err != nil {
+		wrappedErr := ginierr.NewInternalError(err, "Failed to unmarshal user role data", http.StatusInternalServerError)
+		logger.Log.Errorf(wrappedErr.FullError())
+		return false, wrappedErr
+	}
 
-    // Check if the user has the Gateway Admin role
-    if userRole.Id == userID && userRole.Role == constants.KalpGateWayAdminRole {
-        return true, nil
-    }
-
-    // No matching role found
-    logger.Log.Infof("No Gateway Admin role found for userID: %s", userID)
-    return false, nil
+	// Check if the user has the Gateway Admin role
+	if userRole.Id == userID && userRole.Role == constants.KalpGateWayAdminRole {
+		return true, nil
+	}
+	return false, nil
 }
 
 func DenyAddress(ctx kalpsdk.TransactionContextInterface, address string) error {
@@ -182,10 +178,10 @@ func IsDenied(ctx kalpsdk.TransactionContextInterface, address string) (bool, er
 func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts []string) error {
 
 	logger.Log.Infof("Mint invoked.... with arguments", addresses, amounts)
-
-	if len(addresses) < 2 || len(amounts) < 2 {
-		return ginierr.New("addresses and amounts arrays cannot be empty", http.StatusBadRequest)
+	if len(addresses) != 2 || len(amounts) != 2 {
+		return ginierr.New("addresses and amounts arrays must each contain exactly 2 elements", http.StatusBadRequest)
 	}
+
 	if len(addresses) != len(amounts) {
 		return ginierr.New("length of addresses and amounts arrays must be equal", http.StatusBadRequest)
 	}
@@ -205,11 +201,20 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 		return ginierr.ErrInvalidAmount(amounts[1])
 	}
 
-	if !helper.IsValidAddress(addresses[0]) {
+	isValidAddress, err := helper.IsValidAddress(addresses[0])
+	if err != nil {
+		return err
+	}
+	if !isValidAddress {
 		return ginierr.ErrInvalidAddress(addresses[0])
 	}
-	if !helper.IsValidAddress(addresses[1]) {
-		return ginierr.ErrInvalidAddress(addresses[1])
+
+	isValidAddress, err = helper.IsValidAddress(addresses[1])
+	if err != nil {
+		return err
+	}
+	if !isValidAddress {
+		return ginierr.ErrInvalidAddress(addresses[0])
 	}
 
 	if bytes, e := ctx.GetState(constants.NameKey); e != nil {
@@ -417,7 +422,7 @@ func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spen
 	}
 
 	if approvalByte == nil {
-		err := ginierr.New(fmt.Sprintf("no allowance exists for owner with address %s and spender with address %s", owner, spender), http.StatusBadRequest)
+		err := ginierr.New(fmt.Sprintf("no allowance exists for owner with address %s and spender with address %s", owner, spender), http.StatusForbidden)
 		logger.Log.Errorf(err.FullError())
 		return err
 	}

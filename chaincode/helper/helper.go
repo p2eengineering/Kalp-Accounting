@@ -28,34 +28,58 @@ func ConvertToBigInt(value interface{}) (*big.Int, error) {
 
 }
 
-func IsValidAddress(address string) bool {
-	return IsUserAddress(address) || IsContractAddress(address)
-}
-
-func IsContractAddress(address string) bool {
+func IsValidAddress(address string) (bool, error) {
 	if address == "" {
-		return false
+		return false, ginierr.ErrEmptyAddress()
 	}
 
+	isUser, err1 := IsUserAddress(address)
+	isContract, err2 := IsContractAddress(address)
+	if err1 != nil || err2 != nil {
+		if err1 != nil {
+			return false, err1
+		} else {
+			return false, err2
+		}
+	}
+	
+	return isUser || isContract, nil
+}
+
+func IsContractAddress(address string) (bool, error) {
+	if address == "" {
+		return false, ginierr.ErrEmptyAddress()
+	}
+
+	// Validate against contract address regex
 	isValid, err := regexp.MatchString(constants.IsContractAddressRegex, address)
 	if err != nil {
 		logger.Log.Errorf("Error validating contract address: %v", err)
-		return false
+		return false, ginierr.ErrRegexValidationFailed("contract address", err)
 	}
-	return isValid
+
+	if !isValid {
+		return false, nil
+	}
+	return true, nil
 }
 
-func IsUserAddress(address string) bool {
+func IsUserAddress(address string) (bool, error) {
 	if address == "" {
-		return false
+		return false, ginierr.ErrEmptyAddress()
 	}
 
+	// Validate against user address regex
 	isValid, err := regexp.MatchString(constants.UserAddressRegex, address)
 	if err != nil {
 		logger.Log.Errorf("Error validating user address: %v", err)
-		return false
+		return false, ginierr.ErrRegexValidationFailed("user address", err)
 	}
-	return isValid
+
+	if !isValid {
+		return false, nil
+	}
+	return true, nil
 }
 
 func FindContractAddress(data string) string {
@@ -77,7 +101,12 @@ func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
 
 	completeId := string(decodeID)
 	userId := completeId[(strings.Index(completeId, "x509::CN=") + 9):strings.Index(completeId, ",")]
-	if !IsUserAddress(userId) {
+	isUser, err := IsUserAddress(userId)
+	if err != nil {
+		return "", fmt.Errorf("error validating user address: %w", err)
+	}
+
+	if !isUser {
 		return "", ginierr.ErrInvalidUserAddress(userId)
 	}
 	return userId, nil

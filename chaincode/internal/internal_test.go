@@ -1159,7 +1159,7 @@ func TestIsGatewayAdminAddress(t *testing.T) {
 			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
 				// Create composite key
-				key, _ := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184"})
+				key, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184", constants.KalpGateWayAdminRole})
 				// Set up a gateway admin role
 				data := []byte(`{"user":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"KalpGatewayAdmin"}`)
 				worldState[key] = data
@@ -1172,7 +1172,7 @@ func TestIsGatewayAdminAddress(t *testing.T) {
 			userID: "2da4c4908a393a387b728206b18388bc529fa8d7",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
 				// Create composite key
-				key, _ := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{"2da4c4908a393a387b728206b18388bc529fa8d7"})
+				key, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{"2da4c4908a393a387b728206b18388bc529fa8d7", constants.KalpGateWayAdminRole})
 				// Set up a regular user role (not a gateway admin)
 				data := []byte(`{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"User"}`)
 				worldState[key] = data
@@ -1201,7 +1201,7 @@ func TestIsGatewayAdminAddress(t *testing.T) {
 			expectedResult: false,
 			shouldError:    true,
 			errorCheck: func(err error) bool {
-				return strings.Contains(err.Error(), "Failed to fetch gateway admin data")
+				return strings.Contains(err.Error(), "Failed to fetch gateway admin role")
 			},
 		},
 		{
@@ -1209,7 +1209,7 @@ func TestIsGatewayAdminAddress(t *testing.T) {
 			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
 				// Create composite key
-				key, _ := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184"})
+				key, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184",constants.KalpGateWayAdminRole})
 				// Set invalid JSON data
 				worldState[key] = []byte("invalid json")
 			},

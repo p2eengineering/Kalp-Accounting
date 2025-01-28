@@ -40,6 +40,18 @@ var (
 	ErrMintingTokens            = New("error while minting tokens", http.StatusInternalServerError)
 )
 
+func ErrEmptyAddress() *CustomError {
+	return New("address cannot be empty", http.StatusBadRequest)
+}
+
+func ErrRegexValidationFailed(field string, err error) *CustomError {
+	return New(fmt.Sprintf("failed to validate %s due to regex error: %v", field, err), http.StatusInternalServerError)
+}
+
+func ErrAddressValidationFailed(address string, reason string) *CustomError {
+	return New(fmt.Sprintf("address validation failed for address: %s, reason: %s", address, reason), http.StatusBadRequest)
+}
+
 func ErrFailedToEmitEvent(event string) *CustomError {
 	return New(fmt.Sprintf("failed to emit event: %s", event), http.StatusInternalServerError)
 }

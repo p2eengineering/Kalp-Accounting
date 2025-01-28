@@ -797,7 +797,7 @@ func TestCase3(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
-	transactionContext.PutStateWithoutKYC("_KalpGatewayAdmin_0b87970433b22494faff1cc7a819e71bddc7880c_", []byte(`{"user":"` + "0b87970433b22494faff1cc7a819e71bddc7880c" + `","role":"KalpGatewayAdmin"}`))
+	transactionContext.PutStateWithoutKYC("_ID~UserRoleMap_0b87970433b22494faff1cc7a819e71bddc7880c_KalpGatewayAdmin_", []byte(`{"user":"`+"0b87970433b22494faff1cc7a819e71bddc7880c"+`","role":"KalpGatewayAdmin"}`))
 
 	transactionContext.PutStateWithoutKYC(constants.GasFeesKey, []byte("1"))
 	transactionContext.PutStateWithoutKYC(constants.VestingContractKey, []byte("klp-abc100-cc"))
@@ -1440,7 +1440,7 @@ func TestSetGatewayAdmin(t *testing.T) {
 				var userRole models.UserRole
 				require.NoError(t, json.Unmarshal([]byte(tt.roleData), &userRole))
 
-				roleKey, _ := transactionContext.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{userRole.Id})
+				roleKey, _ := transactionContext.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.KalpGateWayAdminRole})
 				storedData := worldState[roleKey]
 				require.NotNil(t, storedData)
 
@@ -1535,7 +1535,7 @@ func TestDeleteGatewayAdmin(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
-				roleKey, _ := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{constants.KalpFoundationAddress})
+				roleKey, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KalpFoundationAddress, constants.KalpGateWayAdminRole})
 				worldState[roleKey] = []byte(`{"user":"` + constants.KalpFoundationAddress + `","role":"KalpFoundation"}`)
 			},
 			userID:        constants.KalpFoundationAddress,
@@ -3613,8 +3613,8 @@ func TestTransfer(t *testing.T) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetKYCReturns(true, nil)
 				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
-				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","role":"KalpGatewayAdmin"}`), nil)
-			
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
 				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
 				worldState["gasFees"] = []byte("10")
 				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
@@ -3634,8 +3634,8 @@ func TestTransfer(t *testing.T) {
 				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
 				worldState["gasFees"] = []byte("10")
 				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
-				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","role":"KalpGatewayAdmin"}`), nil)
-			
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
 				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
 				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
 				ctx.GetStateReturnsOnCall(3, []byte("klp-abc1-cc"), nil)
@@ -3680,8 +3680,8 @@ func TestTransfer(t *testing.T) {
 				ctx.GetUserIDReturns("", nil)
 				ctx.GetKYCReturns(true, nil)
 				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
-				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","role":"KalpGatewayAdmin"}`), nil)
-			
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
 				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
 				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
 				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
@@ -3706,6 +3706,108 @@ func TestTransfer(t *testing.T) {
 			amount:       "500",
 			expectedBool: false,
 			expectedErr:  ginierr.ErrInvalidAddress("2da4c4908a393a387b728206b18388bc529fa8d71"),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.Transfer(transactionContext, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
+func TestTransfer1(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - failed to get gatewayMaxFee",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, nil, errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    `{"sender": "abd893b57a28463d4ce4573b7b71c062a7453a18"}`,
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf("failed to get gatewayMaxFee: err"),
+		},
+		{
+			testName: "Error - invalid amount passed",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("100a"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    `{"sender": "abd893b57a28463d4ce4573b7b71c062a7453a18"}`,
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrInvalidAmount("100a"),
+		},
+		{
+			testName: "Error - invalid amount passed",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("100"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    `{"sender": "abd893b57a28463d4ce4573b7b71c062a7453a18"}`,
+			amount:       "500a",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrInvalidAmount("500a"),
 		},
 	}
 

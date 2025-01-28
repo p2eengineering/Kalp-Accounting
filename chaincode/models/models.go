@@ -42,9 +42,14 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amoun
 	if err != nil {
 		return ginierr.ErrFailedToGetPublicAddress
 	}
-	if !helper.IsValidAddress(spender) {
+	isValidAddress, err := helper.IsValidAddress(spender)
+	if err != nil {
+		return err
+	}
+	if !isValidAddress {
 		return ginierr.ErrInvalidAddress(spender)
 	}
+	
 	if !helper.IsAmountProper(amount) {
 		return ginierr.ErrInvalidAmount(amount)
 	}
