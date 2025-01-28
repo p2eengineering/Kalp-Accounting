@@ -64,9 +64,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, ginierr.New("Gateway Admin is not KYC'd", http.StatusBadRequest)
 	}
 
-	if _, err := internal.InitializeRoles(ctx, constants.KalpFoundationAddress, constants.KalpFoundationRole); err != nil {
-		return false, err
-	}
 	if _, err := internal.InitializeRoles(ctx, constants.KalpGateWayAdminAddress, constants.KalpGateWayAdminRole); err != nil {
 		return false, err
 	}
