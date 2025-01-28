@@ -7042,6 +7042,165 @@ func TestInitialize_NegativeScenarios(t *testing.T) {
 	}
 }
 
+func TestTransferFrom8(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		sender       string
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    constants.KalpFoundationAddress,
+			sender:       constants.KalpFoundationAddress,
+			amount:       "10",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - None of the sender, spender, or signer is KYC'd",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				allow := models.Allow{
+					Owner:   "0x123456789",
+					Amount:  "1000",
+					DocType: "Allowance",
+					Spender: "0x987654321",
+				}
+				jsonData, _ := json.Marshal(allow)
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetStateReturnsOnCall(0, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
+				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, false, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.GetStateReturnsOnCall(6, jsonData, nil)
+				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    constants.KalpFoundationAddress,
+			sender:       constants.KalpFoundationAddress,
+			amount:       "10",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			contract.Contract.Name = "klp-abc101-cc"
+
+			worldState := map[string][]byte{}
+			transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+				// Simulated mock data based on the query string
+				mockWorldState := []map[string]interface{}{
+					{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+				}
+
+				// Filter the mock world state based on the queryString if necessary.
+				// For simplicity, assuming all records match the query string.
+				filteredData := make([]*queryresult.KV, len(mockWorldState))
+				for i, record := range mockWorldState {
+					recordBytes, err := json.Marshal(record)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal record: %v", err)
+					}
+					filteredData[i] = &queryresult.KV{
+						Key:   "klp-abc101-cc",
+						Value: recordBytes,
+					}
+				}
+
+				// Mock iterator
+				mockIterator := &mocks.StateQueryIterator{}
+				iteratorIndex := 0
+
+				// Define HasNext and Next methods for the iterator
+				mockIterator.HasNextStub = func() bool {
+					return iteratorIndex < len(filteredData)
+				}
+				mockIterator.NextStub = func() (*queryresult.KV, error) {
+					if iteratorIndex < len(filteredData) {
+						item := filteredData[iteratorIndex]
+						iteratorIndex++
+						return item, nil
+					}
+					return nil, fmt.Errorf("no more items")
+				}
+				mockIterator.CloseStub = func() error {
+					// No operation needed for closing the mock iterator
+					return nil
+				}
+
+				return mockIterator, nil
+			}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.TransferFrom(transactionContext, tt.sender, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
 // func TestCase2(t *testing.T) {
 // 	t.Parallel()
 // 	transactionContext := &mocks.TransactionContext{}
