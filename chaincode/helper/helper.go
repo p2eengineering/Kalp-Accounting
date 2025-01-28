@@ -35,14 +35,12 @@ func IsValidAddress(address string) (bool, error) {
 
 	isUser, err1 := IsUserAddress(address)
 	isContract, err2 := IsContractAddress(address)
-	if err1 != nil || err2 != nil {
-		if err1 != nil {
-			return false, err1
-		} else {
-			return false, err2
-		}
+	if err1 != nil {
+		return false, err1
+	} else if err2 != nil {
+		return false, err2
 	}
-	
+
 	return isUser || isContract, nil
 }
 
