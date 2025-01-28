@@ -156,96 +156,6 @@ func TestInitialize(t *testing.T) {
 	require.Equal(t, constants.InitialVestingContractBalance, balance)
 }
 
-func TestInitialize1(t *testing.T) {
-	t.Parallel()
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	// ****************START define helper functions*********************
-	worldState := map[string][]byte{}
-	transactionContext.CreateCompositeKeyStub = func(s1 string, s2 []string) (string, error) {
-		key := "_" + s1 + "_"
-		for _, s := range s2 {
-			key += s + "_"
-		}
-		return key, nil
-	}
-	transactionContext.PutStateWithoutKYCStub = func(s string, b []byte) error {
-		worldState[s] = b
-		return nil
-	}
-	transactionContext.GetQueryResultStub = func(s string) (kalpsdk.StateQueryIteratorInterface, error) {
-		var docType string
-		var account string
-
-		// finding doc type
-		re := regexp.MustCompile(`"docType"\s*:\s*"([^"]+)"`)
-		match := re.FindStringSubmatch(s)
-
-		if len(match) > 1 {
-			docType = match[1]
-		}
-
-		// finding account
-		re = regexp.MustCompile(`"account"\s*:\s*"([^"]+)"`)
-		match = re.FindStringSubmatch(s)
-
-		if len(match) > 1 {
-			account = match[1]
-		}
-
-		iteratorData := struct {
-			index int
-			data  []queryresult.KV
-		}{}
-		for key, val := range worldState {
-			if strings.Contains(key, docType) && strings.Contains(key, account) {
-				iteratorData.data = append(iteratorData.data, queryresult.KV{Key: key, Value: val})
-			}
-		}
-		iterator := &mocks.StateQueryIterator{}
-		iterator.HasNextStub = func() bool {
-			return iteratorData.index < len(iteratorData.data)
-		}
-		iterator.NextStub = func() (*queryresult.KV, error) {
-			if iteratorData.index < len(iteratorData.data) {
-				iteratorData.index++
-				return &iteratorData.data[iteratorData.index-1], nil
-			}
-			return nil, fmt.Errorf("iterator out of bounds")
-		}
-		return iterator, nil
-	}
-	transactionContext.GetStateStub = func(s string) ([]byte, error) {
-		data, found := worldState[s]
-		if found {
-			return data, nil
-		}
-		return nil, nil
-	}
-	transactionContext.DelStateWithoutKYCStub = func(s string) error {
-		delete(worldState, s)
-		return nil
-	}
-	transactionContext.GetTxIDStub = func() string {
-		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-		length := 10
-		rand.Seed(time.Now().UnixNano()) // Seed the random number generator
-		result := make([]byte, length)
-		for i := range result {
-			result[i] = charset[rand.Intn(len(charset))]
-		}
-		return string(result)
-	}
-	// ****************END define helper functions*********************
-
-	SetUserID(transactionContext, constants.KalpFoundationAddress)
-	transactionContext.GetKYCReturns(true, nil)
-	transactionContext.PutStateWithoutKYCReturnsOnCall(8, fmt.Errorf("err"))
-	_, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
-	require.Error(t, err)
-	require.Equal(t, string("failed to put data, status code:500"), err.Error())
-}
-
 func TestCase1(t *testing.T) {
 	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
@@ -7354,6 +7264,98 @@ func TestTransfer10(t *testing.T) {
 		})
 	}
 }
+
+
+func TestInitialize1(t *testing.T) {
+	t.Parallel()
+	transactionContext := &mocks.TransactionContext{}
+	giniContract := chaincode.SmartContract{}
+	// ****************START define helper functions*********************
+	worldState := map[string][]byte{}
+	transactionContext.CreateCompositeKeyStub = func(s1 string, s2 []string) (string, error) {
+		key := "_" + s1 + "_"
+		for _, s := range s2 {
+			key += s + "_"
+		}
+		return key, nil
+	}
+	transactionContext.PutStateWithoutKYCStub = func(s string, b []byte) error {
+		worldState[s] = b
+		return nil
+	}
+	transactionContext.GetQueryResultStub = func(s string) (kalpsdk.StateQueryIteratorInterface, error) {
+		var docType string
+		var account string
+
+		// finding doc type
+		re := regexp.MustCompile(`"docType"\s*:\s*"([^"]+)"`)
+		match := re.FindStringSubmatch(s)
+
+		if len(match) > 1 {
+			docType = match[1]
+		}
+
+		// finding account
+		re = regexp.MustCompile(`"account"\s*:\s*"([^"]+)"`)
+		match = re.FindStringSubmatch(s)
+
+		if len(match) > 1 {
+			account = match[1]
+		}
+
+		iteratorData := struct {
+			index int
+			data  []queryresult.KV
+		}{}
+		for key, val := range worldState {
+			if strings.Contains(key, docType) && strings.Contains(key, account) {
+				iteratorData.data = append(iteratorData.data, queryresult.KV{Key: key, Value: val})
+			}
+		}
+		iterator := &mocks.StateQueryIterator{}
+		iterator.HasNextStub = func() bool {
+			return iteratorData.index < len(iteratorData.data)
+		}
+		iterator.NextStub = func() (*queryresult.KV, error) {
+			if iteratorData.index < len(iteratorData.data) {
+				iteratorData.index++
+				return &iteratorData.data[iteratorData.index-1], nil
+			}
+			return nil, fmt.Errorf("iterator out of bounds")
+		}
+		return iterator, nil
+	}
+	transactionContext.GetStateStub = func(s string) ([]byte, error) {
+		data, found := worldState[s]
+		if found {
+			return data, nil
+		}
+		return nil, nil
+	}
+	transactionContext.DelStateWithoutKYCStub = func(s string) error {
+		delete(worldState, s)
+		return nil
+	}
+	transactionContext.GetTxIDStub = func() string {
+		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+		length := 10
+		rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+		result := make([]byte, length)
+		for i := range result {
+			result[i] = charset[rand.Intn(len(charset))]
+		}
+		return string(result)
+	}
+	// ****************END define helper functions*********************
+
+	SetUserID(transactionContext, constants.KalpFoundationAddress)
+	transactionContext.GetKYCReturns(true, nil)
+	transactionContext.PutStateWithoutKYCReturnsOnCall(8, fmt.Errorf("err"))
+	_, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
+	require.Error(t, err)
+	require.Equal(t, string("failed to put data, status code:500"), err.Error())
+}
+
 
 // func TestCase2(t *testing.T) {
 // 	t.Parallel()
