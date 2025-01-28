@@ -3137,6 +3137,269 @@ func TestDecreaseAllowance(t *testing.T) {
 	}
 }
 
+func TestSetGatewayMaxFee(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName      string
+		setupContext  func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		gatewayMaxFee string
+		expectedError error
+	}{
+		{
+			testName: "Success - Set gateway max fee by foundation",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			gatewayMaxFee: "2000000000000000",
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - Non-foundation user attempts to set gateway max fee",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				// First initialize with foundation
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+
+				// Switch to valid non-foundation user
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.GetKYCReturns(true, nil) // Maintain valid KYC status
+			},
+			gatewayMaxFee: "2000000000000000",
+			expectedError: ginierr.New("Only Kalp Foundation can set the gatewayMaxFee", http.StatusUnauthorized),
+		},
+		{
+			testName: "Failure - Invalid numeric format",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			gatewayMaxFee: "invalid_fee",
+			expectedError: ginierr.ErrInvalidAmount("invalid_fee"),
+		},
+		{
+			testName: "Failure - Negative fee",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			gatewayMaxFee: "-100",
+			expectedError: ginierr.ErrInvalidAmount("-100"),
+		},
+		{
+			testName: "Failure - PutState error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+				ctx.PutStateWithoutKYCReturns(errors.New("failed to put state"))
+			},
+			gatewayMaxFee: "2000000000000000",
+			expectedError: ginierr.ErrFailedToPutState(errors.New("failed to put state")),
+		},
+		{
+			testName: "Success - Set zero gateway max fee",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			gatewayMaxFee: "0",
+			expectedError: nil,
+		},
+		{
+			testName: "Success - Set very large gateway max fee",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, constants.KalpFoundationAddress)
+				ctx.GetKYCReturns(true, nil)
+				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
+				require.NoError(t, err)
+				require.True(t, ok)
+			},
+			gatewayMaxFee: "999999999999999999999999999999",
+			expectedError: nil,
+		},
+		{
+			testName: "Failure - GetUserID error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				clientIdentity := &mocks.ClientIdentity{}
+				clientIdentity.GetIDReturns("", errors.New("failed to get ID"))
+				ctx.GetClientIdentityReturns(clientIdentity)
+			},
+			gatewayMaxFee: "2000000000000000",
+			expectedError: ginierr.ErrFailedToGetPublicAddress,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			smartContract := &chaincode.SmartContract{}
+			worldState := make(map[string][]byte)
+
+			// Configure stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+			transactionContext.PutStateWithoutKYCStub = func(key string, value []byte) error {
+				worldState[key] = value
+				return nil
+			}
+			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
+				key := "_" + prefix + "_"
+				for _, attr := range attrs {
+					key += attr + "_"
+				}
+				return key, nil
+			}
+			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
+				iterator := &mocks.StateQueryIterator{}
+				prefix := "_" + objectType + "_"
+				if len(keys) > 0 {
+					prefix += keys[0] + "_"
+				}
+
+				var kvs []queryresult.KV
+				for key, value := range worldState {
+					if strings.HasPrefix(key, prefix) {
+						kvs = append(kvs, queryresult.KV{
+							Key:   key,
+							Value: value,
+						})
+					}
+				}
+
+				index := 0
+				iterator.HasNextCalls(func() bool {
+					return index < len(kvs)
+				})
+				iterator.NextCalls(func() (*queryresult.KV, error) {
+					if index < len(kvs) {
+						kv := kvs[index]
+						index++
+						return &kv, nil
+					}
+					return nil, nil
+				})
+				return iterator, nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, smartContract)
+			}
+
+			// Execute the function
+			err := smartContract.SetGatewayMaxFee(transactionContext, tt.gatewayMaxFee)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+				// Verify state update
+				require.Equal(t, []byte(tt.gatewayMaxFee), worldState[constants.GatewayMaxFee])
+			}
+		})
+	}
+}
+
+func TestGetGatewayMaxFee(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName       string
+		setupContext   func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		expectedResult string
+		expectedError  error
+	}{
+		{
+			testName: "Success - Returns set gateway max fee",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, _ *chaincode.SmartContract) {
+				worldState[constants.GatewayMaxFee] = []byte("1000000000000000")
+			},
+			expectedResult: "1000000000000000",
+			expectedError:  nil,
+		},
+		{
+			testName: "Failure - Gateway max fee not set",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, _ *chaincode.SmartContract) {
+				// Intentionally leave worldState empty
+			},
+			expectedResult: "",
+			expectedError:  fmt.Errorf("gatewayMaxFee not set"),
+		},
+		{
+			testName: "Failure - GetState error",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, _ *chaincode.SmartContract) {
+				ctx.GetStateStub = func(key string) ([]byte, error) {
+					if key == constants.GatewayMaxFee {
+						return nil, errors.New("state retrieval failure")
+					}
+					return worldState[key], nil
+				}
+			},
+			expectedResult: "",
+			expectedError:  fmt.Errorf("failed to get gatewayMaxFee: state retrieval failure"),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			smartContract := &chaincode.SmartContract{}
+			worldState := make(map[string][]byte)
+
+			// Configure default stubs
+			transactionContext.GetStateStub = func(key string) ([]byte, error) {
+				return worldState[key], nil
+			}
+
+			// Apply test-specific context setup
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, smartContract)
+			}
+
+			// Execute the function
+			result, err := smartContract.GetGatewayMaxFee(transactionContext)
+
+			// Assert results
+			if tt.expectedError != nil {
+				require.EqualError(t, err, tt.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedResult, result)
+			}
+		})
+	}
+}
+
 func TestAllowance(t *testing.T) {
 	t.Parallel()
 
