@@ -472,7 +472,7 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	if err != nil {
 		return false, ginierr.New("error in marshaling user role: "+role, http.StatusInternalServerError)
 	}
-	key, e := ctx.CreateCompositeKey(role, []string{userRole.Id})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, role})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key: user ID '%s', role '%s'", userRole.Id, userRole.Role), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
