@@ -10,7 +10,7 @@ help:
 
 test:
 	rm -f coverage.out
-	go test -coverprofile=coverage.out ./...
+	go test ./chaincode -coverprofile=coverage.out ./...
 
 cover:
 	go tool cover -html=coverage.out

@@ -968,3 +968,79 @@ func (s *SmartContract) IncreaseAllowance(ctx kalpsdk.TransactionContextInterfac
 
 	return true, nil
 }
+
+func (s *SmartContract) DecreaseAllowance(ctx kalpsdk.TransactionContextInterface, spender string, delta string) (bool, error) {
+
+	logger.Log.Infoln("DecreaseAllowance invoked with spender:", spender, "delta:", delta)
+
+	signer, err := helper.GetUserId(ctx)
+
+	if err != nil {
+
+		return false, ginierr.ErrFailedToGetPublicAddress
+
+	}
+
+	// Fetch current allowance
+
+	current, err := models.GetAllowance(ctx, signer, spender)
+
+	if err != nil {
+
+		logger.Log.Infof("Error fetching current allowance: %v", err)
+
+		return false, fmt.Errorf("failed to fetch allowance: %w", err)
+
+	}
+
+	// Validate delta
+
+	deltaInt := new(big.Int)
+
+	if _, ok := deltaInt.SetString(delta, 10); !ok || deltaInt.Sign() < 0 {
+
+		return false, ginierr.ErrInvalidAmount(delta)
+
+	}
+
+	currentInt := new(big.Int)
+
+	if _, ok := currentInt.SetString(current, 10); !ok {
+
+		return false, fmt.Errorf("invalid current allowance: %s", current)
+
+	}
+
+	// Check for underflow
+
+	if currentInt.Cmp(deltaInt) < 0 {
+
+		return false, ginierr.ErrInsufficientAllowance()
+
+	}
+
+	// Calculate new allowance
+
+	newAmount := new(big.Int).Sub(currentInt, deltaInt)
+
+	// Update allowance
+
+	if err := models.SetAllowance(ctx, spender, newAmount.String()); err != nil {
+
+		logger.Log.Infof("Error updating allowance: %v", err)
+
+		return false, fmt.Errorf("failed to set allowance: %w", err)
+
+	}
+
+	// Emit Approval event
+
+	if err := events.EmitApproval(ctx, signer, spender, newAmount.String()); err != nil {
+
+		return false, err
+
+	}
+
+	return true, nil
+
+}
