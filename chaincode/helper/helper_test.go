@@ -3,6 +3,7 @@ package helper_test
 import (
 	"encoding/base64"
 	"fmt"
+	"gini-contract/chaincode/ginierr"
 	"gini-contract/chaincode/helper"
 	"gini-contract/mocks"
 	"math/big"
@@ -67,29 +68,34 @@ func TestIsValidAddress(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		address       string
-		expectedValid bool
+		name           string
+		address        string
+		expectedValid  bool
+		expectedError  error
 	}{
 		{
-			name:          "Valid user address",
-			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			expectedValid: true,
+			name:           "Valid user address",
+			address:        "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedValid:  true,
+			expectedError:  nil,
 		},
 		{
-			name:          "Valid contract address",
-			address:       "klp-6b616c70627169646775-cc",
-			expectedValid: true,
+			name:           "Valid contract address",
+			address:        "klp-6b616c70627169646775-cc",
+			expectedValid:  true,
+			expectedError:  nil,
 		},
 		{
-			name:          "Invalid empty address",
-			address:       "",
-			expectedValid: false,
+			name:           "Invalid empty address",
+			address:        "",
+			expectedValid:  false,
+			expectedError:  ginierr.ErrEmptyAddress(),
 		},
 		{
-			name:          "Invalid format address",
-			address:       "invalid-address",
-			expectedValid: false,
+			name:           "Invalid user address",
+			address:        "invalid-user-address",
+			expectedValid:  false,
+			expectedError:  nil, // Regex validation will return false, not an error
 		},
 	}
 
@@ -97,7 +103,13 @@ func TestIsValidAddress(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := helper.IsValidAddress(tt.address)
+			result, err := helper.IsValidAddress(tt.address)
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+			} else {
+				require.NoError(t, err)
+			}
 			require.Equal(t, tt.expectedValid, result)
 		})
 	}
@@ -107,29 +119,28 @@ func TestIsContractAddress(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		address       string
-		expectedValid bool
+		name           string
+		address        string
+		expectedValid  bool
+		expectedError  error
 	}{
 		{
-			name:          "Valid contract address",
-			address:       "klp-6b616c70627169646775-cc",
-			expectedValid: true,
+			name:           "Valid contract address",
+			address:        "klp-6b616c70627169646775-cc",
+			expectedValid:  true,
+			expectedError:  nil,
 		},
 		{
-			name:          "Invalid empty address",
-			address:       "",
-			expectedValid: false,
+			name:           "Invalid empty address",
+			address:        "",
+			expectedValid:  false,
+			expectedError:  ginierr.ErrEmptyAddress(),
 		},
 		{
-			name:          "Invalid user address",
-			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			expectedValid: false,
-		},
-		{
-			name:          "Invalid format address",
-			address:       "invalid-contract",
-			expectedValid: false,
+			name:           "Invalid format address",
+			address:        "invalid-contract",
+			expectedValid:  false,
+			expectedError:  nil,
 		},
 	}
 
@@ -137,7 +148,13 @@ func TestIsContractAddress(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := helper.IsContractAddress(tt.address)
+			result, err := helper.IsContractAddress(tt.address)
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+			} else {
+				require.NoError(t, err)
+			}
 			require.Equal(t, tt.expectedValid, result)
 		})
 	}
@@ -147,29 +164,28 @@ func TestIsUserAddress(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		address       string
-		expectedValid bool
+		name           string
+		address        string
+		expectedValid  bool
+		expectedError  error
 	}{
 		{
-			name:          "Valid user address",
-			address:       "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			expectedValid: true,
+			name:           "Valid user address",
+			address:        "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+			expectedValid:  true,
+			expectedError:  nil,
 		},
 		{
-			name:          "Invalid empty address",
-			address:       "",
-			expectedValid: false,
+			name:           "Invalid empty address",
+			address:        "",
+			expectedValid:  false,
+			expectedError:  ginierr.ErrEmptyAddress(),
 		},
 		{
-			name:          "Invalid contract address",
-			address:       "klp-6b616c70627169646775-cc",
-			expectedValid: false,
-		},
-		{
-			name:          "Invalid format address",
-			address:       "invalid-user",
-			expectedValid: false,
+			name:           "Invalid format address",
+			address:        "invalid-user",
+			expectedValid:  false,
+			expectedError:  nil,
 		},
 	}
 
@@ -177,11 +193,18 @@ func TestIsUserAddress(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := helper.IsUserAddress(tt.address)
+			result, err := helper.IsUserAddress(tt.address)
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+			} else {
+				require.NoError(t, err)
+			}
 			require.Equal(t, tt.expectedValid, result)
 		})
 	}
 }
+
 
 func TestFindContractAddress(t *testing.T) {
 	t.Parallel()

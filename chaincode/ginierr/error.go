@@ -40,6 +40,14 @@ var (
 	ErrMintingTokens            = New("error while minting tokens", http.StatusInternalServerError)
 )
 
+func ErrEmptyAddress() *CustomError {
+	return New("address cannot be empty", http.StatusBadRequest)
+}
+
+func ErrRegexValidationFailed(field string, err error) *CustomError {
+	return New(fmt.Sprintf("failed to validate %s due to regex error: %v", field, err), http.StatusInternalServerError)
+}
+
 func ErrFailedToEmitEvent(event string) *CustomError {
 	return New(fmt.Sprintf("failed to emit event: %s", event), http.StatusInternalServerError)
 }
@@ -86,4 +94,8 @@ func ErrInvalidUserAddress(address string) *CustomError {
 
 func ErrFailedToGetKey(key string) *CustomError {
 	return New(fmt.Sprintf("FailedToGetKey for %s", key), http.StatusInternalServerError)
+}
+
+func ErrInsufficientAllowance() *CustomError {
+	return New(fmt.Sprintf("The account does not have sufficient allowance"), http.StatusInternalServerError)
 }
