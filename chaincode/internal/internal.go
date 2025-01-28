@@ -182,10 +182,6 @@ func Mint(ctx kalpsdk.TransactionContextInterface, addresses []string, amounts [
 		return ginierr.New("addresses and amounts arrays must each contain exactly 2 elements", http.StatusBadRequest)
 	}
 
-	if len(addresses) != len(amounts) {
-		return ginierr.New("length of addresses and amounts arrays must be equal", http.StatusBadRequest)
-	}
-
 	accAmount1, ok := big.NewInt(0).SetString(amounts[0], 10)
 	if !ok {
 		return ginierr.ErrConvertingAmountToBigInt(amounts[0])

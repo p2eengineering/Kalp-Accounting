@@ -364,6 +364,15 @@ func TestMint(t *testing.T) {
 			shouldError: true,
 		},
 		{
+			name:      "Success - Mint to multiple addresses",
+			addresses: []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184", "addr2"},
+			amounts:   []string{"1000", "2000"},
+			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+				ctx.SetEventReturns(nil)
+			},
+			shouldError: true,
+		},
+		{
 			name:        "Failure - Invalid amount",
 			addresses:   []string{"addr1", "addr2"},
 			amounts:     []string{"invalid", "2000"},
