@@ -7201,6 +7201,70 @@ func TestTransferFrom8(t *testing.T) {
 	}
 }
 
+func TestTransfer10(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		testName     string
+		setupContext func(*mocks.TransactionContext, map[string][]byte, *chaincode.SmartContract)
+		recipient    string
+		amount       string
+		expectedBool bool
+		expectedErr  error
+	}{
+		{
+			testName: "Error - invalid amount passed",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetUserIDReturns("", nil)
+				ctx.GetKYCReturns(true, nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("100"), nil)
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    `{"sender": "abd893b57a28463d4ce4573b7b71c062a7453a18"}`,
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  ginierr.ErrInvalidAmount("500"),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup
+			transactionContext := &mocks.TransactionContext{}
+			contract := &chaincode.SmartContract{}
+			worldState := map[string][]byte{}
+
+			setupTestStubs(transactionContext, worldState)
+
+			if tt.setupContext != nil {
+				tt.setupContext(transactionContext, worldState, contract)
+			}
+
+			// Execute test
+			result, err := contract.Transfer(transactionContext, tt.recipient, tt.amount)
+
+			// Assert results
+			if tt.expectedErr != nil {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr.Error())
+				require.False(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedBool, result)
+			}
+		})
+	}
+}
+
 // func TestCase2(t *testing.T) {
 // 	t.Parallel()
 // 	transactionContext := &mocks.TransactionContext{}
