@@ -458,16 +458,15 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	if err != nil {
 		return false, err
 	}
-	if isContract {
-		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
-	}
 
 	isUser, err := helper.IsUserAddress(signer)
 	if err != nil {
 		return false, err
 	}
 
-	if !isUser {
+	if isContract {
+		return false, ginierr.New("signer cannot be a contract", http.StatusBadRequest)
+	} else if !isUser {
 		return false, ginierr.ErrInvalidAddress(signer)
 	}
 
