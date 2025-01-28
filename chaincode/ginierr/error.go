@@ -87,3 +87,7 @@ func ErrInvalidUserAddress(address string) *CustomError {
 func ErrFailedToGetKey(key string) *CustomError {
 	return New(fmt.Sprintf("FailedToGetKey for %s", key), http.StatusInternalServerError)
 }
+
+func ErrInsufficientAllowance() *CustomError {
+	return New(fmt.Sprintf("The account does not have sufficient allowance"), http.StatusInternalServerError)
+}
