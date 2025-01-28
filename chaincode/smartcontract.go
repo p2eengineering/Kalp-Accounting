@@ -91,6 +91,9 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
+	if err := s.SetGatewayMaxFee(ctx, constants.GatewayMaxGasFee); err != nil {
+		return false, err
+	}
 	if err := s.SetBridgeContract(ctx, constants.InitialBridgeContractAddress); err != nil {
 		return false, err
 	}
@@ -387,7 +390,16 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		recipient = constants.KalpFoundationAddress
 		gasFees = big.NewInt(0)
 
-		if !helper.IsAmountProper(amount) {
+		var strGatewayMaxGasFee string
+		if strGatewayMaxGasFee, err = s.GetGatewayMaxFee(ctx); err != nil {
+			return false, err
+		}
+		gatewayMaxGasFee, ok := big.NewInt(0).SetString(strGatewayMaxGasFee, 10)
+		if !ok || gatewayMaxGasFee.Cmp(big.NewInt(0)) != 1 {
+			return false, ginierr.ErrInvalidAmount(strGatewayMaxGasFee)
+		}
+
+		if !helper.IsAmountProper(amount) || amountInInt.Cmp(gatewayMaxGasFee) > 0 {
 			return false, ginierr.ErrInvalidAmount(amount)
 		}
 	} else {
@@ -979,4 +991,121 @@ func (s *SmartContract) IncreaseAllowance(ctx kalpsdk.TransactionContextInterfac
 	}
 
 	return true, nil
+}
+
+func (s *SmartContract) DecreaseAllowance(ctx kalpsdk.TransactionContextInterface, spender string, delta string) (bool, error) {
+
+	logger.Log.Infoln("DecreaseAllowance invoked with spender:", spender, "delta:", delta)
+
+	signer, err := helper.GetUserId(ctx)
+
+	if err != nil {
+
+		return false, ginierr.ErrFailedToGetPublicAddress
+
+	}
+
+	// Fetch current allowance
+
+	current, err := models.GetAllowance(ctx, signer, spender)
+
+	if err != nil {
+
+		logger.Log.Infof("Error fetching current allowance: %v", err)
+
+		return false, fmt.Errorf("failed to fetch allowance: %w", err)
+
+	}
+
+	// Validate delta
+
+	deltaInt := new(big.Int)
+
+	if _, ok := deltaInt.SetString(delta, 10); !ok || deltaInt.Sign() < 0 {
+
+		return false, ginierr.ErrInvalidAmount(delta)
+
+	}
+
+	currentInt := new(big.Int)
+
+	if _, ok := currentInt.SetString(current, 10); !ok {
+
+		return false, fmt.Errorf("invalid current allowance: %s", current)
+
+	}
+
+	// Check for underflow
+
+	if currentInt.Cmp(deltaInt) < 0 {
+
+		return false, ginierr.ErrInsufficientAllowance()
+
+	}
+
+	// Calculate new allowance
+
+	newAmount := new(big.Int).Sub(currentInt, deltaInt)
+
+	// Update allowance
+
+	if err := models.SetAllowance(ctx, spender, newAmount.String()); err != nil {
+
+		logger.Log.Infof("Error updating allowance: %v", err)
+
+		return false, fmt.Errorf("failed to set allowance: %w", err)
+
+	}
+
+	// Emit Approval event
+
+	if err := events.EmitApproval(ctx, signer, spender, newAmount.String()); err != nil {
+
+		return false, err
+
+	}
+
+	return true, nil
+
+}
+
+func (s *SmartContract) SetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface, gatewayMaxFee string) error {
+	logger.Log.Infoln("SetGatewayMaxFee... with arguments", gatewayMaxFee)
+
+	// Validate numeric format
+	feeInt := new(big.Int)
+	if _, ok := feeInt.SetString(gatewayMaxFee, 10); !ok {
+		return ginierr.ErrInvalidAmount(gatewayMaxFee)
+	}
+
+	// Validate non-negative
+	if feeInt.Sign() < 0 {
+		return ginierr.ErrInvalidAmount(gatewayMaxFee)
+	}
+
+	// Authorization check
+	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
+		return err
+	} else if !signerKalp {
+		return ginierr.New("Only Kalp Foundation can set the gatewayMaxFee", http.StatusUnauthorized)
+	}
+
+	// State update
+	if e := ctx.PutStateWithoutKYC(constants.GatewayMaxFee, []byte(gatewayMaxFee)); e != nil {
+		err := ginierr.ErrFailedToPutState(e)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	return nil
+}
+
+func (s *SmartContract) GetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	bytes, err := ctx.GetState(constants.GatewayMaxFee)
+	if err != nil {
+		return "", fmt.Errorf("failed to get gatewayMaxFee: %v", err)
+	}
+	if bytes == nil {
+		return "", fmt.Errorf("gatewayMaxFee not set")
+	}
+	return string(bytes), nil
 }
