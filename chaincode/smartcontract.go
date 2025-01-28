@@ -105,8 +105,8 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	return true, nil
 }
 
-func (s *SmartContract) SetGatewayAdmin(ctx kalpsdk.TransactionContextInterface, data string) error {
-	logger.Log.Info("SetGatewayAdmin........", data)
+func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) error {
+	logger.Log.Info("SetUserRoles........", data)
 
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
@@ -171,8 +171,8 @@ func (s *SmartContract) SetGatewayAdmin(ctx kalpsdk.TransactionContextInterface,
 	return nil
 }
 
-func (s *SmartContract) DeleteGatewayAdmin(ctx kalpsdk.TransactionContextInterface, userID string) error {
-	logger.Log.Info("DeleteGatewayAdmin........", userID)
+func (s *SmartContract) DeleteUserRoles(ctx kalpsdk.TransactionContextInterface, userID string) error {
+	logger.Log.Info("DeleteUserRoles........", userID)
 
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
@@ -417,7 +417,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 			return false, err
 		}
 		gatewayMaxGasFee, ok := big.NewInt(0).SetString(strGatewayMaxGasFee, 10)
-		if !ok || gatewayMaxGasFee.Cmp(big.NewInt(0)) < 0{
+		if !ok || gatewayMaxGasFee.Cmp(big.NewInt(0)) < 0 {
 			return false, ginierr.ErrInvalidAmount(strGatewayMaxGasFee)
 		}
 

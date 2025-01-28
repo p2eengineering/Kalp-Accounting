@@ -1315,7 +1315,7 @@ func TestTotalSupply(t *testing.T) {
 	require.Equal(t, constants.TotalSupply, totalSupply,
 		"Total supply should match the constant value")
 }
-func TestSetGatewayAdmin(t *testing.T) {
+func TestSetUserRoles(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1427,7 +1427,7 @@ func TestSetGatewayAdmin(t *testing.T) {
 			}
 
 			// Execute test
-			err := giniContract.SetGatewayAdmin(transactionContext, tt.roleData)
+			err := giniContract.SetUserRoles(transactionContext, tt.roleData)
 
 			// Assertions
 			if tt.expectedError != nil {
@@ -1453,7 +1453,7 @@ func TestSetGatewayAdmin(t *testing.T) {
 	}
 }
 
-func TestDeleteGatewayAdmin(t *testing.T) {
+func TestDeleteUserRoles(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1472,7 +1472,7 @@ func TestDeleteGatewayAdmin(t *testing.T) {
 				require.True(t, ok)
 
 				// Set up a role to delete
-				err = contract.SetGatewayAdmin(ctx, `{"user":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"KalpGatewayAdmin"}`)
+				err = contract.SetUserRoles(ctx, `{"user":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"KalpGatewayAdmin"}`)
 				require.NoError(t, err)
 			},
 			userID:        "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
@@ -1502,7 +1502,7 @@ func TestDeleteGatewayAdmin(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
-				err := contract.SetGatewayAdmin(ctx, `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`)
+				err := contract.SetUserRoles(ctx, `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`)
 				require.NoError(t, err)
 				ctx.DelStateWithoutKYCReturnsOnCall(0, fmt.Errorf("user role not found for userID 2da4c4908a393a387b728206b18388bc529fa8d7, status code:404"))
 			},
@@ -1610,7 +1610,7 @@ func TestDeleteGatewayAdmin(t *testing.T) {
 			}
 
 			// Execute test
-			err := giniContract.DeleteGatewayAdmin(transactionContext, tt.userID)
+			err := giniContract.DeleteUserRoles(transactionContext, tt.userID)
 
 			// Assert results
 			if tt.expectedError != nil {
