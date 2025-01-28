@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/logger"
 	"math/big"
 	"reflect"
 	"regexp"
@@ -32,22 +33,28 @@ func IsValidAddress(address string) bool {
 }
 
 func IsContractAddress(address string) bool {
-
 	if address == "" {
 		return false
 	}
 
-	isValid, _ := regexp.MatchString(constants.IsContractAddressRegex, address)
+	isValid, err := regexp.MatchString(constants.IsContractAddressRegex, address)
+	if err != nil {
+		logger.Log.Errorf("Error validating contract address: %v", err)
+		return false
+	}
 	return isValid
 }
 
 func IsUserAddress(address string) bool {
-
 	if address == "" {
 		return false
 	}
 
-	isValid, _ := regexp.MatchString(constants.UserAddressRegex, address)
+	isValid, err := regexp.MatchString(constants.UserAddressRegex, address)
+	if err != nil {
+		logger.Log.Errorf("Error validating user address: %v", err)
+		return false
+	}
 	return isValid
 }
 

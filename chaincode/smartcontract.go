@@ -101,8 +101,8 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	return true, nil
 }
 
-func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, data string) error {
-	logger.Log.Info("SetUserRoles........", data)
+func (s *SmartContract) SetGatewayAdmin(ctx kalpsdk.TransactionContextInterface, data string) error {
+	logger.Log.Info("SetGatewayAdmin........", data)
 
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
@@ -133,7 +133,15 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return fmt.Errorf("invalid input role")
 	}
 
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
+	if kyced, e := ctx.GetKYC(userRole.Id); e != nil {
+		err := ginierr.NewInternalError(e, "Error fetching KYC status of user for creating Gateway admin", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	} else if !kyced {
+		return ginierr.New("User is not KYC'd", http.StatusBadRequest)
+	}
+
+	key, e := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{userRole.Id})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -154,8 +162,8 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 	return nil
 }
 
-func (s *SmartContract) DeleteUserRoles(ctx kalpsdk.TransactionContextInterface, userID string) error {
-	logger.Log.Info("DeleteUserRoles........", userID)
+func (s *SmartContract) DeleteGatewayAdmin(ctx kalpsdk.TransactionContextInterface, userID string) error {
+	logger.Log.Info("DeleteGatewayAdmin........", userID)
 
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
@@ -163,7 +171,7 @@ func (s *SmartContract) DeleteUserRoles(ctx kalpsdk.TransactionContextInterface,
 		return ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized)
 	}
 
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.UserRoleMap})
+	key, e := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{userID})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -591,7 +599,11 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 	if !helper.IsAmountProper(amount) {
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
-	amt, _ := big.NewInt(0).SetString(amount, 10)
+
+	amt, ok := big.NewInt(0).SetString(amount, 10)
+	if !ok {
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
 
 	calledContractAddress, err := internal.GetCalledContractAddress(ctx)
 	logger.Log.Debug("calledContractAddress => ", calledContractAddress)
@@ -808,7 +820,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 
 	} else if signer != sender && signer != recipient {
 		if sender == recipient {
-			if sender == constants.KalpFoundationAddress {
+			if signer != constants.KalpFoundationAddress {
 				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 					return false, err
 				}

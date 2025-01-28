@@ -797,6 +797,8 @@ func TestCase3(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
+	transactionContext.PutStateWithoutKYC("_KalpGatewayAdmin_0b87970433b22494faff1cc7a819e71bddc7880c_", []byte(`{"user":"` + "0b87970433b22494faff1cc7a819e71bddc7880c" + `","role":"KalpGatewayAdmin"}`))
+
 	transactionContext.PutStateWithoutKYC(constants.GasFeesKey, []byte("1"))
 	transactionContext.PutStateWithoutKYC(constants.VestingContractKey, []byte("klp-abc100-cc"))
 	transactionContext.PutStateWithoutKYC(constants.BridgeContractKey, []byte("klp-abc101-cc"))
@@ -1313,7 +1315,7 @@ func TestTotalSupply(t *testing.T) {
 	require.Equal(t, constants.TotalSupply, totalSupply,
 		"Total supply should match the constant value")
 }
-func TestSetUserRoles(t *testing.T) {
+func TestSetGatewayAdmin(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1327,9 +1329,6 @@ func TestSetUserRoles(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
-				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
-				require.NoError(t, err)
-				require.True(t, ok)
 			},
 			roleData:      `{"user":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"KalpGatewayAdmin"}`,
 			expectedError: nil,
@@ -1344,22 +1343,13 @@ func TestSetUserRoles(t *testing.T) {
 			expectedError: ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized),
 		},
 		{
-			testName: "Failure - IsSignerKalpFoundation gives error",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-				SetUserID(ctx, "")
-				ctx.GetKYCReturns(true, nil)
-			},
-			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`,
-			expectedError: ginierr.New("failed to get public address", http.StatusInternalServerError),
-		},
-		{
-			testName: "Failure - Invalid role",
+			testName: "Failure - Invalid JSON data",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
 			},
-			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdminn"}`,
-			expectedError: fmt.Errorf("invalid input role"),
+			roleData:      `invalid-json`,
+			expectedError: fmt.Errorf("failed to parse data"),
 		},
 		{
 			testName: "Failure - Empty user ID",
@@ -1380,42 +1370,34 @@ func TestSetUserRoles(t *testing.T) {
 			expectedError: fmt.Errorf("role can not be null"),
 		},
 		{
-			testName: "Failure - Invalid role data JSON",
+			testName: "Failure - Invalid role",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
-				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
-				require.NoError(t, err)
-				require.True(t, ok)
 			},
-			roleData:      `invalid-json`,
-			expectedError: fmt.Errorf("failed to parse data"),
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"InvalidRole"}`,
+			expectedError: fmt.Errorf("invalid input role"),
 		},
 		{
-			testName: "Failure - Missing user ID",
+			testName: "Failure - User not KYC'd",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
-				ctx.GetKYCReturns(true, nil)
-				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
-				require.NoError(t, err)
-				require.True(t, ok)
+				ctx.GetKYCReturns(false, nil)
 			},
-			roleData:      `{"user":"","role":"KalpGatewayAdmin"}`,
-			expectedError: fmt.Errorf("user Id can not be null"),
+			roleData:      `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`,
+			expectedError: ginierr.New("User is not KYC'd", http.StatusBadRequest),
 		},
 		{
 			testName: "Failure - Invalid user address",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
-				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
-				require.NoError(t, err)
-				require.True(t, ok)
 			},
 			roleData:      `{"user":"invalid-address","role":"KalpGatewayAdmin"}`,
 			expectedError: ginierr.ErrInvalidUserAddress("invalid-address"),
 		},
 	}
+
 	for _, tt := range tests {
 		tt := tt // capture range variable
 		t.Run(tt.testName, func(t *testing.T) {
@@ -1426,7 +1408,7 @@ func TestSetUserRoles(t *testing.T) {
 			giniContract := &chaincode.SmartContract{}
 			worldState := map[string][]byte{}
 
-			// Setup stubs
+			// Stubs
 			transactionContext.GetStateStub = func(key string) ([]byte, error) {
 				return worldState[key], nil
 			}
@@ -1435,44 +1417,9 @@ func TestSetUserRoles(t *testing.T) {
 				return nil
 			}
 			transactionContext.CreateCompositeKeyStub = func(prefix string, attrs []string) (string, error) {
-				key := "_" + prefix + "_"
-				for _, attr := range attrs {
-					key += attr + "_"
-				}
-				return key, nil
+				return fmt.Sprintf("%s_%s", prefix, strings.Join(attrs, "_")), nil
 			}
-			transactionContext.GetStateByPartialCompositeKeyStub = func(objectType string, keys []string) (kalpsdk.StateQueryIteratorInterface, error) {
-				iterator := &mocks.StateQueryIterator{}
-				var kvs []queryresult.KV
-
-				prefix := "_" + objectType + "_"
-				if len(keys) > 0 {
-					prefix += keys[0] + "_"
-				}
-
-				index := 0
-				for key, value := range worldState {
-					if strings.HasPrefix(key, prefix) {
-						kvs = append(kvs, queryresult.KV{
-							Key:   key,
-							Value: value,
-						})
-					}
-				}
-
-				iterator.HasNextCalls(func() bool {
-					return index < len(kvs)
-				})
-				iterator.NextCalls(func() (*queryresult.KV, error) {
-					if index < len(kvs) {
-						kv := kvs[index]
-						index++
-						return &kv, nil
-					}
-					return nil, nil
-				})
-				return iterator, nil
-			}
+			transactionContext.GetKYCReturns(false, nil)
 
 			// Apply test-specific context setup
 			if tt.setupContext != nil {
@@ -1480,26 +1427,25 @@ func TestSetUserRoles(t *testing.T) {
 			}
 
 			// Execute test
-			err := giniContract.SetUserRoles(transactionContext, tt.roleData)
+			err := giniContract.SetGatewayAdmin(transactionContext, tt.roleData)
 
-			// Assert results
+			// Assertions
 			if tt.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedError.Error())
 			} else {
 				require.NoError(t, err)
 
-				// Verify role was set correctly
+				// Verify role data
 				var userRole models.UserRole
-				json.Unmarshal([]byte(tt.roleData), &userRole)
-				roleKey, _ := transactionContext.CreateCompositeKey(constants.UserRolePrefix,
-					[]string{userRole.Id, constants.UserRoleMap})
+				require.NoError(t, json.Unmarshal([]byte(tt.roleData), &userRole))
 
-				storedRoleBytes := worldState[roleKey]
-				require.NotNil(t, storedRoleBytes)
+				roleKey, _ := transactionContext.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{userRole.Id})
+				storedData := worldState[roleKey]
+				require.NotNil(t, storedData)
 
 				var storedRole models.UserRole
-				json.Unmarshal(storedRoleBytes, &storedRole)
+				require.NoError(t, json.Unmarshal(storedData, &storedRole))
 				require.Equal(t, userRole.Id, storedRole.Id)
 				require.Equal(t, userRole.Role, storedRole.Role)
 			}
@@ -1507,7 +1453,7 @@ func TestSetUserRoles(t *testing.T) {
 	}
 }
 
-func TestDeleteUserRoles(t *testing.T) {
+func TestDeleteGatewayAdmin(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1526,7 +1472,7 @@ func TestDeleteUserRoles(t *testing.T) {
 				require.True(t, ok)
 
 				// Set up a role to delete
-				err = contract.SetUserRoles(ctx, `{"user":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"KalpGatewayAdmin"}`)
+				err = contract.SetGatewayAdmin(ctx, `{"user":"16f8ff33ef05bb24fb9a30fa79e700f57a496184","role":"KalpGatewayAdmin"}`)
 				require.NoError(t, err)
 			},
 			userID:        "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
@@ -1556,7 +1502,7 @@ func TestDeleteUserRoles(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
-				err := contract.SetUserRoles(ctx, `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`)
+				err := contract.SetGatewayAdmin(ctx, `{"user":"2da4c4908a393a387b728206b18388bc529fa8d7","role":"KalpGatewayAdmin"}`)
 				require.NoError(t, err)
 				ctx.DelStateWithoutKYCReturnsOnCall(0, fmt.Errorf("user role not found for userID 2da4c4908a393a387b728206b18388bc529fa8d7, status code:404"))
 			},
@@ -1589,9 +1535,8 @@ func TestDeleteUserRoles(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetKYCReturns(true, nil)
-				ok, err := contract.Initialize(ctx, "GINI", "GINI", "klp-6b616c70627169646775-cc")
-				require.NoError(t, err)
-				require.True(t, ok)
+				roleKey, _ := ctx.CreateCompositeKey(constants.KalpGateWayAdminRole, []string{constants.KalpFoundationAddress})
+				worldState[roleKey] = []byte(`{"user":"` + constants.KalpFoundationAddress + `","role":"KalpFoundation"}`)
 			},
 			userID:        constants.KalpFoundationAddress,
 			expectedError: fmt.Errorf("foundation role cannot be deleted"),
@@ -1665,7 +1610,7 @@ func TestDeleteUserRoles(t *testing.T) {
 			}
 
 			// Execute test
-			err := giniContract.DeleteUserRoles(transactionContext, tt.userID)
+			err := giniContract.DeleteGatewayAdmin(transactionContext, tt.userID)
 
 			// Assert results
 			if tt.expectedError != nil {
@@ -3649,10 +3594,13 @@ func TestTransfer(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetKYCReturns(true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
 				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
 				worldState["gasFees"] = []byte("10")
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, nil, ginierr.ErrFailedToGetState(errors.New("err")))
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, nil, ginierr.ErrFailedToGetState(errors.New("err")))
 			},
 			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
 			amount:       "1000",
@@ -3664,11 +3612,14 @@ func TestTransfer(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetKYCReturns(true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","role":"KalpGatewayAdmin"}`), nil)
+			
 				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
 				worldState["gasFees"] = []byte("10")
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, nil, ginierr.ErrFailedToGetState(errors.New("err")))
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, nil, ginierr.ErrFailedToGetState(errors.New("err")))
 			},
 			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
 			amount:       "1000",
@@ -3682,9 +3633,12 @@ func TestTransfer(t *testing.T) {
 				ctx.GetKYCReturns(true, nil)
 				worldState["balance_16f8ff33ef05bb24fb9a30fa79e700f57a496184"] = []byte("1000a")
 				worldState["gasFees"] = []byte("10")
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc1-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","role":"KalpGatewayAdmin"}`), nil)
+			
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc1-cc"), nil)
 				ctx.GetSignedProposalReturns(nil, errors.New("err"))
 			},
 			recipient:    "16f8ff33ef05bb24fb9a30fa79e700f57a496183",
@@ -3725,9 +3679,12 @@ func TestTransfer(t *testing.T) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetUserIDReturns("", nil)
 				ctx.GetKYCReturns(true, nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","role":"KalpGatewayAdmin"}`), nil)
+			
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -3799,11 +3756,14 @@ func TestTransfer2(t *testing.T) {
 			testName: "Error - failed to create composite key for deny list",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
 				ctx.GetUserIDReturns("", nil)
 				ctx.GetKYCReturns(true, nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturns("false", errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
@@ -3817,13 +3777,16 @@ func TestTransfer2(t *testing.T) {
 			testName: "Error - ErrDeniedAddress",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
 				ctx.GetUserIDReturns("", nil)
 				ctx.GetKYCReturns(true, nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturns("", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("abc"), nil)
+				ctx.GetStateReturnsOnCall(4, []byte("abc"), nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -3836,14 +3799,17 @@ func TestTransfer2(t *testing.T) {
 			testName: "Error - failed to create composite key for deny list",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
 				ctx.GetUserIDReturns("", nil)
 				ctx.GetKYCReturns(true, nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(1, "false", errors.New("err"))
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "false", errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -3858,13 +3824,16 @@ func TestTransfer2(t *testing.T) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetUserIDReturns("", nil)
 				ctx.GetKYCReturns(true, nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
-				ctx.GetStateReturnsOnCall(4, []byte("abc"), nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("abc"), nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -3879,14 +3848,17 @@ func TestTransfer2(t *testing.T) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetUserIDReturns("", nil)
 				ctx.GetKYCReturns(true, nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(2, "false", errors.New("err"))
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "false", errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -3901,15 +3873,18 @@ func TestTransfer2(t *testing.T) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetUserIDReturns("", nil)
 				ctx.GetKYCReturns(true, nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
-				ctx.GetStateReturnsOnCall(5, []byte("abc"), nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(6, []byte("abc"), nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -3923,16 +3898,19 @@ func TestTransfer2(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetUserIDReturns("", nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
 				// ctx.GetKYCReturns(true, nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(6, []byte("false"), nil)
 				ctx.GetKYCReturns(false, errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
@@ -3947,15 +3925,18 @@ func TestTransfer2(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(6, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, false, errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
@@ -3971,15 +3952,18 @@ func TestTransfer2(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(6, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, false, nil)
 				ctx.GetKYCReturnsOnCall(1, false, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
@@ -4064,15 +4048,17 @@ func TestTransfer3(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "16f8ff33ef05bb24fb9a30fa79e700f57a496184")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc-cc"), nil)
-				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc-cc"), nil)
+				ctx.GetStateReturnsOnCall(3, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(6, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
@@ -4176,15 +4162,17 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
@@ -4200,15 +4188,17 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
@@ -4222,17 +4212,20 @@ func TestTransfer4(t *testing.T) {
 		{
 			testName: "Error - fetching KYC for signer",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
@@ -4249,18 +4242,21 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
-				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New("err"))
+				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -4274,15 +4270,18 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
@@ -4299,18 +4298,21 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
-				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New("err"))
+				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -4324,15 +4326,18 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
@@ -4348,15 +4353,18 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
@@ -4372,18 +4380,21 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, constants.KalpFoundationAddress)
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
-				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New("err"))
+				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -4395,17 +4406,20 @@ func TestTransfer4(t *testing.T) {
 		{
 			testName: "Error - fetching KYC for signer",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-				SetUserID(ctx, constants.KalpFoundationAddress)
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
@@ -4422,15 +4436,18 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
@@ -4446,40 +4463,18 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
 				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
-				ctx.GetKYCReturnsOnCall(0, true, nil)
-				ctx.GetKYCReturnsOnCall(1, true, nil)
-				ctx.CreateCompositeKeyReturnsOnCall(3, "", errors.New("err"))
-				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
-				worldState["gasFees"] = []byte("10")
-			},
-			recipient:    "0b87970433b22494faff1cc7a819e71bddc7880d",
-			amount:       "500",
-			expectedBool: false,
-			expectedErr:  fmt.Errorf(""),
-		},
-		{
-			testName: "Error - fetching KYC for signer",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
-				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
-				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
-				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
-				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.CreateCompositeKeyReturnsOnCall(4, "", errors.New("err"))
@@ -4496,18 +4491,49 @@ func TestTransfer4(t *testing.T) {
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
 				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
 				ctx.GetUserIDReturns("", nil)
-				ctx.GetStateReturnsOnCall(0, []byte("10"), nil)
-				ctx.GetStateReturnsOnCall(1, []byte("klp-abc101-cc"), nil)
-				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
-				ctx.CreateCompositeKeyReturnsOnCall(0, "", nil)
-				ctx.GetStateReturnsOnCall(2, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCal(2, []byte("klp-abc101-cc"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
 				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
 				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
 				ctx.GetKYCReturnsOnCall(0, true, nil)
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
+				worldState["gasFees"] = []byte("10")
+			},
+			recipient:    "0b87970433b22494faff1cc7a819e71bddc7880d",
+			amount:       "500",
+			expectedBool: false,
+			expectedErr:  fmt.Errorf(""),
+		},
+		{
+			testName: "Error - fetching KYC for signer",
+			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
+				SetUserID(ctx, "2da4c4908a393a387b728206b18388bc529fa8d7")
+				ctx.GetUserIDReturns("", nil)
+				ctx.CreateCompositeKeyReturnsOnCall(0, "KalpGatewayAdmin_16f8ff33ef05bb24fb9a30fa79e700f57a496184", nil)
+				ctx.GetStateReturnsOnCall(0, []byte(`{"user":"`+"16f8ff33ef05bb24fb9a30fa79e700f57a496184"+`","role":"KalpGatewayAdmin"}`), nil)
+
+				ctx.GetStateReturnsOnCall(1, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				// ctx.GetStateReturnsOnCall(2, []byte("klp-abc101-cc"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(1, "", nil)
+				ctx.GetStateReturnsOnCall(3, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(2, "", nil)
+				ctx.GetStateReturnsOnCall(4, []byte("false"), nil)
+				ctx.CreateCompositeKeyReturnsOnCall(3, "", nil)
+				ctx.GetStateReturnsOnCall(5, []byte("false"), nil)
+				ctx.GetKYCReturnsOnCall(0, true, nil)
+				ctx.GetKYCReturnsOnCall(1, true, nil)
+				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5519,6 +5545,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5553,6 +5580,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5587,6 +5615,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5620,6 +5649,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5654,6 +5684,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5688,6 +5719,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5721,6 +5753,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5755,6 +5788,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5789,6 +5823,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5822,6 +5857,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5856,6 +5892,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5890,6 +5927,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(6, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5924,6 +5962,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(7, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5957,6 +5996,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetKYCReturnsOnCall(1, true, nil)
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
@@ -5991,6 +6031,7 @@ func TestTransferFrom6(t *testing.T) {
 				ctx.GetStateReturnsOnCall(6, jsonData, nil)
 				ctx.GetStateReturnsOnCall(7, []byte("10"), nil)
 				ctx.CreateCompositeKeyReturnsOnCall(5, "", errors.New("err"))
+				ctx.GetStateReturnsOnCall(8, jsonData, nil)
 				worldState["balance_2da4c4908a393a387b728206b18388bc529fa8d7"] = []byte("400")
 				worldState["gasFees"] = []byte("10")
 			},
