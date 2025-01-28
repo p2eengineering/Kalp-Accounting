@@ -1133,6 +1133,14 @@ func (s *SmartContract) SetFoundationRole(ctx kalpsdk.TransactionContextInterfac
 		return ginierr.ErrInvalidUserAddress(address)
 	}
 
+	if kyced, e := ctx.GetKYC(address); e != nil {
+		err := ginierr.NewInternalError(e, "Error fetching KYC status of foundation", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	} else if !kyced {
+		return ginierr.New("address is not KYC'd", http.StatusBadRequest)
+	}
+
 	// key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
 	// if e != nil {
 	// 	err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
@@ -1168,7 +1176,7 @@ func (s *SmartContract) SetFoundationRole(ctx kalpsdk.TransactionContextInterfac
 	newFoundationKey, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{address, constants.UserRoleMap})
 	if err != nil {
 		logError := ginierr.NewInternalError(err,
-			fmt.Sprintf("Failed creating composite key for foundation role: %v", err),
+			fmt.Sprintf("Failed creating composite key for new foundation role: %v", err),
 			http.StatusInternalServerError)
 		logger.Log.Error(logError.FullError())
 		return logError
@@ -1181,7 +1189,7 @@ func (s *SmartContract) SetFoundationRole(ctx kalpsdk.TransactionContextInterfac
 	}
 	roleJson, e := json.Marshal(userRole)
 	if err != nil {
-		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to put user role: %s , id: %s ", constants.KalpFoundationRole, address), http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to marshal user role: %s , id: %s ", constants.KalpFoundationRole, address), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
 		return err
 	}
