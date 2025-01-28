@@ -95,7 +95,7 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		logger.Log.Errorf(err.FullError())
 		return false, err
 	}
-	if err := s.SetGatewayMaxFee(ctx, constants.GatewayMaxGasFee); err != nil {
+	if err := s.SetGatewayMaxFee(ctx, constants.InitialGatewayMaxGasFee); err != nil {
 		return false, err
 	}
 	if err := s.SetBridgeContract(ctx, constants.InitialBridgeContractAddress); err != nil {
