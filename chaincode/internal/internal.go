@@ -485,3 +485,44 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	}
 	return true, nil
 }
+
+func IsFoundationAddress(ctx kalpsdk.TransactionContextInterface, userAddress string) (bool, error) {
+	foundationAddress, e := GetFoundationAddress(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get foundation address : %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return false, err
+	}
+	return (foundationAddress == userAddress), nil
+}
+
+func GetFoundationAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	prefix := constants.UserRolePrefix
+	iterator, e := ctx.GetStateByPartialCompositeKey(prefix, []string{constants.UserRoleMap})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get data for gateway admin: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return "", err
+	}
+	defer iterator.Close()
+
+	for iterator.HasNext() {
+		response, e := iterator.Next()
+		if e != nil {
+			err := ginierr.NewInternalError(e, fmt.Sprintf("error reading next item: %v", e), http.StatusInternalServerError)
+			logger.Log.Errorf(err.FullError())
+			return "", err
+		}
+
+		var userRole models.UserRole
+		if err := json.Unmarshal(response.Value, &userRole); err != nil {
+			return "", fmt.Errorf("failed to parse user role data: %v", err)
+		}
+
+		if userRole.Role == constants.KalpFoundationRole {
+			return userRole.Id, nil
+		}
+	}
+
+	return "", fmt.Errorf("No kalp foundation role exists")
+}

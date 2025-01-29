@@ -353,6 +353,13 @@ func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender
 func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipient string, amount string) (bool, error) {
 	logger.Log.Info("Transfer operation initiated", recipient, amount)
 
+	foundationAddress, err := internal.GetFoundationAddress(ctx)
+	if err != nil {
+		err := ginierr.NewInternalError(err, "error getting foundationAddress", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
 	signer, err := helper.GetUserId(ctx)
 	if err != nil {
 		err := ginierr.NewInternalError(err, "error getting signer", http.StatusInternalServerError)
@@ -406,7 +413,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		}
 
 		sender = gasDeductionAccount.Sender
-		recipient = constants.KalpFoundationAddress
+		recipient = foundationAddress
 		gasFees = big.NewInt(0)
 
 		var strGatewayMaxGasFee string
@@ -538,16 +545,16 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	}
 
 	if sender == signer && sender == recipient {
-		if sender != constants.KalpFoundationAddress {
+		if sender != foundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, gasFees); err != nil {
 				return false, err
 			}
-			if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+			if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 				return false, err
 			}
 		}
 	} else if sender == signer && sender != recipient {
-		if sender == constants.KalpFoundationAddress {
+		if sender == foundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, actualAmount); err != nil {
 				return false, err
 			}
@@ -555,7 +562,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				return false, err
 			}
 		} else {
-			if recipient == constants.KalpFoundationAddress {
+			if recipient == foundationAddress {
 				if err = internal.RemoveUtxo(ctx, sender, amountInInt); err != nil {
 					return false, err
 				}
@@ -569,18 +576,18 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				if err = internal.AddUtxo(ctx, recipient, actualAmount); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
 		}
 	} else {
 		if isGatewayAdmin {
-			if sender != constants.KalpFoundationAddress {
+			if sender != foundationAddress {
 				if err = internal.RemoveUtxo(ctx, sender, actualAmount); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, actualAmount); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, actualAmount); err != nil {
 					return false, err
 				}
 			}
@@ -589,7 +596,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				return false, err
 			}
 
-			if recipient == constants.KalpFoundationAddress {
+			if recipient == foundationAddress {
 				if err = internal.AddUtxo(ctx, recipient, amountInInt); err != nil {
 					return false, err
 				}
@@ -597,7 +604,7 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 				if err = internal.AddUtxo(ctx, recipient, actualAmount); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
@@ -616,6 +623,13 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 
 	var signer string
 	var e error
+
+	foundationAddress, err := internal.GetFoundationAddress(ctx)
+	if err != nil {
+		err := ginierr.NewInternalError(err, "error getting foundationAddress", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
 
 	if signer, e = helper.GetUserId(ctx); e != nil {
 		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
@@ -799,16 +813,16 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		}
 	}
 	if signer == sender && signer == recipient {
-		if signer != constants.KalpFoundationAddress {
+		if signer != foundationAddress {
 			if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 				return false, err
 			}
-			if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+			if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 				return false, err
 			}
 		}
 	} else if signer == sender && signer != recipient {
-		if signer == constants.KalpFoundationAddress {
+		if signer == foundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 				return false, err
 			}
@@ -816,7 +830,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				return false, err
 			}
 		} else {
-			if recipient == constants.KalpFoundationAddress {
+			if recipient == foundationAddress {
 				if err = internal.RemoveUtxo(ctx, signer, new(big.Int).Add(amt, gasFees)); err != nil {
 					return false, err
 				}
@@ -830,21 +844,21 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				if err = internal.AddUtxo(ctx, recipient, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
 		}
 
 	} else if signer != sender && signer == recipient {
-		if signer == constants.KalpFoundationAddress {
+		if signer == foundationAddress {
 			if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 				return false, err
 			}
 			if err = internal.AddUtxo(ctx, recipient, amt); err != nil {
 				return false, err
 			}
-		} else if sender == constants.KalpFoundationAddress {
+		} else if sender == foundationAddress {
 			if amt.Cmp(gasFees) > 0 {
 				if err = internal.AddUtxo(ctx, signer, new(big.Int).Sub(amt, gasFees)); err != nil {
 					return false, err
@@ -868,14 +882,14 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			} else if amt.Cmp(gasFees) == 0 {
 				if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			} else {
@@ -885,7 +899,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
@@ -893,23 +907,23 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 
 	} else if signer != sender && signer != recipient {
 		if sender == recipient {
-			if signer != constants.KalpFoundationAddress {
+			if signer != foundationAddress {
 				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
 		} else {
-			if signer == constants.KalpFoundationAddress {
+			if signer == foundationAddress {
 				if err = internal.RemoveUtxo(ctx, sender, amt); err != nil {
 					return false, err
 				}
 				if err = internal.AddUtxo(ctx, recipient, amt); err != nil {
 					return false, err
 				}
-			} else if sender == constants.KalpFoundationAddress {
+			} else if sender == foundationAddress {
 				if amt.Cmp(gasFees) > 0 {
 					if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 						return false, err
@@ -938,7 +952,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 						return false, err
 					}
 				}
-			} else if recipient == constants.KalpFoundationAddress {
+			} else if recipient == foundationAddress {
 				if err = internal.RemoveUtxo(ctx, signer, gasFees); err != nil {
 					return false, err
 				}
@@ -958,7 +972,7 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 				if err = internal.AddUtxo(ctx, recipient, amt); err != nil {
 					return false, err
 				}
-				if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+				if err = internal.AddUtxo(ctx, foundationAddress, gasFees); err != nil {
 					return false, err
 				}
 			}
@@ -1181,4 +1195,99 @@ func (s *SmartContract) GetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface
 		return "", fmt.Errorf("gatewayMaxFee not set")
 	}
 	return string(bytes), nil
+}
+
+func (s *SmartContract) SetFoundationRole(ctx kalpsdk.TransactionContextInterface, address string) error {
+	logger.Log.Info("SetFoundationRole invoked for address:", address)
+
+	// Verify current foundation is the caller
+	if isFoundation, err := internal.IsSignerKalpFoundation(ctx); err != nil {
+		return err
+	} else if !isFoundation {
+		return ginierr.New("Only current foundation can transfer role", http.StatusUnauthorized)
+	}
+
+	// Validate recipient address format
+	isUser, err := helper.IsUserAddress(address)
+	if err != nil {
+		return err
+	}
+
+	if !isUser {
+		return ginierr.ErrInvalidUserAddress(address)
+	}
+
+	if kyced, e := ctx.GetKYC(address); e != nil {
+		err := ginierr.NewInternalError(e, "Error fetching KYC status of foundation", http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	} else if !kyced {
+		return ginierr.New("address is not KYC'd", http.StatusBadRequest)
+	}
+
+	// key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
+	// if e != nil {
+	// 	err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
+	// 	logger.Log.Errorf(err.FullError())
+	// 	return err
+	// }
+
+	foundationAddress, err := internal.GetFoundationAddress(ctx)
+	if err != nil {
+		logError := ginierr.NewInternalError(err,
+			fmt.Sprintf("Failed to get kalp foundation address : %v", err),
+			http.StatusInternalServerError)
+		logger.Log.Error(logError.FullError())
+		return logError
+	}
+
+	// Create foundation role composite key
+	foundationKey, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{foundationAddress, constants.UserRoleMap})
+	if err != nil {
+		logError := ginierr.NewInternalError(err,
+			fmt.Sprintf("Failed creating composite key for foundation role: %v", err),
+			http.StatusInternalServerError)
+		logger.Log.Error(logError.FullError())
+		return logError
+	}
+
+	if e := ctx.DelStateWithoutKYC(foundationKey); e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to delete foudation role struct: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	newFoundationKey, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{address, constants.UserRoleMap})
+	if err != nil {
+		logError := ginierr.NewInternalError(err,
+			fmt.Sprintf("Failed creating composite key for new foundation role: %v", err),
+			http.StatusInternalServerError)
+		logger.Log.Error(logError.FullError())
+		return logError
+	}
+
+	userRole := models.UserRole{
+		Id:      address,
+		Role:    constants.KalpFoundationRole,
+		DocType: constants.UserRoleMap,
+	}
+	roleJson, e := json.Marshal(userRole)
+	if err != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to marshal user role: %s , id: %s ", constants.KalpFoundationRole, address), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	if e := ctx.PutStateWithoutKYC(newFoundationKey, roleJson); e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to put user role: %s , id: %s ", constants.KalpFoundationRole, address), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	logger.Log.Info("Foundation role successfully transferred to:", address)
+	return nil
+}
+
+func (s *SmartContract) GetFoundationRoleAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
+	return internal.GetFoundationAddress(ctx)
 }
