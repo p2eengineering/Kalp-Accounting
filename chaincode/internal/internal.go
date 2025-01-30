@@ -18,6 +18,20 @@ import (
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
+func IsSignerKalpFoundationToInitialise(ctx kalpsdk.TransactionContextInterface) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to get public address", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	if signer != constants.KalpFoundationRole {
+		return false, nil
+	}
+	return true, nil
+}
+
 func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, error) {
 	signer, e := helper.GetUserId(ctx)
 	if e != nil {
@@ -26,7 +40,14 @@ func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, erro
 		return false, err
 	}
 
-	if signer != constants.KalpFoundationAddress {
+	foundationAddress, err := GetFoundationAddress(ctx)
+	if err != nil {
+		err := ginierr.NewInternalError(err, "error getting foundationAddress", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	if signer != foundationAddress {
 		return false, nil
 	}
 	return true, nil
@@ -96,7 +117,7 @@ func GetCalledContractAddress(ctx kalpsdk.TransactionContextInterface) (string, 
 
 func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (bool, error) {
 	// Construct the key to fetch the gateway admin role
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KalpGateWayAdminRole})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KalpGateWayAdminRole, userID})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s, role %s and userID %s: %v", constants.UserRolePrefix, constants.KalpGateWayAdminRole, userID, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -472,7 +493,7 @@ func InitializeRoles(ctx kalpsdk.TransactionContextInterface, id string, role st
 	if err != nil {
 		return false, ginierr.New("error in marshaling user role: "+role, http.StatusInternalServerError)
 	}
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, role})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{role, userRole.Id})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key: user ID '%s', role '%s'", userRole.Id, userRole.Role), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -498,7 +519,7 @@ func IsFoundationAddress(ctx kalpsdk.TransactionContextInterface, userAddress st
 
 func GetFoundationAddress(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	prefix := constants.UserRolePrefix
-	iterator, e := ctx.GetStateByPartialCompositeKey(prefix, []string{constants.UserRoleMap})
+	iterator, e := ctx.GetStateByPartialCompositeKey(prefix, []string{constants.KalpFoundationRole})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to get data for gateway admin: %v", e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())

@@ -335,469 +335,20 @@ func TestCase1(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 
-	transactionContext.PutStateWithoutKYC(constants.GasFeesKey, []byte("1"))
-	transactionContext.PutStateWithoutKYC(constants.VestingContractKey, []byte("klp-abc100-cc"))
-	transactionContext.PutStateWithoutKYC(constants.BridgeContractKey, []byte("klp-abc101-cc"))
-	transactionContext.PutStateWithoutKYC("_denyList_0b87970433b22494faff1cc7a819e71bddc7880c_", []byte("false"))
-	// Mock the TransactionContext
-	transactionContext.GetSignedProposalStub = func() (*peer.SignedProposal, error) {
-		mockChannelHeader := "klp-abc101-cc"
-		mockHeader := &common.Header{
-			ChannelHeader: []byte(mockChannelHeader),
-		}
-		mockHeaderBytes, err := proto.Marshal(mockHeader)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal header: %v", err)
-		}
-		mockPayload := &common.Payload{
-			Header: mockHeader,
-			Data:   []byte("mockData"),
-		}
-		mockPayloadBytes, err := proto.Marshal(mockPayload)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal payload: %v", err)
-		}
-		mockProposal := &peer.Proposal{
-			Header:  mockHeaderBytes,
-			Payload: mockPayloadBytes,
-		}
-		mockProposalBytes, err := proto.Marshal(mockProposal)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal proposal: %v", err)
-		}
-		mockSignedProposal := &peer.SignedProposal{
-			ProposalBytes: mockProposalBytes,
-		}
+	// Create a mock iterator
+	mockIterator := new(mocks.StateQueryIterator)
 
-		return mockSignedProposal, nil
-	}
+	// Setup the mock iterator to return the expected UserRole
+	compositeKey, _ := transactionContext.CreateCompositeKey(constants.UserRolePrefix, []string{constants.UserRoleMap, "foundation-id"})
+	userRole := models.UserRole{Id: "foundation-address", Role: constants.KalpFoundationRole}
+	userRoleJSON, _ := json.Marshal(userRole)
 
-	ok, err = giniContract.Transfer(transactionContext, userM, "1000")
+	mockIterator.HasNextReturnsOnCall(0, true)
+	mockIterator.HasNextReturnsOnCall(1, false)
+	mockIterator.NextReturns(&queryresult.KV{Key: compositeKey, Value: userRoleJSON}, nil)
 
-	require.NoError(t, err)
-	require.Equal(t, true, ok)
-}
-
-func TestCase2(t *testing.T) {
-	t.Parallel()
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-	giniContract.Contract.Name = "klp-abc101-cc"
-	giniContract.Logger = kalpsdk.NewLogger()
-	// _, err := kalpsdk.NewChaincode(&chaincode.SmartContract{Contract: contract})
-	// ****************START define helper functions*********************
-	worldState := map[string][]byte{}
-	transactionContext.CreateCompositeKeyStub = func(s1 string, s2 []string) (string, error) {
-		key := "_" + s1 + "_"
-		for _, s := range s2 {
-			key += s + "_"
-		}
-		return key, nil
-	}
-	transactionContext.PutStateWithoutKYCStub = func(s string, b []byte) error {
-		worldState[s] = b
-		return nil
-	}
-	transactionContext.GetQueryResultStub = func(s string) (kalpsdk.StateQueryIteratorInterface, error) {
-		var docType string
-		var account string
-
-		// finding doc type
-		re := regexp.MustCompile(`"docType"\s*:\s*"([^"]+)"`)
-		match := re.FindStringSubmatch(s)
-
-		if len(match) > 1 {
-			docType = match[1]
-		}
-
-		// finding account
-		re = regexp.MustCompile(`"account"\s*:\s*"([^"]+)"`)
-		match = re.FindStringSubmatch(s)
-
-		if len(match) > 1 {
-			account = match[1]
-		}
-
-		iteratorData := struct {
-			index int
-			data  []queryresult.KV
-		}{}
-		for key, val := range worldState {
-			if strings.Contains(key, docType) && strings.Contains(key, account) {
-				iteratorData.data = append(iteratorData.data, queryresult.KV{Key: key, Value: val})
-			}
-		}
-		iterator := &mocks.StateQueryIterator{}
-		iterator.HasNextStub = func() bool {
-			return iteratorData.index < len(iteratorData.data)
-		}
-		iterator.NextStub = func() (*queryresult.KV, error) {
-			if iteratorData.index < len(iteratorData.data) {
-				iteratorData.index++
-				return &iteratorData.data[iteratorData.index-1], nil
-			}
-			return nil, fmt.Errorf("iterator out of bounds")
-		}
-		return iterator, nil
-	}
-	transactionContext.GetStateStub = func(s string) ([]byte, error) {
-		data, found := worldState[s]
-		if found {
-			return data, nil
-		}
-		return nil, nil
-	}
-	transactionContext.DelStateWithoutKYCStub = func(s string) error {
-		delete(worldState, s)
-		return nil
-	}
-	transactionContext.GetStateByPartialCompositeKeyStub = func(prefix string, attributes []string) (kalpsdk.StateQueryIteratorInterface, error) {
-		// Define the mock data to simulate the world state
-		mockWorldState := map[string][]byte{
-			"ID~UserRoleMap_0b87970433b22494faff1cc7a819e71bddc7880c_UserRoleMap": []byte(`{"Id": "0b87970433b22494faff1cc7a819e71bddc7880c", "Role": "KalpGateWayAdminRole"}`),
-			"ID~UserRoleMap_user2_UserRoleMap":                                    []byte(`{"Id": "user2", "Role": "KalpGateWayAdminRole"}`),
-		}
-
-		// Filter keys that match the prefix and attributes
-		filteredData := []queryresult.KV{}
-		for key, value := range mockWorldState {
-			if strings.HasPrefix(key, prefix) && strings.Contains(key, attributes[0]) && strings.Contains(key, attributes[1]) {
-				filteredData = append(filteredData, queryresult.KV{Key: key, Value: value})
-			}
-		}
-
-		// Mock iterator
-		mockIterator := &mocks.StateQueryIterator{}
-		iteratorIndex := 0
-
-		// Define HasNext and Next methods
-		mockIterator.HasNextStub = func() bool {
-			return iteratorIndex < len(filteredData)
-		}
-		mockIterator.NextStub = func() (*queryresult.KV, error) {
-			if iteratorIndex < len(filteredData) {
-				item := &filteredData[iteratorIndex]
-				iteratorIndex++
-				return item, nil
-			}
-			return nil, fmt.Errorf("no more items")
-		}
-		mockIterator.CloseStub = func() error {
-			// No-op for closing the iterator in this mock
-			return nil
-		}
-
-		return mockIterator, nil
-	}
-	transactionContext.GetTxIDStub = func() string {
-		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-		length := 10
-		rand.Seed(time.Now().UnixNano()) // Seed the random number generator
-		result := make([]byte, length)
-		for i := range result {
-			result[i] = charset[rand.Intn(len(charset))]
-		}
-		return string(result)
-	}
-	transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
-		// Simulated mock data based on the query string
-		mockWorldState := []map[string]interface{}{
-			{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
-		}
-
-		// Filter the mock world state based on the queryString if necessary.
-		// For simplicity, assuming all records match the query string.
-		filteredData := make([]*queryresult.KV, len(mockWorldState))
-		for i, record := range mockWorldState {
-			recordBytes, err := json.Marshal(record)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal record: %v", err)
-			}
-			filteredData[i] = &queryresult.KV{
-				Key:   "klp-abc101-cc",
-				Value: recordBytes,
-			}
-		}
-
-		// Mock iterator
-		mockIterator := &mocks.StateQueryIterator{}
-		iteratorIndex := 0
-
-		// Define HasNext and Next methods for the iterator
-		mockIterator.HasNextStub = func() bool {
-			return iteratorIndex < len(filteredData)
-		}
-		mockIterator.NextStub = func() (*queryresult.KV, error) {
-			if iteratorIndex < len(filteredData) {
-				item := filteredData[iteratorIndex]
-				iteratorIndex++
-				return item, nil
-			}
-			return nil, fmt.Errorf("no more items")
-		}
-		mockIterator.CloseStub = func() error {
-			// No operation needed for closing the mock iterator
-			return nil
-		}
-
-		return mockIterator, nil
-	}
-
-	// ****************END define helper functions*********************
-
-	// define users
-	admin := constants.KalpFoundationAddress
-	userM := "16f8ff33ef05bb24fb9a30fa79e700f57a496184"
-	userC := "2da4c4908a393a387b728206b18388bc529fa8d7"
-	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
-
-	// Initialize
-	SetUserID(transactionContext, admin)
-	transactionContext.GetKYCReturns(true, nil)
-
-	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
-
-	require.NoError(t, err)
-	require.Equal(t, true, ok)
-	approval := models.Allow{
-		Owner:   "abc",
-		Amount:  "10000000000",
-		DocType: "abcd",
-		Spender: "spen",
-	}
-	approvalBytes, err := json.Marshal(approval)
-	transactionContext.PutStateWithoutKYC(constants.GasFeesKey, []byte("1"))
-	transactionContext.PutStateWithoutKYC(constants.VestingContractKey, []byte("klp-abc100-cc"))
-	transactionContext.PutStateWithoutKYC(constants.BridgeContractKey, []byte("klp-abc101-cc"))
-	transactionContext.PutStateWithoutKYC("_denyList_0b87970433b22494faff1cc7a819e71bddc7880c_", []byte("false"))
-	transactionContext.PutStateWithoutKYC("_Approval_35581086b9b262a62f5d2d1603d901d9375777b8_klp-abc101-cc_", approvalBytes)
-	// Mock the TransactionContext
-	transactionContext.GetSignedProposalStub = func() (*peer.SignedProposal, error) {
-		mockChannelHeader := "klp-abc101-cc"
-		mockHeader := &common.Header{
-			ChannelHeader: []byte(mockChannelHeader),
-		}
-		mockHeaderBytes, err := proto.Marshal(mockHeader)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal header: %v", err)
-		}
-		mockPayload := &common.Payload{
-			Header: mockHeader,
-			Data:   []byte("mockData"),
-		}
-		mockPayloadBytes, err := proto.Marshal(mockPayload)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal payload: %v", err)
-		}
-		mockProposal := &peer.Proposal{
-			Header:  mockHeaderBytes,
-			Payload: mockPayloadBytes,
-		}
-		mockProposalBytes, err := proto.Marshal(mockProposal)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal proposal: %v", err)
-		}
-		mockSignedProposal := &peer.SignedProposal{
-			ProposalBytes: mockProposalBytes,
-		}
-
-		return mockSignedProposal, nil
-	}
-
-	// Approve: userG approves userM to spend 100 units
-	SetUserID(transactionContext, userG)
-	ok, err = giniContract.Approve(transactionContext, userM, "100")
-	require.NoError(t, err)
-	require.Equal(t, true, ok)
-
-	// TransferFrom: userM transfers 100 units from userG to userC
-	SetUserID(transactionContext, userM)
-	ok, err = giniContract.TransferFrom(transactionContext, userG, userC, "100")
-	require.NoError(t, err)
-	require.Equal(t, true, ok)
-
-}
-
-func TestCase3(t *testing.T) {
-	t.Parallel()
-	transactionContext := &mocks.TransactionContext{}
-	giniContract := chaincode.SmartContract{}
-
-	// ****************START define helper functions*********************
-	worldState := map[string][]byte{}
-	transactionContext.CreateCompositeKeyStub = func(s1 string, s2 []string) (string, error) {
-		key := "_" + s1 + "_"
-		for _, s := range s2 {
-			key += s + "_"
-		}
-		return key, nil
-	}
-	transactionContext.PutStateWithoutKYCStub = func(s string, b []byte) error {
-		worldState[s] = b
-		return nil
-	}
-	transactionContext.GetQueryResultStub = func(s string) (kalpsdk.StateQueryIteratorInterface, error) {
-		var docType string
-		var account string
-
-		// finding doc type
-		re := regexp.MustCompile(`"docType"\s*:\s*"([^"]+)"`)
-		match := re.FindStringSubmatch(s)
-
-		if len(match) > 1 {
-			docType = match[1]
-		}
-
-		// finding account
-		re = regexp.MustCompile(`"account"\s*:\s*"([^"]+)"`)
-		match = re.FindStringSubmatch(s)
-
-		if len(match) > 1 {
-			account = match[1]
-		}
-
-		iteratorData := struct {
-			index int
-			data  []queryresult.KV
-		}{}
-		for key, val := range worldState {
-			if strings.Contains(key, docType) && strings.Contains(key, account) {
-				iteratorData.data = append(iteratorData.data, queryresult.KV{Key: key, Value: val})
-			}
-		}
-		iterator := &mocks.StateQueryIterator{}
-		iterator.HasNextStub = func() bool {
-			return iteratorData.index < len(iteratorData.data)
-		}
-		iterator.NextStub = func() (*queryresult.KV, error) {
-			if iteratorData.index < len(iteratorData.data) {
-				iteratorData.index++
-				return &iteratorData.data[iteratorData.index-1], nil
-			}
-			return nil, fmt.Errorf("iterator out of bounds")
-		}
-		return iterator, nil
-	}
-	transactionContext.GetStateStub = func(s string) ([]byte, error) {
-		data, found := worldState[s]
-		if found {
-			return data, nil
-		}
-		return nil, nil
-	}
-	transactionContext.DelStateWithoutKYCStub = func(s string) error {
-		delete(worldState, s)
-		return nil
-	}
-	transactionContext.GetStateByPartialCompositeKeyStub = func(prefix string, attributes []string) (kalpsdk.StateQueryIteratorInterface, error) {
-		// Define the mock data to simulate the world state
-		mockWorldState := map[string][]byte{
-			"ID~UserRoleMap_0b87970433b22494faff1cc7a819e71bddc7880c_UserRoleMap": []byte(`{"user": "0b87970433b22494faff1cc7a819e71bddc7880c", "Role": "KalpGatewayAdmin"}`),
-			"ID~UserRoleMap_user2_UserRoleMap":                                    []byte(`{"user": "user2", "Role": "KalpGatewayAdmin"}`),
-		}
-
-		// Filter keys that match the prefix and attributes
-		filteredData := []queryresult.KV{}
-		for key, value := range mockWorldState {
-			if strings.HasPrefix(key, prefix) && strings.Contains(key, attributes[0]) && strings.Contains(key, attributes[1]) {
-				filteredData = append(filteredData, queryresult.KV{Key: key, Value: value})
-			}
-		}
-
-		// Mock iterator
-		mockIterator := &mocks.StateQueryIterator{}
-		iteratorIndex := 0
-
-		// Define HasNext and Next methods
-		mockIterator.HasNextStub = func() bool {
-			return iteratorIndex < len(filteredData)
-		}
-		mockIterator.NextStub = func() (*queryresult.KV, error) {
-			if iteratorIndex < len(filteredData) {
-				item := &filteredData[iteratorIndex]
-				iteratorIndex++
-				return item, nil
-			}
-			return nil, fmt.Errorf("no more items")
-		}
-		mockIterator.CloseStub = func() error {
-			// No-op for closing the iterator in this mock
-			return nil
-		}
-
-		return mockIterator, nil
-	}
-	transactionContext.GetTxIDStub = func() string {
-		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-		length := 10
-		rand.Seed(time.Now().UnixNano()) // Seed the random number generator
-		result := make([]byte, length)
-		for i := range result {
-			result[i] = charset[rand.Intn(len(charset))]
-		}
-		return string(result)
-	}
-
-	transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
-		// Simulated mock data based on the query string
-		mockWorldState := []map[string]interface{}{
-			{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
-		}
-
-		// Filter the mock world state based on the queryString if necessary.
-		// For simplicity, assuming all records match the query string.
-		filteredData := make([]*queryresult.KV, len(mockWorldState))
-		for i, record := range mockWorldState {
-			recordBytes, err := json.Marshal(record)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal record: %v", err)
-			}
-			filteredData[i] = &queryresult.KV{
-				Key:   "klp-abc101-cc",
-				Value: recordBytes,
-			}
-		}
-
-		// Mock iterator
-		mockIterator := &mocks.StateQueryIterator{}
-		iteratorIndex := 0
-
-		// Define HasNext and Next methods for the iterator
-		mockIterator.HasNextStub = func() bool {
-			return iteratorIndex < len(filteredData)
-		}
-		mockIterator.NextStub = func() (*queryresult.KV, error) {
-			if iteratorIndex < len(filteredData) {
-				item := filteredData[iteratorIndex]
-				iteratorIndex++
-				return item, nil
-			}
-			return nil, fmt.Errorf("no more items")
-		}
-		mockIterator.CloseStub = func() error {
-			// No operation needed for closing the mock iterator
-			return nil
-		}
-
-		return mockIterator, nil
-	}
-
-	// ****************END define helper functions*********************
-
-	// define users
-	admin := constants.KalpFoundationAddress
-	userM := `{"sender": "abd893b57a28463d4ce4573b7b71c062a7453a18"}`
-
-	// Initialize
-	SetUserID(transactionContext, admin)
-	transactionContext.GetKYCReturns(true, nil)
-
-	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
-
-	require.NoError(t, err)
-	require.Equal(t, true, ok)
-
-	transactionContext.PutStateWithoutKYC("_ID~UserRoleMap_0b87970433b22494faff1cc7a819e71bddc7880c_KalpGatewayAdmin_", []byte(`{"user":"`+"0b87970433b22494faff1cc7a819e71bddc7880c"+`","role":"KalpGatewayAdmin"}`))
+	// Setup the transaction context mock
+	transactionContext.GetStateByPartialCompositeKeyReturns(mockIterator, nil)
 
 	transactionContext.PutStateWithoutKYC(constants.GasFeesKey, []byte("1"))
 	transactionContext.PutStateWithoutKYC(constants.VestingContractKey, []byte("klp-abc100-cc"))
@@ -841,6 +392,470 @@ func TestCase3(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, true, ok)
 }
+
+// func TestCase2(t *testing.T) {
+// 	t.Parallel()
+// 	transactionContext := &mocks.TransactionContext{}
+// 	giniContract := chaincode.SmartContract{}
+// 	giniContract.Contract.Name = "klp-abc101-cc"
+// 	giniContract.Logger = kalpsdk.NewLogger()
+// 	// _, err := kalpsdk.NewChaincode(&chaincode.SmartContract{Contract: contract})
+// 	// ****************START define helper functions*********************
+// 	worldState := map[string][]byte{}
+// 	transactionContext.CreateCompositeKeyStub = func(s1 string, s2 []string) (string, error) {
+// 		key := "_" + s1 + "_"
+// 		for _, s := range s2 {
+// 			key += s + "_"
+// 		}
+// 		return key, nil
+// 	}
+// 	transactionContext.PutStateWithoutKYCStub = func(s string, b []byte) error {
+// 		worldState[s] = b
+// 		return nil
+// 	}
+// 	transactionContext.GetQueryResultStub = func(s string) (kalpsdk.StateQueryIteratorInterface, error) {
+// 		var docType string
+// 		var account string
+
+// 		// finding doc type
+// 		re := regexp.MustCompile(`"docType"\s*:\s*"([^"]+)"`)
+// 		match := re.FindStringSubmatch(s)
+
+// 		if len(match) > 1 {
+// 			docType = match[1]
+// 		}
+
+// 		// finding account
+// 		re = regexp.MustCompile(`"account"\s*:\s*"([^"]+)"`)
+// 		match = re.FindStringSubmatch(s)
+
+// 		if len(match) > 1 {
+// 			account = match[1]
+// 		}
+
+// 		iteratorData := struct {
+// 			index int
+// 			data  []queryresult.KV
+// 		}{}
+// 		for key, val := range worldState {
+// 			if strings.Contains(key, docType) && strings.Contains(key, account) {
+// 				iteratorData.data = append(iteratorData.data, queryresult.KV{Key: key, Value: val})
+// 			}
+// 		}
+// 		iterator := &mocks.StateQueryIterator{}
+// 		iterator.HasNextStub = func() bool {
+// 			return iteratorData.index < len(iteratorData.data)
+// 		}
+// 		iterator.NextStub = func() (*queryresult.KV, error) {
+// 			if iteratorData.index < len(iteratorData.data) {
+// 				iteratorData.index++
+// 				return &iteratorData.data[iteratorData.index-1], nil
+// 			}
+// 			return nil, fmt.Errorf("iterator out of bounds")
+// 		}
+// 		return iterator, nil
+// 	}
+// 	transactionContext.GetStateStub = func(s string) ([]byte, error) {
+// 		data, found := worldState[s]
+// 		if found {
+// 			return data, nil
+// 		}
+// 		return nil, nil
+// 	}
+// 	transactionContext.DelStateWithoutKYCStub = func(s string) error {
+// 		delete(worldState, s)
+// 		return nil
+// 	}
+// 	transactionContext.GetStateByPartialCompositeKeyStub = func(prefix string, attributes []string) (kalpsdk.StateQueryIteratorInterface, error) {
+// 		// Define the mock data to simulate the world state
+// 		mockWorldState := map[string][]byte{
+// 			"ID~UserRoleMap_0b87970433b22494faff1cc7a819e71bddc7880c_UserRoleMap": []byte(`{"Id": "0b87970433b22494faff1cc7a819e71bddc7880c", "Role": "KalpGateWayAdminRole"}`),
+// 			"ID~UserRoleMap_user2_UserRoleMap":                                    []byte(`{"Id": "user2", "Role": "KalpGateWayAdminRole"}`),
+// 		}
+
+// 		// Filter keys that match the prefix and attributes
+// 		filteredData := []queryresult.KV{}
+// 		for key, value := range mockWorldState {
+// 			if strings.HasPrefix(key, prefix) && strings.Contains(key, attributes[0]) && strings.Contains(key, attributes[1]) {
+// 				filteredData = append(filteredData, queryresult.KV{Key: key, Value: value})
+// 			}
+// 		}
+
+// 		// Mock iterator
+// 		mockIterator := &mocks.StateQueryIterator{}
+// 		iteratorIndex := 0
+
+// 		// Define HasNext and Next methods
+// 		mockIterator.HasNextStub = func() bool {
+// 			return iteratorIndex < len(filteredData)
+// 		}
+// 		mockIterator.NextStub = func() (*queryresult.KV, error) {
+// 			if iteratorIndex < len(filteredData) {
+// 				item := &filteredData[iteratorIndex]
+// 				iteratorIndex++
+// 				return item, nil
+// 			}
+// 			return nil, fmt.Errorf("no more items")
+// 		}
+// 		mockIterator.CloseStub = func() error {
+// 			// No-op for closing the iterator in this mock
+// 			return nil
+// 		}
+
+// 		return mockIterator, nil
+// 	}
+// 	transactionContext.GetTxIDStub = func() string {
+// 		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+// 		length := 10
+// 		rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+// 		result := make([]byte, length)
+// 		for i := range result {
+// 			result[i] = charset[rand.Intn(len(charset))]
+// 		}
+// 		return string(result)
+// 	}
+// 	transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+// 		// Simulated mock data based on the query string
+// 		mockWorldState := []map[string]interface{}{
+// 			{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+// 		}
+
+// 		// Filter the mock world state based on the queryString if necessary.
+// 		// For simplicity, assuming all records match the query string.
+// 		filteredData := make([]*queryresult.KV, len(mockWorldState))
+// 		for i, record := range mockWorldState {
+// 			recordBytes, err := json.Marshal(record)
+// 			if err != nil {
+// 				return nil, fmt.Errorf("failed to marshal record: %v", err)
+// 			}
+// 			filteredData[i] = &queryresult.KV{
+// 				Key:   "klp-abc101-cc",
+// 				Value: recordBytes,
+// 			}
+// 		}
+
+// 		// Mock iterator
+// 		mockIterator := &mocks.StateQueryIterator{}
+// 		iteratorIndex := 0
+
+// 		// Define HasNext and Next methods for the iterator
+// 		mockIterator.HasNextStub = func() bool {
+// 			return iteratorIndex < len(filteredData)
+// 		}
+// 		mockIterator.NextStub = func() (*queryresult.KV, error) {
+// 			if iteratorIndex < len(filteredData) {
+// 				item := filteredData[iteratorIndex]
+// 				iteratorIndex++
+// 				return item, nil
+// 			}
+// 			return nil, fmt.Errorf("no more items")
+// 		}
+// 		mockIterator.CloseStub = func() error {
+// 			// No operation needed for closing the mock iterator
+// 			return nil
+// 		}
+
+// 		return mockIterator, nil
+// 	}
+
+// 	// ****************END define helper functions*********************
+
+// 	// define users
+// 	admin := constants.KalpFoundationAddress
+// 	userM := "16f8ff33ef05bb24fb9a30fa79e700f57a496184"
+// 	userC := "2da4c4908a393a387b728206b18388bc529fa8d7"
+// 	userG := "35581086b9b262a62f5d2d1603d901d9375777b8"
+
+// 	// Initialize
+// 	SetUserID(transactionContext, admin)
+// 	transactionContext.GetKYCReturns(true, nil)
+
+// 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
+
+// 	require.NoError(t, err)
+// 	require.Equal(t, true, ok)
+// 	approval := models.Allow{
+// 		Owner:   "abc",
+// 		Amount:  "10000000000",
+// 		DocType: "abcd",
+// 		Spender: "spen",
+// 	}
+// 	approvalBytes, err := json.Marshal(approval)
+// 	transactionContext.PutStateWithoutKYC(constants.GasFeesKey, []byte("1"))
+// 	transactionContext.PutStateWithoutKYC(constants.VestingContractKey, []byte("klp-abc100-cc"))
+// 	transactionContext.PutStateWithoutKYC(constants.BridgeContractKey, []byte("klp-abc101-cc"))
+// 	transactionContext.PutStateWithoutKYC("_denyList_0b87970433b22494faff1cc7a819e71bddc7880c_", []byte("false"))
+// 	transactionContext.PutStateWithoutKYC("_Approval_35581086b9b262a62f5d2d1603d901d9375777b8_klp-abc101-cc_", approvalBytes)
+// 	// Mock the TransactionContext
+// 	transactionContext.GetSignedProposalStub = func() (*peer.SignedProposal, error) {
+// 		mockChannelHeader := "klp-abc101-cc"
+// 		mockHeader := &common.Header{
+// 			ChannelHeader: []byte(mockChannelHeader),
+// 		}
+// 		mockHeaderBytes, err := proto.Marshal(mockHeader)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to marshal header: %v", err)
+// 		}
+// 		mockPayload := &common.Payload{
+// 			Header: mockHeader,
+// 			Data:   []byte("mockData"),
+// 		}
+// 		mockPayloadBytes, err := proto.Marshal(mockPayload)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to marshal payload: %v", err)
+// 		}
+// 		mockProposal := &peer.Proposal{
+// 			Header:  mockHeaderBytes,
+// 			Payload: mockPayloadBytes,
+// 		}
+// 		mockProposalBytes, err := proto.Marshal(mockProposal)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to marshal proposal: %v", err)
+// 		}
+// 		mockSignedProposal := &peer.SignedProposal{
+// 			ProposalBytes: mockProposalBytes,
+// 		}
+
+// 		return mockSignedProposal, nil
+// 	}
+
+// 	// Approve: userG approves userM to spend 100 units
+// 	SetUserID(transactionContext, userG)
+// 	ok, err = giniContract.Approve(transactionContext, userM, "100")
+// 	require.NoError(t, err)
+// 	require.Equal(t, true, ok)
+
+// 	// TransferFrom: userM transfers 100 units from userG to userC
+// 	SetUserID(transactionContext, userM)
+// 	ok, err = giniContract.TransferFrom(transactionContext, userG, userC, "100")
+// 	require.NoError(t, err)
+// 	require.Equal(t, true, ok)
+
+// }
+
+// func TestCase3(t *testing.T) {
+// 	t.Parallel()
+// 	transactionContext := &mocks.TransactionContext{}
+// 	giniContract := chaincode.SmartContract{}
+
+// 	// ****************START define helper functions*********************
+// 	worldState := map[string][]byte{}
+// 	transactionContext.CreateCompositeKeyStub = func(s1 string, s2 []string) (string, error) {
+// 		key := "_" + s1 + "_"
+// 		for _, s := range s2 {
+// 			key += s + "_"
+// 		}
+// 		return key, nil
+// 	}
+// 	transactionContext.PutStateWithoutKYCStub = func(s string, b []byte) error {
+// 		worldState[s] = b
+// 		return nil
+// 	}
+// 	transactionContext.GetQueryResultStub = func(s string) (kalpsdk.StateQueryIteratorInterface, error) {
+// 		var docType string
+// 		var account string
+
+// 		// finding doc type
+// 		re := regexp.MustCompile(`"docType"\s*:\s*"([^"]+)"`)
+// 		match := re.FindStringSubmatch(s)
+
+// 		if len(match) > 1 {
+// 			docType = match[1]
+// 		}
+
+// 		// finding account
+// 		re = regexp.MustCompile(`"account"\s*:\s*"([^"]+)"`)
+// 		match = re.FindStringSubmatch(s)
+
+// 		if len(match) > 1 {
+// 			account = match[1]
+// 		}
+
+// 		iteratorData := struct {
+// 			index int
+// 			data  []queryresult.KV
+// 		}{}
+// 		for key, val := range worldState {
+// 			if strings.Contains(key, docType) && strings.Contains(key, account) {
+// 				iteratorData.data = append(iteratorData.data, queryresult.KV{Key: key, Value: val})
+// 			}
+// 		}
+// 		iterator := &mocks.StateQueryIterator{}
+// 		iterator.HasNextStub = func() bool {
+// 			return iteratorData.index < len(iteratorData.data)
+// 		}
+// 		iterator.NextStub = func() (*queryresult.KV, error) {
+// 			if iteratorData.index < len(iteratorData.data) {
+// 				iteratorData.index++
+// 				return &iteratorData.data[iteratorData.index-1], nil
+// 			}
+// 			return nil, fmt.Errorf("iterator out of bounds")
+// 		}
+// 		return iterator, nil
+// 	}
+// 	transactionContext.GetStateStub = func(s string) ([]byte, error) {
+// 		data, found := worldState[s]
+// 		if found {
+// 			return data, nil
+// 		}
+// 		return nil, nil
+// 	}
+// 	transactionContext.DelStateWithoutKYCStub = func(s string) error {
+// 		delete(worldState, s)
+// 		return nil
+// 	}
+// 	transactionContext.GetStateByPartialCompositeKeyStub = func(prefix string, attributes []string) (kalpsdk.StateQueryIteratorInterface, error) {
+// 		// Define the mock data to simulate the world state
+// 		mockWorldState := map[string][]byte{
+// 			"ID~UserRoleMap_0b87970433b22494faff1cc7a819e71bddc7880c_UserRoleMap": []byte(`{"user": "0b87970433b22494faff1cc7a819e71bddc7880c", "Role": "KalpGatewayAdmin"}`),
+// 			"ID~UserRoleMap_user2_UserRoleMap":                                    []byte(`{"user": "user2", "Role": "KalpGatewayAdmin"}`),
+// 		}
+
+// 		// Filter keys that match the prefix and attributes
+// 		filteredData := []queryresult.KV{}
+// 		for key, value := range mockWorldState {
+// 			if strings.HasPrefix(key, prefix) && strings.Contains(key, attributes[0]) && strings.Contains(key, attributes[1]) {
+// 				filteredData = append(filteredData, queryresult.KV{Key: key, Value: value})
+// 			}
+// 		}
+
+// 		// Mock iterator
+// 		mockIterator := &mocks.StateQueryIterator{}
+// 		iteratorIndex := 0
+
+// 		// Define HasNext and Next methods
+// 		mockIterator.HasNextStub = func() bool {
+// 			return iteratorIndex < len(filteredData)
+// 		}
+// 		mockIterator.NextStub = func() (*queryresult.KV, error) {
+// 			if iteratorIndex < len(filteredData) {
+// 				item := &filteredData[iteratorIndex]
+// 				iteratorIndex++
+// 				return item, nil
+// 			}
+// 			return nil, fmt.Errorf("no more items")
+// 		}
+// 		mockIterator.CloseStub = func() error {
+// 			// No-op for closing the iterator in this mock
+// 			return nil
+// 		}
+
+// 		return mockIterator, nil
+// 	}
+// 	transactionContext.GetTxIDStub = func() string {
+// 		const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+// 		length := 10
+// 		rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+// 		result := make([]byte, length)
+// 		for i := range result {
+// 			result[i] = charset[rand.Intn(len(charset))]
+// 		}
+// 		return string(result)
+// 	}
+
+// 	transactionContext.GetQueryResultStub = func(queryString string) (kalpsdk.StateQueryIteratorInterface, error) {
+// 		// Simulated mock data based on the query string
+// 		mockWorldState := []map[string]interface{}{
+// 			{"amount": "10000", "account": "klp-abc101-cc", "docType": constants.UTXO},
+// 		}
+
+// 		// Filter the mock world state based on the queryString if necessary.
+// 		// For simplicity, assuming all records match the query string.
+// 		filteredData := make([]*queryresult.KV, len(mockWorldState))
+// 		for i, record := range mockWorldState {
+// 			recordBytes, err := json.Marshal(record)
+// 			if err != nil {
+// 				return nil, fmt.Errorf("failed to marshal record: %v", err)
+// 			}
+// 			filteredData[i] = &queryresult.KV{
+// 				Key:   "klp-abc101-cc",
+// 				Value: recordBytes,
+// 			}
+// 		}
+
+// 		// Mock iterator
+// 		mockIterator := &mocks.StateQueryIterator{}
+// 		iteratorIndex := 0
+
+// 		// Define HasNext and Next methods for the iterator
+// 		mockIterator.HasNextStub = func() bool {
+// 			return iteratorIndex < len(filteredData)
+// 		}
+// 		mockIterator.NextStub = func() (*queryresult.KV, error) {
+// 			if iteratorIndex < len(filteredData) {
+// 				item := filteredData[iteratorIndex]
+// 				iteratorIndex++
+// 				return item, nil
+// 			}
+// 			return nil, fmt.Errorf("no more items")
+// 		}
+// 		mockIterator.CloseStub = func() error {
+// 			// No operation needed for closing the mock iterator
+// 			return nil
+// 		}
+
+// 		return mockIterator, nil
+// 	}
+
+// 	// ****************END define helper functions*********************
+
+// 	// define users
+// 	admin := constants.KalpFoundationAddress
+// 	userM := `{"sender": "abd893b57a28463d4ce4573b7b71c062a7453a18"}`
+
+// 	// Initialize
+// 	SetUserID(transactionContext, admin)
+// 	transactionContext.GetKYCReturns(true, nil)
+
+// 	ok, err := giniContract.Initialize(transactionContext, "GINI", "GINI", "klp-6b616c70627269646775-cc")
+
+// 	require.NoError(t, err)
+// 	require.Equal(t, true, ok)
+
+// 	transactionContext.PutStateWithoutKYC("_ID~UserRoleMap_0b87970433b22494faff1cc7a819e71bddc7880c_KalpGatewayAdmin_", []byte(`{"user":"`+"0b87970433b22494faff1cc7a819e71bddc7880c"+`","role":"KalpGatewayAdmin"}`))
+
+// 	transactionContext.PutStateWithoutKYC(constants.GasFeesKey, []byte("1"))
+// 	transactionContext.PutStateWithoutKYC(constants.VestingContractKey, []byte("klp-abc100-cc"))
+// 	transactionContext.PutStateWithoutKYC(constants.BridgeContractKey, []byte("klp-abc101-cc"))
+// 	transactionContext.PutStateWithoutKYC("_denyList_0b87970433b22494faff1cc7a819e71bddc7880c_", []byte("false"))
+// 	// Mock the TransactionContext
+// 	transactionContext.GetSignedProposalStub = func() (*peer.SignedProposal, error) {
+// 		mockChannelHeader := "klp-abc101-cc"
+// 		mockHeader := &common.Header{
+// 			ChannelHeader: []byte(mockChannelHeader),
+// 		}
+// 		mockHeaderBytes, err := proto.Marshal(mockHeader)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to marshal header: %v", err)
+// 		}
+// 		mockPayload := &common.Payload{
+// 			Header: mockHeader,
+// 			Data:   []byte("mockData"),
+// 		}
+// 		mockPayloadBytes, err := proto.Marshal(mockPayload)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to marshal payload: %v", err)
+// 		}
+// 		mockProposal := &peer.Proposal{
+// 			Header:  mockHeaderBytes,
+// 			Payload: mockPayloadBytes,
+// 		}
+// 		mockProposalBytes, err := proto.Marshal(mockProposal)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to marshal proposal: %v", err)
+// 		}
+// 		mockSignedProposal := &peer.SignedProposal{
+// 			ProposalBytes: mockProposalBytes,
+// 		}
+
+// 		return mockSignedProposal, nil
+// 	}
+
+// 	ok, err = giniContract.Transfer(transactionContext, userM, "1000")
+
+// 	require.NoError(t, err)
+// 	require.Equal(t, true, ok)
+// }
 
 func TestName(t *testing.T) {
 	t.Parallel()
@@ -7265,7 +7280,6 @@ func TestTransfer10(t *testing.T) {
 	}
 }
 
-
 func TestInitialize1(t *testing.T) {
 	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
@@ -7355,7 +7369,6 @@ func TestInitialize1(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, string("failed to put data, status code:500"), err.Error())
 }
-
 
 // func TestCase2(t *testing.T) {
 // 	t.Parallel()

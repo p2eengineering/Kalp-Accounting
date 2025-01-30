@@ -24,7 +24,7 @@ type SmartContract struct {
 func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name string, symbol string, vestingContractAddress string) (bool, error) {
 	logger.Log.Infoln("Initializing smart contract... with arguments", name, symbol, vestingContractAddress)
 
-	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
+	if signerKalp, err := internal.IsSignerKalpFoundationToInitialise(ctx); err != nil {
 		return false, err
 	} else if !signerKalp {
 		return false, ginierr.New("Only Kalp Foundation can initialize the contract", http.StatusUnauthorized)
@@ -62,6 +62,10 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 		return false, err
 	} else if !kyced {
 		return false, ginierr.New("Gateway Admin is not KYC'd", http.StatusBadRequest)
+	}
+
+	if _, err := internal.InitializeRoles(ctx, constants.KalpFoundationAddress, constants.KalpFoundationRole); err != nil {
+		return false, err
 	}
 
 	if _, err := internal.InitializeRoles(ctx, constants.KalpGateWayAdminAddress, constants.KalpGateWayAdminRole); err != nil {
@@ -147,7 +151,7 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 		return ginierr.New("User is not KYC'd", http.StatusBadRequest)
 	}
 
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.KalpGateWayAdminRole})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KalpGateWayAdminRole, userRole.Id})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -177,7 +181,7 @@ func (s *SmartContract) DeleteUserRoles(ctx kalpsdk.TransactionContextInterface,
 		return ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized)
 	}
 
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KalpGateWayAdminRole})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KalpGateWayAdminRole, userID})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -235,12 +239,19 @@ func (s *SmartContract) Deny(ctx kalpsdk.TransactionContextInterface, address st
 
 	logger.Log.Infof("Deny invoked for address: %s", address)
 
+	foundationAddress, err := internal.GetFoundationAddress(ctx)
+	if err != nil {
+		err := ginierr.NewInternalError(err, "error getting foundationAddress", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+
 	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
 	} else if !signerKalp {
 		return ginierr.New("Only Kalp Foundation can Deny", http.StatusUnauthorized)
 	}
-	if address == constants.KalpFoundationAddress {
+	if address == foundationAddress {
 		return ginierr.New("admin cannot be denied", http.StatusBadRequest)
 	}
 	if denied, err := internal.IsDenied(ctx, address); err != nil {
@@ -1225,13 +1236,6 @@ func (s *SmartContract) SetFoundationRole(ctx kalpsdk.TransactionContextInterfac
 		return ginierr.New("address is not KYC'd", http.StatusBadRequest)
 	}
 
-	// key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.UserRoleMap})
-	// if e != nil {
-	// 	err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
-	// 	logger.Log.Errorf(err.FullError())
-	// 	return err
-	// }
-
 	foundationAddress, err := internal.GetFoundationAddress(ctx)
 	if err != nil {
 		logError := ginierr.NewInternalError(err,
@@ -1242,7 +1246,7 @@ func (s *SmartContract) SetFoundationRole(ctx kalpsdk.TransactionContextInterfac
 	}
 
 	// Create foundation role composite key
-	foundationKey, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{foundationAddress, constants.UserRoleMap})
+	foundationKey, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KalpFoundationRole, foundationAddress})
 	if err != nil {
 		logError := ginierr.NewInternalError(err,
 			fmt.Sprintf("Failed creating composite key for foundation role: %v", err),
@@ -1257,7 +1261,7 @@ func (s *SmartContract) SetFoundationRole(ctx kalpsdk.TransactionContextInterfac
 		return err
 	}
 
-	newFoundationKey, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{address, constants.UserRoleMap})
+	newFoundationKey, err := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KalpFoundationRole, address})
 	if err != nil {
 		logError := ginierr.NewInternalError(err,
 			fmt.Sprintf("Failed creating composite key for new foundation role: %v", err),

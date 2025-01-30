@@ -1218,7 +1218,7 @@ func TestIsGatewayAdminAddress(t *testing.T) {
 			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
 				// Create composite key
-				key, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184",constants.KalpGateWayAdminRole})
+				key, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184", constants.KalpGateWayAdminRole})
 				// Set invalid JSON data
 				worldState[key] = []byte("invalid json")
 			},
@@ -1564,6 +1564,103 @@ func TestInitializeRoles(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.True(t, result)
+			}
+		})
+	}
+}
+
+func TestGetFoundationAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		setupMock   func(*mocks.TransactionContext, *mocks.StateQueryIterator)
+		expected    string
+		shouldError bool
+	}{
+		{
+			name: "Success - Foundation address found",
+			setupMock: func(ctx *mocks.TransactionContext, iterator *mocks.StateQueryIterator) {
+				// Mock the iterator to return a valid foundation address
+				iterator.HasNextReturnsOnCall(0, true) // First call to HasNext returns true
+				iterator.NextReturns(&queryresult.KV{
+					Key:   "foundationKey",
+					Value: []byte(`{"user":"foundationAddress","role":"KalpFoundation"}`),
+				}, nil)
+				ctx.GetStateByPartialCompositeKeyReturns(iterator, nil)
+			},
+			expected:    "foundationAddress",
+			shouldError: false,
+		},
+		{
+			name: "Failure - Error during GetStateByPartialCompositeKey",
+			setupMock: func(ctx *mocks.TransactionContext, iterator *mocks.StateQueryIterator) {
+				// Mock GetStateByPartialCompositeKey to return an error
+				ctx.GetStateByPartialCompositeKeyReturns(nil, errors.New("failed to get state"))
+			},
+			expected:    "",
+			shouldError: true,
+		},
+		{
+			name: "Failure - Error during iterator.Next",
+			setupMock: func(ctx *mocks.TransactionContext, iterator *mocks.StateQueryIterator) {
+				// Mock the iterator to return an error on Next
+				iterator.HasNextReturnsOnCall(0, true) // First call to HasNext returns true
+				iterator.NextReturns(nil, errors.New("iterator error"))
+				ctx.GetStateByPartialCompositeKeyReturns(iterator, nil)
+			},
+			expected:    "",
+			shouldError: true,
+		},
+		{
+			name: "Failure - Error during JSON unmarshalling",
+			setupMock: func(ctx *mocks.TransactionContext, iterator *mocks.StateQueryIterator) {
+				// Mock the iterator to return invalid JSON data
+				iterator.HasNextReturnsOnCall(0, true) // First call to HasNext returns true
+				iterator.NextReturns(&queryresult.KV{
+					Key:   "foundationKey",
+					Value: []byte(`invalid json`),
+				}, nil)
+				ctx.GetStateByPartialCompositeKeyReturns(iterator, nil)
+			},
+			expected:    "",
+			shouldError: true,
+		},
+		{
+			name: "Failure - No foundation role exists",
+			setupMock: func(ctx *mocks.TransactionContext, iterator *mocks.StateQueryIterator) {
+				// Mock the iterator to return no results
+				iterator.HasNextReturnsOnCall(0, false) // First call to HasNext returns false
+				ctx.GetStateByPartialCompositeKeyReturns(iterator, nil)
+			},
+			expected:    "",
+			shouldError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create a mock transaction context and iterator
+			ctx := &mocks.TransactionContext{}
+			iterator := &mocks.StateQueryIterator{}
+
+			// Set up the mock behavior
+			if tt.setupMock != nil {
+				tt.setupMock(ctx, iterator)
+			}
+
+			// Call the function under test
+			result, err := internal.GetFoundationAddress(ctx)
+
+			// Assert the results
+			if tt.shouldError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
 			}
 		})
 	}
