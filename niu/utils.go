@@ -610,7 +610,7 @@ func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id
 	return userRole.Role, nil
 }
 
-func RemoveUtxoForGasFees1(sdk kalpsdk.TransactionContextInterface, account string, iamount string) error {
+func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, iamount string) error {
 	// Convert input amount to big.Int
 	amount := new(big.Int)
 	amount, ok := amount.SetString(iamount, 10)
@@ -623,7 +623,7 @@ func RemoveUtxoForGasFees1(sdk kalpsdk.TransactionContextInterface, account stri
 	totalAmount := big.NewInt(0)
 	// Keep fetching until required amount is accumulated
 	for totalAmount.Cmp(amount) < 0 {
-		queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"},"use_index": "indexAccountDocType","limit":1}`
+		queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"},"use_index": "indexAccountDocType"}`
 		resultsIterator, err := sdk.GetQueryResult(queryString)
 		if err != nil {
 			return fmt.Errorf("failed to read UTXO: %v", err)
@@ -673,85 +673,6 @@ func RemoveUtxoForGasFees1(sdk kalpsdk.TransactionContextInterface, account stri
 		}
 	}
 
-	return nil
-}
-
-func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, iamount string) error {
-	// Convert input amount to big.Int
-	amount := new(big.Int)
-	amount, ok := amount.SetString(iamount, 10)
-	if !ok {
-		return fmt.Errorf("error converting amount: %v to big.Int", iamount)
-	}
-	if amount.Cmp(big.NewInt(0)) == 0 {
-		return nil
-	}
-	totalAmount := big.NewInt(0)
-	var utxoList []Utxo
-
-	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"},"use_index": "indexAccountDocType"}`
-	resultsIterator, err := sdk.GetQueryResult(queryString)
-	if err != nil {
-		return fmt.Errorf("failed to read UTXO: %v", err)
-	}
-	// Keep fetching until required amount is accumulated
-	for totalAmount.Cmp(amount) < 0 && resultsIterator.HasNext() {
-		var u Utxo
-		queryResult, err := resultsIterator.Next()
-		if err != nil {
-			return err
-		}
-		err = json.Unmarshal(queryResult.Value, &u)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal UTXO value: %v", err)
-		}
-		u.Key = queryResult.Key
-		utxoAmount := new(big.Int)
-		utxoAmount, ok = utxoAmount.SetString(u.Amount, 10)
-		if !ok {
-			return fmt.Errorf("failed to parse UTXO amount: %v", u.Amount)
-		}
-		totalAmount.Add(totalAmount, utxoAmount)
-		utxoList = append(utxoList, u)
-	}
-	if totalAmount.Cmp(amount) < 0 {
-		return fmt.Errorf("insufficient balance for account %v, required: %v, available: %v", account, amount, totalAmount)
-	}
-	// Process UTXOs to remove or update balance
-	for _, utxo := range utxoList {
-		utxoAmount := new(big.Int)
-		utxoAmount, _ = utxoAmount.SetString(utxo.Amount, 10)
-		if amount.Cmp(utxoAmount) >= 0 {
-			// Remove full UTXO amount
-			amount.Sub(amount, utxoAmount)
-			if err := sdk.DelStateWithoutKYC(utxo.Key); err != nil {
-				return fmt.Errorf("failed to delete UTXO: %v", err)
-			}
-		} else {
-			// Partial consumption of UTXO
-			if err := sdk.DelStateWithoutKYC(utxo.Key); err != nil {
-				return fmt.Errorf("failed to delete UTXO: %v", err)
-			}
-			remainingAmount := new(big.Int).Sub(utxoAmount, amount)
-			newUtxo := Utxo{
-				DocType: UTXO,
-				Account: account,
-				Amount:  remainingAmount.String(),
-			}
-			utxoJSON, err := json.Marshal(newUtxo)
-			if err != nil {
-				return fmt.Errorf("failed to marshal new UTXO for account %s: %v", account, err)
-			}
-			utxoKey, err := sdk.CreateCompositeKey(UTXO, []string{account, sdk.GetTxID()})
-			if err != nil {
-				return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
-			}
-			if err := sdk.PutStateWithoutKYC(utxoKey, utxoJSON); err != nil {
-				return fmt.Errorf("failed to update balance for account %s: %v", account, err)
-			}
-			break
-		}
-	}
 	return nil
 }
 func AddUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, iamount string) error {
