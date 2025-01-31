@@ -196,10 +196,6 @@ func (s *SmartContract) DeleteUserRoles(ctx kalpsdk.TransactionContextInterface,
 		return fmt.Errorf("failed to unmarshal user role: %v", err)
 	}
 
-	if userRole.Role == constants.KalpFoundationRole {
-		return fmt.Errorf("foundation role cannot be deleted")
-	}
-
 	if e := ctx.DelStateWithoutKYC(key); e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to delete user role struct: %v", e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())

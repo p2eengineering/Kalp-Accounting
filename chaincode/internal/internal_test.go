@@ -1218,7 +1218,7 @@ func TestIsGatewayAdminAddress(t *testing.T) {
 			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
 				// Create composite key
-				key, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184",constants.KalpGateWayAdminRole})
+				key, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{"16f8ff33ef05bb24fb9a30fa79e700f57a496184", constants.KalpGateWayAdminRole})
 				// Set invalid JSON data
 				worldState[key] = []byte("invalid json")
 			},
@@ -1492,15 +1492,6 @@ func TestInitializeRoles(t *testing.T) {
 		setupMock   func(*mocks.TransactionContext, map[string][]byte)
 		shouldError bool
 	}{
-		{
-			name:   "Success - Initialize Kalp Foundation role",
-			userID: constants.KalpFoundationAddress,
-			role:   constants.KalpFoundationRole,
-			setupMock: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
-
-			},
-			shouldError: false,
-		},
 		{
 			name:   "Success - Initialize Gateway Admin role",
 			userID: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",

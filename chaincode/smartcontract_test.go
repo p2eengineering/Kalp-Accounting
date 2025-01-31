@@ -1530,17 +1530,6 @@ func TestDeleteUserRoles(t *testing.T) {
 			userID:        "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
 			expectedError: ginierr.NewInternalError(nil, "user role not found for userID 16f8ff33ef05bb24fb9a30fa79e700f57a496184", http.StatusNotFound),
 		},
-		{
-			testName: "Failure - Cannot delete foundation role",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte, contract *chaincode.SmartContract) {
-				SetUserID(ctx, constants.KalpFoundationAddress)
-				ctx.GetKYCReturns(true, nil)
-				roleKey, _ := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KalpFoundationAddress, constants.KalpGateWayAdminRole})
-				worldState[roleKey] = []byte(`{"user":"` + constants.KalpFoundationAddress + `","role":"KalpFoundation"}`)
-			},
-			userID:        constants.KalpFoundationAddress,
-			expectedError: fmt.Errorf("foundation role cannot be deleted"),
-		},
 	}
 	for _, tt := range tests {
 		tt := tt // capture range variable
@@ -7265,7 +7254,6 @@ func TestTransfer10(t *testing.T) {
 	}
 }
 
-
 func TestInitialize1(t *testing.T) {
 	t.Parallel()
 	transactionContext := &mocks.TransactionContext{}
@@ -7355,7 +7343,6 @@ func TestInitialize1(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, string("failed to put data, status code:500"), err.Error())
 }
-
 
 // func TestCase2(t *testing.T) {
 // 	t.Parallel()

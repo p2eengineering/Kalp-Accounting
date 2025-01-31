@@ -14,7 +14,6 @@ const (
 	DenyListKey                   = "denyList"
 	GINI                          = "GINI"
 	TotalSupply                   = "2000000000000000000000000000"
-	KalpFoundationRole            = "KalpFoundation"
 	KalpGateWayAdminRole          = "KalpGatewayAdmin"
 	UserRolePrefix                = "ID~UserRoleMap"
 	UserRoleMap                   = "UserRoleMap"
