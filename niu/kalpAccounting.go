@@ -33,7 +33,6 @@ const kalpGateWayAdmin = "KalpGatewayAdmin"
 const userRolePrefix = "ID~UserRoleMap"
 const UserRoleMap = "UserRoleMap"
 const BridgeContractAddress = "klp-6b616c70627269646765-cc"
-const pageSize = 1000
 
 type SmartContract struct {
 	kalpsdk.Contract
