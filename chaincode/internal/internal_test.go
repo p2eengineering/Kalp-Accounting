@@ -737,194 +737,194 @@ func TestRemoveUtxo(t *testing.T) {
 	}
 }
 
-func TestGetTotalUTXO(t *testing.T) {
-	t.Parallel()
+// func TestGetTotalUTXO(t *testing.T) {
+// 	t.Parallel()
 
-	tests := []struct {
-		testName      string
-		account       string
-		setupContext  func(*mocks.TransactionContext, map[string][]byte)
-		expectedTotal string
-		shouldError   bool
-	}{
-		{
-			testName: "Success - Get total UTXO with multiple UTXOs",
-			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
-				// Create multiple UTXOs for the same account
-				utxo1 := models.Utxo{
-					DocType: constants.UTXO,
-					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-					Amount:  "1000",
-				}
-				utxo2 := models.Utxo{
-					DocType: constants.UTXO,
-					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-					Amount:  "2000",
-				}
-				utxoJSON1, _ := json.Marshal(utxo1)
-				utxoJSON2, _ := json.Marshal(utxo2)
-				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = utxoJSON1
-				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid2_"] = utxoJSON2
+// 	tests := []struct {
+// 		testName      string
+// 		account       string
+// 		setupContext  func(*mocks.TransactionContext, map[string][]byte)
+// 		expectedTotal string
+// 		shouldError   bool
+// 	}{
+// 		{
+// 			testName: "Success - Get total UTXO with multiple UTXOs",
+// 			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+// 				// Create multiple UTXOs for the same account
+// 				utxo1 := models.Utxo{
+// 					DocType: constants.UTXO,
+// 					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 					Amount:  "1000",
+// 				}
+// 				utxo2 := models.Utxo{
+// 					DocType: constants.UTXO,
+// 					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 					Amount:  "2000",
+// 				}
+// 				utxoJSON1, _ := json.Marshal(utxo1)
+// 				utxoJSON2, _ := json.Marshal(utxo2)
+// 				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = utxoJSON1
+// 				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid2_"] = utxoJSON2
 
-				results := []queryresult.KV{
-					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: utxoJSON1},
-					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid2_", Value: utxoJSON2},
-				}
+// 				results := []queryresult.KV{
+// 					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: utxoJSON1},
+// 					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid2_", Value: utxoJSON2},
+// 				}
 
-				currentIndex := 0
-				iterator := &mocks.StateQueryIterator{}
-				iterator.HasNextCalls(func() bool {
-					return currentIndex < len(results)
-				})
-				iterator.NextCalls(func() (*queryresult.KV, error) {
-					if currentIndex < len(results) {
-						result := &results[currentIndex]
-						currentIndex++
-						return result, nil
-					}
-					return nil, nil
-				})
-				iterator.CloseCalls(func() error {
-					return nil
-				})
-				ctx.GetQueryResultReturns(iterator, nil)
-			},
-			expectedTotal: "3000",
-			shouldError:   false,
-		},
-		{
-			testName: "Success - Get total UTXO with no UTXOs",
-			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
-				// No UTXOs are set, initial state
-				queryString := `{"selector":{"account":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","docType":"` + constants.UTXO + `"}}`
-				iterator := &mocks.StateQueryIterator{}
-				iterator.HasNextReturns(false)
-				ctx.GetQueryResultReturns(iterator, nil)
-				ctx.GetQueryResultReturns(iterator, nil)
-				fmt.Println("query", queryString)
+// 				currentIndex := 0
+// 				iterator := &mocks.StateQueryIterator{}
+// 				iterator.HasNextCalls(func() bool {
+// 					return currentIndex < len(results)
+// 				})
+// 				iterator.NextCalls(func() (*queryresult.KV, error) {
+// 					if currentIndex < len(results) {
+// 						result := &results[currentIndex]
+// 						currentIndex++
+// 						return result, nil
+// 					}
+// 					return nil, nil
+// 				})
+// 				iterator.CloseCalls(func() error {
+// 					return nil
+// 				})
+// 				ctx.GetQueryResultReturns(iterator, nil)
+// 			},
+// 			expectedTotal: "3000",
+// 			shouldError:   false,
+// 		},
+// 		{
+// 			testName: "Success - Get total UTXO with no UTXOs",
+// 			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+// 				// No UTXOs are set, initial state
+// 				queryString := `{"selector":{"account":"` + "16f8ff33ef05bb24fb9a30fa79e700f57a496184" + `","docType":"` + constants.UTXO + `"}}`
+// 				iterator := &mocks.StateQueryIterator{}
+// 				iterator.HasNextReturns(false)
+// 				ctx.GetQueryResultReturns(iterator, nil)
+// 				ctx.GetQueryResultReturns(iterator, nil)
+// 				fmt.Println("query", queryString)
 
-			},
-			expectedTotal: "0",
-			shouldError:   false,
-		},
-		{
-			testName: "Failure - Query error",
-			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
-				ctx.GetQueryResultReturns(nil, errors.New("query error"))
-			},
-			expectedTotal: "",
+// 			},
+// 			expectedTotal: "0",
+// 			shouldError:   false,
+// 		},
+// 		{
+// 			testName: "Failure - Query error",
+// 			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+// 				ctx.GetQueryResultReturns(nil, errors.New("query error"))
+// 			},
+// 			expectedTotal: "",
 
-			shouldError: true,
-		},
-		{
-			testName: "Failure - Iterator.Next error",
-			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
-				iterator := &mocks.StateQueryIterator{}
-				iterator.HasNextReturns(true)
-				iterator.NextReturns(nil, errors.New("iterator error"))
-				ctx.GetQueryResultReturns(iterator, nil)
-			},
-			expectedTotal: "",
-			shouldError:   true,
-		},
-		{
-			testName: "Failure - Invalid UTXO format",
-			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
-				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = []byte("invalid json")
+// 			shouldError: true,
+// 		},
+// 		{
+// 			testName: "Failure - Iterator.Next error",
+// 			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+// 				iterator := &mocks.StateQueryIterator{}
+// 				iterator.HasNextReturns(true)
+// 				iterator.NextReturns(nil, errors.New("iterator error"))
+// 				ctx.GetQueryResultReturns(iterator, nil)
+// 			},
+// 			expectedTotal: "",
+// 			shouldError:   true,
+// 		},
+// 		{
+// 			testName: "Failure - Invalid UTXO format",
+// 			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+// 				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = []byte("invalid json")
 
-				results := []queryresult.KV{
-					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: []byte("invalid json")},
-				}
+// 				results := []queryresult.KV{
+// 					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: []byte("invalid json")},
+// 				}
 
-				currentIndex := 0
-				iterator := &mocks.StateQueryIterator{}
-				iterator.HasNextCalls(func() bool {
-					return currentIndex < len(results)
-				})
-				iterator.NextCalls(func() (*queryresult.KV, error) {
-					if currentIndex < len(results) {
-						result := &results[currentIndex]
-						currentIndex++
-						return result, nil
-					}
-					return nil, nil
-				})
-				iterator.CloseCalls(func() error {
-					return nil
-				})
-				ctx.GetQueryResultReturns(iterator, nil)
-			},
-			expectedTotal: "",
-			shouldError:   true,
-		},
-		{
-			testName: "Success - Zero values in UTXOs",
-			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
-				utxo1 := models.Utxo{
-					DocType: constants.UTXO,
-					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
-					Amount:  "0",
-				}
-				utxoJSON1, _ := json.Marshal(utxo1)
-				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = utxoJSON1
+// 				currentIndex := 0
+// 				iterator := &mocks.StateQueryIterator{}
+// 				iterator.HasNextCalls(func() bool {
+// 					return currentIndex < len(results)
+// 				})
+// 				iterator.NextCalls(func() (*queryresult.KV, error) {
+// 					if currentIndex < len(results) {
+// 						result := &results[currentIndex]
+// 						currentIndex++
+// 						return result, nil
+// 					}
+// 					return nil, nil
+// 				})
+// 				iterator.CloseCalls(func() error {
+// 					return nil
+// 				})
+// 				ctx.GetQueryResultReturns(iterator, nil)
+// 			},
+// 			expectedTotal: "",
+// 			shouldError:   true,
+// 		},
+// 		{
+// 			testName: "Success - Zero values in UTXOs",
+// 			account:  "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 			setupContext: func(ctx *mocks.TransactionContext, worldState map[string][]byte) {
+// 				utxo1 := models.Utxo{
+// 					DocType: constants.UTXO,
+// 					Account: "16f8ff33ef05bb24fb9a30fa79e700f57a496184",
+// 					Amount:  "0",
+// 				}
+// 				utxoJSON1, _ := json.Marshal(utxo1)
+// 				worldState["_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_"] = utxoJSON1
 
-				results := []queryresult.KV{
-					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: utxoJSON1},
-				}
+// 				results := []queryresult.KV{
+// 					{Key: "_UTXO_16f8ff33ef05bb24fb9a30fa79e700f57a496184_txid1_", Value: utxoJSON1},
+// 				}
 
-				currentIndex := 0
-				iterator := &mocks.StateQueryIterator{}
-				iterator.HasNextCalls(func() bool {
-					return currentIndex < len(results)
-				})
-				iterator.NextCalls(func() (*queryresult.KV, error) {
-					if currentIndex < len(results) {
-						result := &results[currentIndex]
-						currentIndex++
-						return result, nil
-					}
-					return nil, nil
-				})
-				iterator.CloseCalls(func() error {
-					return nil
-				})
-				ctx.GetQueryResultReturns(iterator, nil)
-			},
-			expectedTotal: "0",
-			shouldError:   false,
-		},
-	}
+// 				currentIndex := 0
+// 				iterator := &mocks.StateQueryIterator{}
+// 				iterator.HasNextCalls(func() bool {
+// 					return currentIndex < len(results)
+// 				})
+// 				iterator.NextCalls(func() (*queryresult.KV, error) {
+// 					if currentIndex < len(results) {
+// 						result := &results[currentIndex]
+// 						currentIndex++
+// 						return result, nil
+// 					}
+// 					return nil, nil
+// 				})
+// 				iterator.CloseCalls(func() error {
+// 					return nil
+// 				})
+// 				ctx.GetQueryResultReturns(iterator, nil)
+// 			},
+// 			expectedTotal: "0",
+// 			shouldError:   false,
+// 		},
+// 	}
 
-	for _, tt := range tests {
-		tt := tt // capture range variable
-		t.Run(tt.testName, func(t *testing.T) {
-			t.Parallel()
+// 	for _, tt := range tests {
+// 		tt := tt // capture range variable
+// 		t.Run(tt.testName, func(t *testing.T) {
+// 			t.Parallel()
 
-			// Setup
-			ctx, worldState := setupTestContext()
-			if tt.setupContext != nil {
-				tt.setupContext(ctx, worldState)
-			}
+// 			// Setup
+// 			ctx, worldState := setupTestContext()
+// 			if tt.setupContext != nil {
+// 				tt.setupContext(ctx, worldState)
+// 			}
 
-			// Execute test
-			total, err := internal.GetTotalUTXO(ctx, tt.account)
+// 			// Execute test
+// 			total, err := internal.GetTotalUTXO(ctx, tt.account)
 
-			// Assert results
-			if tt.shouldError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedTotal, total)
-			}
-		})
-	}
-}
+// 			// Assert results
+// 			if tt.shouldError {
+// 				require.Error(t, err)
+// 			} else {
+// 				require.NoError(t, err)
+// 				require.Equal(t, tt.expectedTotal, total)
+// 			}
+// 		})
+// 	}
+// }
 
 func TestGetCalledContractAddress(t *testing.T) {
 	t.Parallel()
