@@ -622,11 +622,9 @@ func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (st
 }
 
 func (s *SmartContract) GasFeesTransfer(ctx kalpsdk.TransactionContextInterface, gasFeesAccount string, amount string) (bool, error) {
-	logger := kalpsdk.NewLogger()
-	logger.Info("GasFeesTransfer---->", gasFeesAccount, amount)
 	signer, err := GetUserId(ctx)
 	if err != nil {
-		return false, fmt.Errorf("internal error %v: error getting signer: %v", http.StatusBadRequest, err)
+		return false, fmt.Errorf("internal error %d: error getting signer: %v", http.StatusBadRequest, err)
 	}
 
 	if signer != intialkalpGateWayadmin {
