@@ -620,3 +620,24 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	return totalSupply, nil
 }
+
+func (s *SmartContract) GasFeesTransfer(ctx kalpsdk.TransactionContextInterface, gasFeesAccount string, amount string) (bool, error) {
+	signer, err := GetUserId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("internal error %d: error getting signer: %v", http.StatusBadRequest, err)
+	}
+
+	if signer != intialkalpGateWayadmin {
+		return false, fmt.Errorf("signer is not gateway admin : %s", signer)
+	}
+
+	if gasFeesAccount != kalpFoundation {
+		if err = RemoveUtxoForGasFees(ctx, gasFeesAccount, amount); err != nil {
+			return false, err
+		}
+		if err = AddUtxoForGasFees(ctx, kalpFoundation, amount); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
