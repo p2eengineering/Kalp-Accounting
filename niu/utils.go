@@ -300,67 +300,67 @@ func GetTotalUTXO(sdk kalpsdk.TransactionContextInterface, account string) (stri
 	return amt.String(), nil
 }
 
-func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender string, amount string) error {
-	// Emit the Approval event
-	operator, err := GetUserId(sdk)
-	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
-	}
-	//bridge contract will be  providing approval for bridge admin as a usecase where owner != calling user.
-	if owner != operator {
-		return fmt.Errorf("caller is not owner")
-	}
+// func Approve(sdk kalpsdk.TransactionContextInterface, owner string, spender string, amount string) error {
+// 	// Emit the Approval event
+// 	operator, err := GetUserId(sdk)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get client id: %v", err)
+// 	}
+// 	//bridge contract will be  providing approval for bridge admin as a usecase where owner != calling user.
+// 	if owner != operator {
+// 		return fmt.Errorf("caller is not owner")
+// 	}
 
-	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
-	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
-	}
+// 	approvalKey, err := sdk.CreateCompositeKey("approval", []string{owner, spender})
+// 	if err != nil {
+// 		return fmt.Errorf("failed to create the composite key for owner with address %s and account address %s: %v", owner, spender, err)
+// 	}
 
-	fmt.Println("owner->", owner)
-	// Get the current balance of the owner
-	balance, err := GetTotalUTXO(sdk, owner)
-	if err != nil {
-		return fmt.Errorf("failed to get balance %v", err)
-	}
-	fmt.Println("owner Balance->", owner)
-	balanceAmount, s := big.NewInt(0).SetString(balance, 10)
-	if !s {
-		return fmt.Errorf("failed to convert balance to big int")
-	}
-	fmt.Printf("balanceAmount:%v\n", balanceAmount)
-	amt, s := big.NewInt(0).SetString(amount, 10)
-	if !s {
-		return fmt.Errorf("failed to conver amount to big int ")
-	}
-	fmt.Printf("amt:%v\n", amt)
-	if balanceAmount.Cmp(amt) == -1 {
-		return fmt.Errorf("approval amount can not be greater than balance")
-	}
-	var approval = Allow{
-		Owner:   owner,
-		Amount:  amount,
-		DocType: "Allowance",
-		Spender: spender,
-	}
-	approvalJSON, err := json.Marshal(approval)
-	if err != nil {
-		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
-	}
-	// Update the state of the smart contract by adding the allowanceKey and value
-	err = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to update state of smart contract for key %s: %v", sdk.GetTxID(), err)
-	}
+// 	fmt.Println("owner->", owner)
+// 	// Get the current balance of the owner
+// 	balance, err := GetTotalUTXO(sdk, owner)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get balance %v", err)
+// 	}
+// 	fmt.Println("owner Balance->", owner)
+// 	balanceAmount, s := big.NewInt(0).SetString(balance, 10)
+// 	if !s {
+// 		return fmt.Errorf("failed to convert balance to big int")
+// 	}
+// 	fmt.Printf("balanceAmount:%v\n", balanceAmount)
+// 	amt, s := big.NewInt(0).SetString(amount, 10)
+// 	if !s {
+// 		return fmt.Errorf("failed to conver amount to big int ")
+// 	}
+// 	fmt.Printf("amt:%v\n", amt)
+// 	if balanceAmount.Cmp(amt) == -1 {
+// 		return fmt.Errorf("approval amount can not be greater than balance")
+// 	}
+// 	var approval = Allow{
+// 		Owner:   owner,
+// 		Amount:  amount,
+// 		DocType: "Allowance",
+// 		Spender: spender,
+// 	}
+// 	approvalJSON, err := json.Marshal(approval)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+// 	}
+// 	// Update the state of the smart contract by adding the allowanceKey and value
+// 	err = sdk.PutStateWithoutKYC(approvalKey, approvalJSON)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to update state of smart contract for key %s: %v", sdk.GetTxID(), err)
+// 	}
 
-	err = sdk.SetEvent("Approval", approvalJSON)
-	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
-	}
+// 	err = sdk.SetEvent("Approval", approvalJSON)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to set event: %v", err)
+// 	}
 
-	fmt.Printf("client %s approved a withdrawal allowance of %s for spender %s", owner, amount, spender)
+// 	fmt.Printf("client %s approved a withdrawal allowance of %s for spender %s", owner, amount, spender)
 
-	return nil
-}
+// 	return nil
+// }
 
 // Allowance returns the amount still available for the spender to withdraw from the owner
 func Allowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string) (string, error) {

@@ -547,27 +547,27 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, addres
 
 }
 
-func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
-	logger := kalpsdk.NewLogger()
-	owner = strings.Trim(owner, " ")
-	if owner == "" {
-		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
-	}
-	if len(owner) != 40 && owner != BridgeContractAddress {
-		return big.NewInt(0).String(), fmt.Errorf("address must be 40 characters long")
-	}
-	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && owner != BridgeContractAddress {
-		return big.NewInt(0).String(), fmt.Errorf("invalid address")
-	}
-	amt, err := GetTotalUTXO(ctx, owner)
-	if err != nil {
-		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
-	}
+// func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
+// 	logger := kalpsdk.NewLogger()
+// 	owner = strings.Trim(owner, " ")
+// 	if owner == "" {
+// 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
+// 	}
+// 	if len(owner) != 40 && owner != BridgeContractAddress {
+// 		return big.NewInt(0).String(), fmt.Errorf("address must be 40 characters long")
+// 	}
+// 	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && owner != BridgeContractAddress {
+// 		return big.NewInt(0).String(), fmt.Errorf("invalid address")
+// 	}
+// 	amt, err := GetTotalUTXO(ctx, owner)
+// 	if err != nil {
+// 		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
+// 	}
 
-	logger.Infof("total balance%v\n", amt)
+// 	logger.Infof("total balance%v\n", amt)
 
-	return amt, nil
-}
+// 	return amt, nil
+// }
 
 // GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
 func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, error) {
@@ -579,19 +579,19 @@ func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextIn
 	return timestamp.AsTime().String(), nil
 }
 
-func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, value string) (bool, error) {
-	owner, err := ctx.GetUserID()
-	if err != nil {
-		return false, err
-	}
+// func (s *SmartContract) Approve(ctx kalpsdk.TransactionContextInterface, spender string, value string) (bool, error) {
+// 	owner, err := ctx.GetUserID()
+// 	if err != nil {
+// 		return false, err
+// 	}
 
-	err = Approve(ctx, owner, spender, value)
-	if err != nil {
-		fmt.Printf("error unable to approve funds: %v", err)
-		return false, err
-	}
-	return true, nil
-}
+// 	err = Approve(ctx, owner, spender, value)
+// 	if err != nil {
+// 		fmt.Printf("error unable to approve funds: %v", err)
+// 		return false, err
+// 	}
+// 	return true, nil
+// }
 
 func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, from string, to string, value string) (bool, error) {
 	logger := kalpsdk.NewLogger()
