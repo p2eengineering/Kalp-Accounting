@@ -1309,7 +1309,7 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 		return false, err
 	}
 	if calledContractAddress != s.GetName() {
-		return false, fmt.Errorf("GasFeesTransferSimple should not be called by other contracts")
+		return false, fmt.Errorf("GasFeesTransferComplex should not be called by other contracts")
 	}
 
 	if gasFeesAccount != constants.KalpFoundationAddress {
