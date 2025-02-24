@@ -7,6 +7,7 @@ const (
 	InitialFoundationBalance      = "11200000000000000000000000"
 	InitialGasFees                = "1000000000000000"
 	InitialGatewayMaxGasFee       = "100000000000000000"
+	InitialGatewayMaxGasFeeInt    = 100000000000000000
 	NameKey                       = "name"
 	SymbolKey                     = "symbol"
 	GasFeesKey                    = "gasFees"
