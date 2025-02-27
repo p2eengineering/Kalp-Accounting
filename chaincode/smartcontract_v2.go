@@ -100,7 +100,9 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 		return false, err
 	}
 	if !isGatewayAdmin {
-		return false, fmt.Errorf("signer is not gateway admin : %s", signer)
+		err := ginierr.New("signer should be gateway admin for gas fees deduction", http.StatusBadRequest)
+		logger.Log.Error(err.FullError())
+		return false, err
 	}
 
 	isValidAddress, err := helper.IsUserAddress(gasFeesAccount)
