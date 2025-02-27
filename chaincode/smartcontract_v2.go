@@ -7,6 +7,7 @@ import (
 	"gini-contract/chaincode/ginierr"
 	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/internal"
+	"gini-contract/chaincode/logger"
 	"net/http"
 	"strconv"
 
@@ -14,15 +15,19 @@ import (
 )
 
 func (s *SmartContract) GasFeesTransferSimple(ctx kalpsdk.TransactionContextInterface, gasFeesAccount string, amount string) (bool, error) {
-	signer, err := helper.GetUserId(ctx)
-	if err != nil {
-		return false, fmt.Errorf("internal error %d: error getting signer: %v", http.StatusBadRequest, err)
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
 	}
 	if signer != constants.KalpGateWayAdminAddress {
-		return false, fmt.Errorf("signer is not gateway admin : %s", signer)
+		err := ginierr.New("signer should be gateway admin for gas fees deduction", http.StatusBadRequest)
+		logger.Log.Error(err.FullError())
+		return false, err
 	}
 
-	isValidAddress, err := helper.IsValidAddress(gasFeesAccount)
+	isValidAddress, err := helper.IsUserAddress(gasFeesAccount)
 	if err != nil {
 		return false, err
 	}
@@ -30,15 +35,16 @@ func (s *SmartContract) GasFeesTransferSimple(ctx kalpsdk.TransactionContextInte
 		return false, ginierr.ErrInvalidAddress(gasFeesAccount)
 	}
 
-	amountInt, err := strconv.ParseUint(amount, 10, 64)
-	if err != nil {
-		return false, fmt.Errorf("error converting amount: %v to uint: %v", amount, err)
+	amountInt, e := strconv.ParseUint(amount, 10, 64)
+	if e != nil {
+		logger.Log.Error("error parsing amount ", amount, e)
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
-	if amountInt <= 0 {
-		return false, fmt.Errorf("gas fees amount cannot be less than equal to zero: %d", amountInt)
+	if amountInt == 0 {
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
 	if amountInt > constants.InitialGatewayMaxGasFeeInt {
-		return false, fmt.Errorf("gas fees amount exceeds the maximum limit: %d", amountInt)
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
 
 	if denied, err := internal.IsDenied(ctx, signer); err != nil {
@@ -63,7 +69,9 @@ func (s *SmartContract) GasFeesTransferSimple(ctx kalpsdk.TransactionContextInte
 		return false, err
 	}
 	if calledContractAddress != s.GetName() {
-		return false, fmt.Errorf("GasFeesTransferSimple should not be called by other contracts")
+		err := ginierr.New("GasFeesTransferSimple should not be called by other contracts", http.StatusBadRequest)
+		logger.Log.Error(err.FullError())
+		return false, err
 	}
 
 	if gasFeesAccount != constants.KalpFoundationAddress {
@@ -81,9 +89,11 @@ func (s *SmartContract) GasFeesTransferSimple(ctx kalpsdk.TransactionContextInte
 }
 
 func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInterface, gasFeesAccount string, amount string) (bool, error) {
-	signer, err := helper.GetUserId(ctx)
-	if err != nil {
-		return false, fmt.Errorf("internal error %d: error getting signer: %v", http.StatusBadRequest, err)
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
 	}
 	isGatewayAdmin, err := internal.IsGatewayAdminAddress(ctx, signer)
 	if err != nil {
@@ -93,7 +103,7 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 		return false, fmt.Errorf("signer is not gateway admin : %s", signer)
 	}
 
-	isValidAddress, err := helper.IsValidAddress(gasFeesAccount)
+	isValidAddress, err := helper.IsUserAddress(gasFeesAccount)
 	if err != nil {
 		return false, err
 	}
@@ -101,23 +111,25 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 		return false, ginierr.ErrInvalidAddress(gasFeesAccount)
 	}
 
-	amountInt, err := strconv.ParseUint(amount, 10, 64)
-	if err != nil {
-		return false, fmt.Errorf("error converting amount: %v to uint: %v", amount, err)
+	amountInt, e := strconv.ParseUint(amount, 10, 64)
+	if e != nil {
+		logger.Log.Error("error parsing amount ", amount, e)
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
-	if amountInt <= 0 {
-		return false, fmt.Errorf("gas fees amount cannot be less than equal to zero: %d", amountInt)
+	if amountInt == 0 {
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
 	var strGatewayMaxGasFee string
 	if strGatewayMaxGasFee, err = s.GetGatewayMaxFee(ctx); err != nil {
 		return false, err
 	}
-	gatewayMaxFeeInt, err := strconv.ParseUint(strGatewayMaxGasFee, 10, 64)
-	if err != nil {
+	gatewayMaxFeeInt, e := strconv.ParseUint(strGatewayMaxGasFee, 10, 64)
+	if e != nil {
+		logger.Log.Error("error parsing gas fees amount", e, strGatewayMaxGasFee)
 		return false, fmt.Errorf("error converting gateway max fees: %v to uint: %v", strGatewayMaxGasFee, err)
 	}
 	if amountInt > gatewayMaxFeeInt {
-		return false, fmt.Errorf("gas fees amount exceeds the maximum limit: %d", amountInt)
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
 
 	if denied, err := internal.IsDenied(ctx, signer); err != nil {
@@ -142,7 +154,9 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 		return false, err
 	}
 	if calledContractAddress != s.GetName() {
-		return false, fmt.Errorf("GasFeesTransferComplex should not be called by other contracts")
+		err := ginierr.New("GasFeesTransferSimple should not be called by other contracts", http.StatusBadRequest)
+		logger.Log.Error(err.FullError())
+		return false, err
 	}
 
 	if gasFeesAccount != constants.KalpFoundationAddress {

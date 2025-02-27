@@ -4,33 +4,36 @@ import (
 	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
+	"gini-contract/chaincode/ginierr"
+	"gini-contract/chaincode/logger"
 	"gini-contract/chaincode/models"
 	"math/big"
+	"net/http"
 	"strconv"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
 
-func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, iamount string) error {
-	// Convert input amount to big.Int
-	amount := new(big.Int)
-	amount, ok := amount.SetString(iamount, 10)
+func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, amount string) error {
+	amountInt := new(big.Int)
+	amountInt, ok := amountInt.SetString(amount, 10)
 	if !ok {
-		return fmt.Errorf("error converting amount: %v to big.Int", iamount)
+		return fmt.Errorf("error converting amount: %v to big.Int", amount)
 	}
-	if amount.Cmp(big.NewInt(0)) == 0 {
+	// TODO_MUDIT: Do we need to check if the amount (gas fees) is negative?
+	if amountInt.Cmp(big.NewInt(0)) == 0 {
 		return nil
 	}
 	totalAmount := big.NewInt(0)
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"use_index": "indexAccountDocType"}`
+	resultsIterator, err := sdk.GetQueryResult(queryString)
+	if err != nil {
+		return fmt.Errorf("failed to read UTXO: %v", err)
+	}
 	// Keep fetching until required amount is accumulated
-	for totalAmount.Cmp(amount) < 0 {
-		queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"use_index": "indexAccountDocType"}`
-		resultsIterator, err := sdk.GetQueryResult(queryString)
-		if err != nil {
-			return fmt.Errorf("failed to read UTXO: %v", err)
-		}
+	for totalAmount.Cmp(amountInt) < 0 {
 		if !resultsIterator.HasNext() {
-			return fmt.Errorf("insufficient balance for account %v, required: %v, available: %v", account, amount, totalAmount)
+			return fmt.Errorf("insufficient balance for account %v, required: %v, available: %v", account, amountInt, totalAmount)
 		}
 		var u models.Utxo
 		queryResult, err := resultsIterator.Next()
@@ -54,8 +57,8 @@ func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account strin
 		}
 	}
 
-	if totalAmount.Cmp(amount) > 0 {
-		remainingAmount := new(big.Int).Sub(totalAmount, amount)
+	if totalAmount.Cmp(amountInt) > 0 {
+		remainingAmount := new(big.Int).Sub(totalAmount, amountInt)
 		newUtxo := models.Utxo{
 			DocType: constants.UTXO,
 			Account: account,
@@ -67,39 +70,41 @@ func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account strin
 		}
 		utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
 		if err != nil {
-			return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
+			return fmt.Errorf("failed to create the composite key for account %s: %v", account, err)
 		}
 		if err := sdk.PutStateWithoutKYC(utxoKey, utxoJSON); err != nil {
-			return fmt.Errorf("failed to update balance for account %s: %v", account, err)
+			return fmt.Errorf("failed to put UTXO for account address %s: %v", account, err)
 		}
 	}
 
 	return nil
 }
-func AddUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, iamount string) error {
-	amount, err := strconv.ParseUint(iamount, 10, 64)
-	if err != nil {
-		return fmt.Errorf("error converting amount: %v to uint: %v", iamount, err)
+func AddUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, amount string) error {
+	amountInt, e := strconv.ParseUint(amount, 10, 64)
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("error converting amount: %v to uint", amount), http.StatusBadRequest)
+		logger.Log.Errorf(err.FullError())
+		return err
 	}
-	if amount == 0 {
+	if amountInt == 0 {
 		return nil
 	}
 	utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
 	if err != nil {
-		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
+		return fmt.Errorf("failed to create the composite key for account %s: %v", account, err)
 	}
 	utxo := models.Utxo{
 		DocType: constants.UTXO,
 		Account: account,
-		Amount:  iamount,
+		Amount:  amount,
 	}
 	utxoJSON, err := json.Marshal(utxo)
 	if err != nil {
-		return fmt.Errorf("failed to marshal owner with ID %s and account address %s to JSON: %v", constants.GINI, account, err)
+		return fmt.Errorf("failed to marshal UTXO for account %s to JSON: %v", account, err)
 	}
 	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
 	if err != nil {
-		return fmt.Errorf("failed to put owner with ID %s and account address %s: %v", constants.GINI, account, err)
+		return fmt.Errorf("failed to put UTXO for account address %s: %v", account, err)
 	}
 	return nil
 }
