@@ -369,37 +369,66 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 }
 
 func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
+	logger := kalpsdk.NewLogger()
+	totalAmount := big.NewInt(0)
+	pageNumber := 1
 
-	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"}}`
-	logger.Log.Infof("queryString: %s\n", queryString)
-	resultsIterator, err := ctx.GetQueryResult(queryString)
-	if err != nil {
-		return "", fmt.Errorf("failed to read: %v", err)
-	}
-	amt := big.NewInt(0)
-	for resultsIterator.HasNext() {
-		var u map[string]interface{}
-		queryResult, err := resultsIterator.Next()
+	for {
+		// Calculate skip value based on current page
+		skip := (pageNumber - 1) * constants.PageSize
+
+		// Create the paginated query
+		queryString := fmt.Sprintf(`{
+			"selector": {
+				"account": "%s",
+				"docType": "%s"
+			},
+			"limit": %d,
+			"skip": %d
+		}`, account, constants.UTXO, constants.PageSize, skip)
+
+		logger.Infof("Executing query: %s\n", queryString)
+
+		resultsIterator, err := ctx.GetQueryResult(queryString)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to execute query: %v", err)
 		}
-		logger.Log.Infof("query Value %s\n", string(queryResult.Value))
-		logger.Log.Infof("query key %s\n", queryResult.Key)
-		err = json.Unmarshal(queryResult.Value, &u)
-		if err != nil {
-			logger.Log.Infof("%v", err)
-			return amt.String(), err
-		}
-		logger.Log.Debugf("%v\n", u["amount"])
-		amount := new(big.Int)
-		if uamount, ok := u["amount"].(string); ok {
-			amount.SetString(uamount, 10)
+		defer resultsIterator.Close()
+
+		// Track if this page has any results
+		hasResults := false
+
+		for resultsIterator.HasNext() {
+			hasResults = true
+			queryResult, err := resultsIterator.Next()
+			if err != nil {
+				return "", fmt.Errorf("failed to iterate over query results: %v", err)
+			}
+
+			var utxo map[string]interface{}
+			if err := json.Unmarshal(queryResult.Value, &utxo); err != nil {
+				return "", fmt.Errorf("failed to unmarshal query result: %v", err)
+			}
+
+			// Accumulate the UTXO amount
+			amount := new(big.Int)
+			if uamount, ok := utxo["amount"].(string); ok {
+				amount.SetString(uamount, 10)
+			}
+
+			totalAmount.Add(totalAmount, amount)
 		}
 
-		amt = amt.Add(amt, amount)
+		// If no results were found in the current page, exit the loop
+		if !hasResults {
+			break
+		}
+
+		// Move to the next page
+		pageNumber++
 	}
 
-	return amt.String(), nil
+	return totalAmount.String(), nil
 }
 
 func UpdateAllowance(sdk kalpsdk.TransactionContextInterface, owner string, spender string, spent string) error {
