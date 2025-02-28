@@ -1,0 +1,8 @@
+{
+    "index":{
+        "fields":["account","docType"]
+    },
+    "ddoc":"indexAccountDocType",
+    "name":"indexAccountDocType",
+    "type":"json"
+}
