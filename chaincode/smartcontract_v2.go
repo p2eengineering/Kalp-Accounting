@@ -156,7 +156,7 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 		return false, err
 	}
 	if calledContractAddress != s.GetName() {
-		err := ginierr.New("GasFeesTransferSimple should not be called by other contracts", http.StatusBadRequest)
+		err := ginierr.New("GasFeesTransferComplex should not be called by other contracts", http.StatusBadRequest)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}

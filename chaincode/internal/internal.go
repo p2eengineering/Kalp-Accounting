@@ -369,31 +369,62 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 }
 
 func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
+
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"}}`
+	logger.Log.Infof("queryString: %s\n", queryString)
+	resultsIterator, err := ctx.GetQueryResult(queryString)
+	if err != nil {
+		return "", fmt.Errorf("failed to read: %v", err)
+	}
+	amt := big.NewInt(0)
+	for resultsIterator.HasNext() {
+		var u map[string]interface{}
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return "", err
+		}
+		logger.Log.Infof("query Value %s\n", string(queryResult.Value))
+		logger.Log.Infof("query key %s\n", queryResult.Key)
+		err = json.Unmarshal(queryResult.Value, &u)
+		if err != nil {
+			logger.Log.Infof("%v", err)
+			return amt.String(), err
+		}
+		logger.Log.Debugf("%v\n", u["amount"])
+		amount := new(big.Int)
+		if uamount, ok := u["amount"].(string); ok {
+			amount.SetString(uamount, 10)
+		}
+
+		amt = amt.Add(amt, amount)
+	}
+
+	return amt.String(), nil
+}
+
+func GetTotalUTXO2(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
 	logger := kalpsdk.NewLogger()
 	totalAmount := big.NewInt(0)
 	pageNumber := 1
-
+	bookmark := ""
 	for {
-		// Calculate skip value based on current page
-		skip := (pageNumber - 1) * constants.PageSize
 
 		// Create the paginated query
 		queryString := fmt.Sprintf(`{
 			"selector": {
 				"account": "%s",
 				"docType": "%s"
-			},
-			"limit": %d,
-			"skip": %d
-		}`, account, constants.UTXO, constants.PageSize, skip)
+			}
+		}`, account, constants.UTXO)
 
 		logger.Infof("Executing query: %s\n", queryString)
 
-		resultsIterator, err := ctx.GetQueryResult(queryString)
+		resultsIterator, metadata, err := ctx.GetQueryResultWithPagination(queryString, constants.PageSize, bookmark)
 		if err != nil {
 			return "", fmt.Errorf("failed to execute query: %v", err)
 		}
 		defer resultsIterator.Close()
+		bookmark = metadata.Bookmark
 
 		// Track if this page has any results
 		hasResults := false

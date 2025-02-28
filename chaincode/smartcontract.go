@@ -316,6 +316,25 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, accou
 	return amt, nil
 }
 
+func (s *SmartContract) BalanceOf2(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
+	logger.Log.Infoln("BalanceOf... with arguments", account)
+
+	isValidAddress, err := helper.IsValidAddress(account)
+	if err != nil {
+		return "0", err
+	}
+	if !isValidAddress {
+		return "0", ginierr.ErrInvalidAddress(account)
+	}
+	amt, err := internal.GetTotalUTXO2(ctx, account)
+	if err != nil {
+		return "0", fmt.Errorf("error fetching balance: %v", err)
+	}
+	logger.Log.Infof("total balance:%v account:%s\n", amt, account)
+
+	return amt, nil
+}
+
 func (s *SmartContract) balance(ctx kalpsdk.TransactionContextInterface, account string) (*big.Int, error) {
 	logger.Log.Infoln("balance... with arguments", account)
 
