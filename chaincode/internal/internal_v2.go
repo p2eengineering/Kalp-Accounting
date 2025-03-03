@@ -19,7 +19,6 @@ func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account strin
 	if !ok {
 		return fmt.Errorf("error converting amount: %v to big.Int", amount)
 	}
-	// TODO_MUDIT: Do we need to check if the amount (gas fees) is negative?
 	if amountInt.Cmp(big.NewInt(0)) == 0 {
 		return nil
 	}
@@ -29,6 +28,7 @@ func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account strin
 	if err != nil {
 		return fmt.Errorf("failed to read UTXO: %v", err)
 	}
+	defer resultsIterator.Close()
 	// Keep fetching until required amount is accumulated
 	for totalAmount.Cmp(amountInt) < 0 {
 		if !resultsIterator.HasNext() {
@@ -105,4 +105,60 @@ func AddUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, 
 		return fmt.Errorf("failed to put UTXO for account address %s: %v", account, err)
 	}
 	return nil
+}
+
+func GetTotalUTXOWithPagination(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
+	totalAmount := big.NewInt(0)
+	bookmark := ""
+	for {
+
+		// Create the paginated query
+		queryString := fmt.Sprintf(`{
+			"selector": {
+				"account": "%s",
+				"docType": "%s"
+			}
+		}`, account, constants.UTXO)
+
+		resultsIterator, metadata, err := ctx.GetQueryResultWithPagination(queryString, constants.PageSize, bookmark)
+		if err != nil {
+			return "", fmt.Errorf("failed to execute query: %v", err)
+		}
+		bookmark = metadata.Bookmark
+
+		// Track if this page has any results
+		hasResults := false
+
+		for resultsIterator.HasNext() {
+			hasResults = true
+			queryResult, err := resultsIterator.Next()
+			if err != nil {
+				resultsIterator.Close()
+				return "", fmt.Errorf("failed to iterate over query results: %v", err)
+			}
+
+			var utxo models.Utxo
+			if err := json.Unmarshal(queryResult.Value, &utxo); err != nil {
+				resultsIterator.Close()
+				return "", fmt.Errorf("failed to unmarshal query result: %v", err)
+			}
+
+			// Accumulate the UTXO amount
+			amount := new(big.Int)
+			if _, ok := amount.SetString(utxo.Amount, 10); !ok {
+				resultsIterator.Close()
+				return "", ginierr.ErrInvalidAmount(utxo.Amount)
+			}
+
+			totalAmount.Add(totalAmount, amount)
+			resultsIterator.Close()
+		}
+
+		// If no results were found in the current page, exit the loop
+		if !hasResults {
+			break
+		}
+	}
+
+	return totalAmount.String(), nil
 }

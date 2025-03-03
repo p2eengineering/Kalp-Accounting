@@ -57,12 +57,6 @@ func (s *SmartContract) GasFeesTransferSimple(ctx kalpsdk.TransactionContextInte
 	} else if denied {
 		return false, ginierr.ErrDeniedAddress(gasFeesAccount)
 	}
-	// TODO: discuss if we need to check if admin is denied
-	// if denied, err := internal.IsDenied(ctx, constants.KalpFoundationAddress); err != nil {
-	// 	return false, err
-	// } else if denied {
-	// 	return false, ginierr.ErrDeniedAddress(constants.KalpFoundationAddress)
-	// }
 
 	calledContractAddress, err := internal.GetCalledContractAddress(ctx)
 	if err != nil {
@@ -144,12 +138,6 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 	} else if denied {
 		return false, ginierr.ErrDeniedAddress(gasFeesAccount)
 	}
-	// TODO: discuss if we need to check if admin is denied
-	// if denied, err := internal.IsDenied(ctx, constants.KalpFoundationAddress); err != nil {
-	// 	return false, err
-	// } else if denied {
-	// 	return false, ginierr.ErrDeniedAddress(constants.KalpFoundationAddress)
-	// }
 
 	calledContractAddress, err := internal.GetCalledContractAddress(ctx)
 	if err != nil {
