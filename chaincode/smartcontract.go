@@ -307,7 +307,7 @@ func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, accou
 	if !isValidAddress {
 		return "0", ginierr.ErrInvalidAddress(account)
 	}
-	amt, err := internal.GetTotalUTXOWithPagination(ctx, account)
+	amt, err := internal.GetTotalUTXO(ctx, account)
 	if err != nil {
 		return "0", fmt.Errorf("error fetching balance: %v", err)
 	}
