@@ -21,7 +21,7 @@ func (s *SmartContract) GasFeesTransferSimple(ctx kalpsdk.TransactionContextInte
 		return false, err
 	}
 	if signer != constants.KalpGateWayAdminAddress {
-		err := ginierr.New("signer should be gateway admin for gas fees deduction", http.StatusBadRequest)
+		err := ginierr.New("signer should be gateway admin for gas fees deduction", http.StatusUnauthorized)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
@@ -63,7 +63,7 @@ func (s *SmartContract) GasFeesTransferSimple(ctx kalpsdk.TransactionContextInte
 		return false, err
 	}
 	if calledContractAddress != s.GetName() {
-		err := ginierr.New("GasFeesTransferSimple should not be called by other contracts", http.StatusBadRequest)
+		err := ginierr.New("GasFeesTransferSimple should not be called by other contracts", http.StatusUnauthorized)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
@@ -94,7 +94,7 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 		return false, err
 	}
 	if !isGatewayAdmin {
-		err := ginierr.New("signer should be gateway admin for gas fees deduction", http.StatusBadRequest)
+		err := ginierr.New("signer should be gateway admin for gas fees deduction", http.StatusUnauthorized)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
@@ -122,7 +122,7 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 	}
 	gatewayMaxFeeInt, e := strconv.ParseUint(strGatewayMaxGasFee, 10, 64)
 	if e != nil {
-		err := ginierr.NewInternalError(e, "error parsing gas fees amount", http.StatusInternalServerError)
+		err := ginierr.NewInternalError(e, "error parsing GatewayMaxGasFee", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
@@ -146,7 +146,7 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 		return false, err
 	}
 	if calledContractAddress != s.GetName() {
-		err := ginierr.New("GasFeesTransferComplex should not be called by other contracts", http.StatusBadRequest)
+		err := ginierr.New("GasFeesTransferComplex should not be called by other contracts", http.StatusUnauthorized)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
