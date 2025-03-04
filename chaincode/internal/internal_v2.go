@@ -8,6 +8,7 @@ import (
 	"gini-contract/chaincode/logger"
 	"gini-contract/chaincode/models"
 	"math/big"
+	"net/http"
 	"strconv"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
@@ -81,7 +82,8 @@ func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account strin
 func AddUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, amount string) error {
 	amountInt, e := strconv.ParseUint(amount, 10, 64)
 	if e != nil {
-		logger.Log.Error("error parsing amount ", amount, e)
+		err := ginierr.NewInternalError(e, "error parsing amount", http.StatusBadRequest)
+		logger.Log.Error(err.FullError())
 		return ginierr.ErrInvalidAmount(amount)
 	}
 	if amountInt == 0 {

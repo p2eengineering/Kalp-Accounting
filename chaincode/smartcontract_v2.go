@@ -1,7 +1,6 @@
 package chaincode
 
 import (
-	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/events"
 	"gini-contract/chaincode/ginierr"
@@ -37,7 +36,8 @@ func (s *SmartContract) GasFeesTransferSimple(ctx kalpsdk.TransactionContextInte
 
 	amountInt, e := strconv.ParseUint(amount, 10, 64)
 	if e != nil {
-		logger.Log.Error("error parsing amount ", amount, e)
+		err := ginierr.NewInternalError(e, "error parsing amount", http.StatusBadRequest)
+		logger.Log.Error(err.FullError())
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
 	if amountInt == 0 {
@@ -109,7 +109,8 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 
 	amountInt, e := strconv.ParseUint(amount, 10, 64)
 	if e != nil {
-		logger.Log.Error("error parsing amount ", amount, e)
+		err := ginierr.NewInternalError(e, "error parsing amount", http.StatusBadRequest)
+		logger.Log.Error(err.FullError())
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
 	if amountInt == 0 {
@@ -121,8 +122,9 @@ func (s *SmartContract) GasFeesTransferComplex(ctx kalpsdk.TransactionContextInt
 	}
 	gatewayMaxFeeInt, e := strconv.ParseUint(strGatewayMaxGasFee, 10, 64)
 	if e != nil {
-		logger.Log.Error("error parsing gas fees amount", e, strGatewayMaxGasFee)
-		return false, fmt.Errorf("error converting gateway max fees: %v to uint: %v", strGatewayMaxGasFee, err)
+		err := ginierr.NewInternalError(e, "error parsing gas fees amount", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, ginierr.ErrInvalidAmount(amount)
 	}
 	if amountInt > gatewayMaxFeeInt {
 		return false, ginierr.ErrInvalidAmount(amount)

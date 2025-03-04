@@ -369,7 +369,6 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 }
 
 func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
-
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"}}`
 	logger.Log.Infof("queryString: %s\n", queryString)
 	resultsIterator, err := ctx.GetQueryResult(queryString)
@@ -378,27 +377,26 @@ func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (stri
 	}
 	amt := big.NewInt(0)
 	for resultsIterator.HasNext() {
-		var utxo models.Utxo
+		var u map[string]interface{}
 		queryResult, err := resultsIterator.Next()
 		if err != nil {
 			return "", err
 		}
 		logger.Log.Infof("query Value %s\n", string(queryResult.Value))
 		logger.Log.Infof("query key %s\n", queryResult.Key)
-		err = json.Unmarshal(queryResult.Value, &utxo)
+		err = json.Unmarshal(queryResult.Value, &u)
 		if err != nil {
 			logger.Log.Infof("%v", err)
 			return amt.String(), err
 		}
-		logger.Log.Debugf("%v\n", utxo.Amount)
+		logger.Log.Debugf("%v\n", u["amount"])
 		amount := new(big.Int)
-		if _, ok := amount.SetString(utxo.Amount, 10); !ok {
-			return "", ginierr.ErrInvalidAmount(utxo.Amount)
+		if uamount, ok := u["amount"].(string); ok {
+			amount.SetString(uamount, 10)
 		}
 
 		amt = amt.Add(amt, amount)
 	}
-
 	return amt.String(), nil
 }
 
