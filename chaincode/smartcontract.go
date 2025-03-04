@@ -1154,7 +1154,7 @@ func (s *SmartContract) SetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface
 		return err
 	}
 
-	if feeInt.Cmp(maxGasFees) > 0 {
+	if feeInt.Sign() < 0 || feeInt.Cmp(maxGasFees) > 0 {
 		return ginierr.ErrInvalidAmount(gatewayMaxFee)
 	}
 
