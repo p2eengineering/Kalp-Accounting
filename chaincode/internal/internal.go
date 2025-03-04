@@ -369,6 +369,7 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 }
 
 func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
+
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"}}`
 	logger.Log.Infof("queryString: %s\n", queryString)
 	resultsIterator, err := ctx.GetQueryResult(queryString)
@@ -397,6 +398,7 @@ func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (stri
 
 		amt = amt.Add(amt, amount)
 	}
+
 	return amt.String(), nil
 }
 

@@ -1147,8 +1147,14 @@ func (s *SmartContract) SetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface
 		return ginierr.ErrInvalidAmount(gatewayMaxFee)
 	}
 
-	// Validate non-negative
-	if feeInt.Sign() < 0 {
+	maxGasFees, ok := new(big.Int).SetString(constants.MaxGasFees, 10)
+	if !ok {
+		err := ginierr.New("error converting default MaxGasFees to big int", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError(), constants.MaxGasFees)
+		return err
+	}
+
+	if feeInt.Cmp(maxGasFees) > 0 {
 		return ginierr.ErrInvalidAmount(gatewayMaxFee)
 	}
 
