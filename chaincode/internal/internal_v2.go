@@ -29,7 +29,7 @@ func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account strin
 		return fmt.Errorf("failed to read UTXO: %v", err)
 	}
 	defer resultsIterator.Close()
-	// Keep fetching until required amount is accumulated
+
 	for totalAmount.Cmp(amountInt) < 0 {
 		if !resultsIterator.HasNext() {
 			return fmt.Errorf("insufficient balance for account %v, required: %v, available: %v", account, amountInt, totalAmount)
@@ -81,7 +81,7 @@ func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account strin
 func AddUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account string, amount string) error {
 	amountInt, e := strconv.ParseUint(amount, 10, 64)
 	if e != nil {
-		err := fmt.Errorf("error parsing the amount: %s , error is : %v", amount, e)
+		err := fmt.Errorf("error parsing the amount: %s: %v", amount, e)
 		logger.Log.Error(err.Error())
 		return ginierr.ErrInvalidAmount(amount)
 	}
