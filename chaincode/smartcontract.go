@@ -1230,6 +1230,14 @@ func (s *SmartContract) Mint(ctx kalpsdk.TransactionContextInterface, address, a
 		return ginierr.New("Only Kalp Foundation can call Mint", http.StatusUnauthorized)
 	}
 
+	isValidAddress, err := helper.IsValidAddress(address)
+	if err != nil {
+		return err
+	}
+	if !isValidAddress {
+		return ginierr.ErrInvalidAddress(address)
+	}
+
 	amountBigInt, ok := big.NewInt(0).SetString(amount, 10)
 	if !ok {
 		return ginierr.ErrConvertingAmountToBigInt(amount)
