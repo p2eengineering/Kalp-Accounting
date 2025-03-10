@@ -203,7 +203,7 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 
 func (s *SmartContract) MintToFaucetAdmin(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
 	logger := kalpsdk.NewLogger()
-	logger.Infof("Mint---->")
+	logger.Infof("Mint faucet admin---->")
 
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
