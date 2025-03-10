@@ -17,7 +17,7 @@ import (
 const kalpFoundation = "0b87970433b22494faff1cc7a819e71bddc7880c"
 const intialgasfeesadmin = "fb2305a2373fd9fa5b5bf5acc6fdbf22ecbde930"
 const intialkalpGateWayadmin = "67c30fcb223182fef1c471a26527bfc4c50d093c"
-const testnetFaucetAdmin = "88016ab3510adc3905d858e08d3c08d8a78041bd"
+const testnetFaucetAdmin = "71127d2df92f89f64e4ff8384e6210d5f8fe93cc"
 
 const intialBridgeContractBalance = "1992000000000000000000000000"
 const intialFoundationBalance = "8000000000000000000000000"
@@ -211,19 +211,22 @@ func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterfac
 		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
 	}
 	if userId != testnetFaucetAdmin {
-		return fmt.Errorf("error with status code %v, only faucet admin can call MintByFaucetAdmin: %v", http.StatusBadRequest, err)
+		return fmt.Errorf("error with status code %v, only faucet admin can call MintByFaucetAdmin: %v", http.StatusUnauthorized, err)
 	}
+
+	fmt.Println("amount", amount)
 
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
-		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
+		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusBadRequest, amount)
 	}
 	if accAmount.Cmp(big.NewInt(0)) <= 0 { // accAmount <= 0
 		return fmt.Errorf("error with status code %v, invalid amount %v", http.StatusBadRequest, amount)
 	}
+	fmt.Println("accAmount", accAmount)
 
 	// Mint tokens
-	err = AddUtxo(ctx, address, amount)
+	err = AddUtxo(ctx, address, accAmount)
 	if err != nil {
 		return err
 	}
