@@ -17,6 +17,7 @@ import (
 const kalpFoundation = "0b87970433b22494faff1cc7a819e71bddc7880c"
 const intialgasfeesadmin = "fb2305a2373fd9fa5b5bf5acc6fdbf22ecbde930"
 const intialkalpGateWayadmin = "67c30fcb223182fef1c471a26527bfc4c50d093c"
+const testnetFaucetAdmin = "88016ab3510adc3905d858e08d3c08d8a78041bd"
 
 const intialBridgeContractBalance = "1992000000000000000000000000"
 const intialFoundationBalance = "8000000000000000000000000"
@@ -201,35 +202,32 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 
 }
 
-func (s *SmartContract) MintToFaucetAdmin(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
+func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
 	logger := kalpsdk.NewLogger()
-	logger.Infof("Mint faucet admin---->")
+	logger.Infof("MintByFaucetAdmin---->")
+
+	userId, err := GetUserId(ctx)
+	if err != nil {
+		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
+	}
+	if userId != testnetFaucetAdmin {
+		return fmt.Errorf("error with status code %v, only faucet admin can call MintByFaucetAdmin: %v", http.StatusBadRequest, err)
+	}
 
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
 		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusConflict, amount)
 	}
-	if accAmount.Cmp(big.NewInt(0)) == -1 || accAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
+	if accAmount.Cmp(big.NewInt(0)) <= 0 { // accAmount <= 0
 		return fmt.Errorf("error with status code %v, invalid amount %v", http.StatusBadRequest, amount)
 	}
 
-	balance, _ := GetTotalUTXO(ctx, address)
-	logger.Infof("balance: %s", balance)
-	balanceAmount, su := big.NewInt(0).SetString(balance, 10)
-	if !su {
-		logger.Infof("amount can't be converted to string ")
-		return fmt.Errorf("amount can't be converted to string: ")
-	}
-	if balanceAmount.Cmp(big.NewInt(0)) == 1 {
-		return fmt.Errorf("internal error %v: error can't call mint request twice", http.StatusBadRequest)
-	}
-
 	// Mint tokens
-	err := MintUtxoHelperWithoutKYC(ctx, address)
+	err = AddUtxo(ctx, address, amount)
 	if err != nil {
-		return fmt.Errorf("error with status code %v, failed to mint tokens: %v", http.StatusBadRequest, err)
+		return err
 	}
-	logger.Infof("MintToken Amount---->%v\n", amount)
+	logger.Infof("MintToken Amount By FaucetAdmin---->%v\n", amount)
 	return nil
 
 }
