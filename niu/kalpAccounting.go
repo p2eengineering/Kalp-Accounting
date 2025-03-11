@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"strings"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
@@ -577,27 +576,27 @@ func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterfac
 
 // }
 
-func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
-	logger := kalpsdk.NewLogger()
-	owner = strings.Trim(owner, " ")
-	if owner == "" {
-		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
-	}
-	if len(owner) != 40 && owner != BridgeContractAddress {
-		return big.NewInt(0).String(), fmt.Errorf("address must be 40 characters long")
-	}
-	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && owner != BridgeContractAddress {
-		return big.NewInt(0).String(), fmt.Errorf("invalid address")
-	}
-	amt, err := GetTotalUTXO(ctx, owner)
-	if err != nil {
-		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
-	}
+// func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
+// 	logger := kalpsdk.NewLogger()
+// 	owner = strings.Trim(owner, " ")
+// 	if owner == "" {
+// 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
+// 	}
+// 	if len(owner) != 40 && owner != BridgeContractAddress {
+// 		return big.NewInt(0).String(), fmt.Errorf("address must be 40 characters long")
+// 	}
+// 	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && owner != BridgeContractAddress {
+// 		return big.NewInt(0).String(), fmt.Errorf("invalid address")
+// 	}
+// 	amt, err := GetTotalUTXO(ctx, owner)
+// 	if err != nil {
+// 		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
+// 	}
 
-	logger.Infof("total balance%v\n", amt)
+// 	logger.Infof("total balance%v\n", amt)
 
-	return amt, nil
-}
+// 	return amt, nil
+// }
 
 // GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
 func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, error) {
