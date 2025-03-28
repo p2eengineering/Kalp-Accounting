@@ -12,6 +12,7 @@ import (
 	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
+	"strconv"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 	"golang.org/x/exp/slices"
@@ -1177,4 +1178,92 @@ func (s *SmartContract) GetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface
 		return "", fmt.Errorf("gatewayMaxFee not set")
 	}
 	return string(bytes), nil
+}
+
+func (s *SmartContract) ReconcileFoundation(sdk kalpsdk.TransactionContextInterface, numberOfUtxoStr string) error {
+	if signerKalp, err := internal.IsSignerKalpFoundation(sdk); err != nil {
+		return err
+	} else if !signerKalp {
+		return ginierr.New("Only Kalp Foundation can initialize the contract", http.StatusUnauthorized)
+	}
+
+	account, err := helper.GetUserId(sdk)
+	if err != nil {
+		return ginierr.ErrFailedToGetPublicAddress
+	}
+
+	numberOfUtxo, _ := strconv.Atoi(numberOfUtxoStr)
+	if numberOfUtxo <= 0 {
+		return fmt.Errorf("numberOfUtxo must be greater than zero")
+	}
+
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"limit":` + fmt.Sprintf("%d", numberOfUtxo) + `,"use_index": "indexIdDocType"}`
+	fmt.Println("queryString->", queryString)
+	resultsIterator, err := sdk.GetQueryResult(queryString)
+	if err != nil {
+		return fmt.Errorf("failed to fetch UTXOs: %v", err)
+	}
+
+	var utxos []models.Utxo
+	totalAmount := big.NewInt(0)
+	count := 0
+
+	for resultsIterator.HasNext() && count < numberOfUtxo {
+		var u models.Utxo
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(queryResult.Value, &u)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal UTXO: %v", err)
+		}
+		fmt.Println("UTXO to be deleted->", u)
+
+		u.Key = queryResult.Key
+		amt, success := big.NewInt(0).SetString(u.Amount, 10)
+		if !success {
+			return fmt.Errorf("failed to convert amount string to big.Int")
+		}
+		totalAmount.Add(totalAmount, amt)
+		utxos = append(utxos, u)
+		count++
+	}
+
+	if count == 0 {
+		return fmt.Errorf("no UTXOs found to merge")
+	}
+
+	// Remove selected UTXOs
+	for _, u := range utxos {
+		if err := sdk.DelStateWithoutKYC(u.Key); err != nil {
+			return fmt.Errorf("failed to delete UTXO %s: %v", u.Key, err)
+		}
+		fmt.Println("Deleting->", u.Key)
+	}
+
+	// Create new merged UTXO
+	utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
+	if err != nil {
+		return fmt.Errorf("failed to create composite key: %v", err)
+	}
+
+	newUtxo := models.Utxo{
+		DocType: constants.UTXO,
+		Account: account,
+		Amount:  totalAmount.String(),
+	}
+	utxoJSON, err := json.Marshal(newUtxo)
+	if err != nil {
+		return fmt.Errorf("failed to marshal new UTXO: %v", err)
+	}
+
+	fmt.Println("Adding newUtxo->", utxoKey, newUtxo)
+	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
+	if err != nil {
+		return fmt.Errorf("failed to put new merged UTXO: %v", err)
+	}
+
+	fmt.Println("Added->", utxoJSON)
+	return nil
 }
