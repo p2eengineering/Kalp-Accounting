@@ -1184,7 +1184,7 @@ func (s *SmartContract) ReconcileFoundation(sdk kalpsdk.TransactionContextInterf
 	if signerKalp, err := internal.IsSignerKalpFoundation(sdk); err != nil {
 		return err
 	} else if !signerKalp {
-		return ginierr.New("Only Kalp Foundation can initialize the contract", http.StatusUnauthorized)
+		return ginierr.New("Only Kalp Foundation can execute ReconcileFoundation function", http.StatusUnauthorized)
 	}
 
 	account, err := helper.GetUserId(sdk)
@@ -1193,8 +1193,8 @@ func (s *SmartContract) ReconcileFoundation(sdk kalpsdk.TransactionContextInterf
 	}
 
 	numberOfUtxo, _ := strconv.Atoi(numberOfUtxoStr)
-	if numberOfUtxo <= 0 {
-		return fmt.Errorf("numberOfUtxo must be greater than zero")
+	if numberOfUtxo <= 1 {
+		return fmt.Errorf("numberOfUtxo must be greater than one to merge")
 	}
 
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"limit":` + fmt.Sprintf("%d", numberOfUtxo) + `,"use_index": "indexIdDocType"}`
