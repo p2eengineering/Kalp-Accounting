@@ -1180,28 +1180,30 @@ func (s *SmartContract) GetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface
 	return string(bytes), nil
 }
 
-func (s *SmartContract) ReconcileFoundation(sdk kalpsdk.TransactionContextInterface, numberOfUtxoStr string) error {
-	if signerKalp, err := internal.IsSignerKalpFoundation(sdk); err != nil {
+func (s *SmartContract) ReconcileFoundation(ctx kalpsdk.TransactionContextInterface, numberOfUtxoStr string) error {
+	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
 		return err
 	} else if !signerKalp {
 		return ginierr.New("Only Kalp Foundation can execute ReconcileFoundation function", http.StatusUnauthorized)
 	}
 
-	account, err := helper.GetUserId(sdk)
+	account, err := helper.GetUserId(ctx)
 	if err != nil {
 		return ginierr.ErrFailedToGetPublicAddress
 	}
 
 	numberOfUtxo, _ := strconv.Atoi(numberOfUtxoStr)
 	if numberOfUtxo <= 1 {
-		return fmt.Errorf("numberOfUtxo must be greater than one to merge")
+		return ginierr.New("numberOfUtxo must be greater than one to merge", http.StatusBadRequest)
 	}
 
 	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"limit":` + fmt.Sprintf("%d", numberOfUtxo) + `,"use_index": "indexIdDocType"}`
-	fmt.Println("queryString->", queryString)
-	resultsIterator, err := sdk.GetQueryResult(queryString)
-	if err != nil {
-		return fmt.Errorf("failed to fetch UTXOs: %v", err)
+	logger.Log.Infoln("queryString->", queryString)
+	resultsIterator, e := ctx.GetQueryResult(queryString)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error in running query", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
 	}
 
 	var utxos []models.Utxo
@@ -1210,20 +1212,24 @@ func (s *SmartContract) ReconcileFoundation(sdk kalpsdk.TransactionContextInterf
 
 	for resultsIterator.HasNext() && count < numberOfUtxo {
 		var u models.Utxo
-		queryResult, err := resultsIterator.Next()
-		if err != nil {
+		queryResult, e := resultsIterator.Next()
+		if e != nil {
+			err := ginierr.NewInternalError(e, "failed to fetch Next from iterator", http.StatusInternalServerError)
+			logger.Log.Error(err.FullError())
 			return err
 		}
-		err = json.Unmarshal(queryResult.Value, &u)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal UTXO: %v", err)
+		e = json.Unmarshal(queryResult.Value, &u)
+		if e != nil {
+			err := ginierr.NewInternalError(e, "failed to unmarshal UTXO", http.StatusInternalServerError)
+			logger.Log.Error(err.FullError())
+			return err
 		}
-		fmt.Println("UTXO to be deleted->", u)
+		logger.Log.Infoln("UTXO to be deleted->", u)
 
 		u.Key = queryResult.Key
 		amt, success := big.NewInt(0).SetString(u.Amount, 10)
 		if !success {
-			return fmt.Errorf("failed to convert amount string to big.Int")
+			return ginierr.New("failed to convert amount string to big.Int", http.StatusInternalServerError)
 		}
 		totalAmount.Add(totalAmount, amt)
 		utxos = append(utxos, u)
@@ -1231,21 +1237,30 @@ func (s *SmartContract) ReconcileFoundation(sdk kalpsdk.TransactionContextInterf
 	}
 
 	if count == 0 {
-		return fmt.Errorf("no UTXOs found to merge")
+		return ginierr.New("no UTXOs found to merge", http.StatusNotFound)
+	}
+
+	if count == 1 {
+		logger.Log.Infoln("Only one UTXO found to merge")
+		return nil
 	}
 
 	// Remove selected UTXOs
 	for _, u := range utxos {
-		if err := sdk.DelStateWithoutKYC(u.Key); err != nil {
-			return fmt.Errorf("failed to delete UTXO %s: %v", u.Key, err)
+		if e := ctx.DelStateWithoutKYC(u.Key); e != nil {
+			err := ginierr.NewInternalError(e, "failed to delete UTXO", http.StatusInternalServerError)
+			logger.Log.Infoln(err.FullError())
+			return err
 		}
-		fmt.Println("Deleting->", u.Key)
+		logger.Log.Infoln("Deleting->", u.Key)
 	}
 
 	// Create new merged UTXO
-	utxoKey, err := sdk.CreateCompositeKey(constants.UTXO, []string{account, sdk.GetTxID()})
-	if err != nil {
-		return fmt.Errorf("failed to create composite key: %v", err)
+	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to create composite key", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return err
 	}
 
 	newUtxo := models.Utxo{
@@ -1253,17 +1268,21 @@ func (s *SmartContract) ReconcileFoundation(sdk kalpsdk.TransactionContextInterf
 		Account: account,
 		Amount:  totalAmount.String(),
 	}
-	utxoJSON, err := json.Marshal(newUtxo)
-	if err != nil {
-		return fmt.Errorf("failed to marshal new UTXO: %v", err)
+	utxoJSON, e := json.Marshal(newUtxo)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal new UTXO", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return err
 	}
 
-	fmt.Println("Adding newUtxo->", utxoKey, newUtxo)
-	err = sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
-	if err != nil {
-		return fmt.Errorf("failed to put new merged UTXO: %v", err)
+	logger.Log.Infoln("Adding newUtxo->", utxoKey, newUtxo)
+	e = ctx.PutStateWithoutKYC(utxoKey, utxoJSON)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to put new merged UTXO", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return err
 	}
 
-	fmt.Println("Added->", utxoJSON)
+	logger.Log.Infoln("Added->", utxoJSON)
 	return nil
 }
