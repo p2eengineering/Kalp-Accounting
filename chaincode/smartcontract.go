@@ -1283,6 +1283,19 @@ func (s *SmartContract) ReconcileFoundation(ctx kalpsdk.TransactionContextInterf
 		return err
 	}
 
+	reconcileKey, e := ctx.CreateCompositeKey(constants.ReconcileFoundation, []string{ctx.GetTxID()})
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to create composite key", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return err
+	}
+	e = ctx.PutStateWithoutKYC(reconcileKey, []byte("true"))
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to put new merged UTXO", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return err
+	}
+
 	logger.Log.Infoln("Added->", utxoJSON)
 	return nil
 }

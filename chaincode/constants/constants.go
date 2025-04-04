@@ -31,4 +31,5 @@ const (
 	ContractAddressRegex          = `^klp-[a-fA-F0-9]+-cc`
 	UserAddressRegex              = `^[0-9a-fA-F]{40}$`
 	IsContractAddressRegex        = `^klp-[a-fA-F0-9]+-cc$`
+	ReconcileFoundation           = "ReconcileFoundation"
 )
