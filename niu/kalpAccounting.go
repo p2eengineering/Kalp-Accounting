@@ -2,14 +2,10 @@ package kalpAccounting
 
 import (
 	//Standard Libs
-
-	ginierr "KAPS-NIU/ginierror"
-	"encoding/json"
+  
 	"fmt"
 	"math/big"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 )
@@ -19,6 +15,7 @@ import (
 const kalpFoundation = "0b87970433b22494faff1cc7a819e71bddc7880c"
 const intialgasfeesadmin = "fb2305a2373fd9fa5b5bf5acc6fdbf22ecbde930"
 const intialkalpGateWayadmin = "67c30fcb223182fef1c471a26527bfc4c50d093c"
+const testnetFaucetAdmin = "88016ab3510adc3905d858e08d3c08d8a78041bd"
 
 const intialBridgeContractBalance = "1992000000000000000000000000"
 const intialFoundationBalance = "8000000000000000000000000"
@@ -203,6 +200,36 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 
 }
 
+func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
+	logger := kalpsdk.NewLogger()
+	logger.Infof("MintByFaucetAdmin---->")
+
+	userId, err := GetUserId(ctx)
+	if err != nil {
+		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
+	}
+	if userId != testnetFaucetAdmin {
+		return fmt.Errorf("error with status code %v, only faucet admin can call MintByFaucetAdmin: %v", http.StatusUnauthorized, err)
+	}
+
+	accAmount, su := big.NewInt(0).SetString(amount, 10)
+	if !su {
+		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusBadRequest, amount)
+	}
+	if accAmount.Cmp(big.NewInt(0)) <= 0 { // accAmount <= 0
+		return fmt.Errorf("error with status code %v, invalid amount %v", http.StatusBadRequest, amount)
+	}
+
+	// Mint tokens
+	err = AddUtxo(ctx, address, accAmount)
+	if err != nil {
+		return err
+	}
+	logger.Infof("MintToken Amount By FaucetAdmin---->%v\n", amount)
+	return nil
+
+}
+
 // func (s *SmartContract) Burn(ctx kalpsdk.TransactionContextInterface, address string) (Response, error) {
 // 	//check if contract has been intilized first
 // 	logger := kalpsdk.NewLogger()
@@ -299,277 +326,277 @@ func (s *SmartContract) mint(ctx kalpsdk.TransactionContextInterface, address st
 // 	}, nil
 // }
 
-func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) (bool, error) {
-	logger := kalpsdk.NewLogger()
-	logger.Info("Transfer---->")
-	address = strings.Trim(address, " ")
-	if address == "" {
-		return false, fmt.Errorf("invalid input address")
-	}
+// func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, address string, amount string) (bool, error) {
+// 	logger := kalpsdk.NewLogger()
+// 	logger.Info("Transfer---->")
+// 	address = strings.Trim(address, " ")
+// 	if address == "" {
+// 		return false, fmt.Errorf("invalid input address")
+// 	}
 
-	sender, err := ctx.GetUserID()
-	if err != nil {
-		return false, fmt.Errorf("error in getting user id: %v", err)
-	}
-	userRole, err := s.GetUserRoles(ctx, sender)
-	if err != nil {
-		logger.Infof("error checking user's role: %v", err)
-		return false, fmt.Errorf("error checking user's role:: %v", err)
-	}
-	if len(address) != 40 && userRole != kalpGateWayAdmin {
-		return false, fmt.Errorf("address must be 40 characters long")
-	}
-	if strings.ContainsAny(address, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && userRole != kalpGateWayAdmin {
-		return false, fmt.Errorf("invalid address")
-	}
-	gasFees, err := s.GetGasFees(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to get gas gee: %v", err)
-	}
-	gasFeesAmount, su := big.NewInt(0).SetString(gasFees, 10)
-	if !su {
-		return false, fmt.Errorf("gasfee can't be converted to big int")
-	}
-	validateAmount, su := big.NewInt(0).SetString(amount, 10)
-	if !su {
-		logger.Infof("Amount can't be converted to string")
-		return false, fmt.Errorf("error with status code %v, invalid Amount %v", http.StatusBadRequest, amount)
-	}
-	if validateAmount.Cmp(big.NewInt(0)) == -1 || validateAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
-		return false, fmt.Errorf("error with status code %v, invalid Amount %v", http.StatusBadRequest, amount)
-	}
-	logger.Infof("useRole: %s\n", userRole)
-	// Covers below 2 scenarios where gateway deducts gas fees and transfers to kalp foundation:
-	// 1. when Dapp/users sends non-GINI transactions via gateway
-	// 2. when HandleBridgeToken from bridge contract is called by Bridge Admin
-	if userRole == kalpGateWayAdmin {
-		var send Sender
-		errs := json.Unmarshal([]byte(address), &send)
-		if errs != nil {
-			logger.Info("internal error: error in parsing sender data")
-			return false, fmt.Errorf("internal error: error in parsing sender data")
-		}
-		if len(send.Sender) != 40 {
-			return false, fmt.Errorf("address must be 40 characters long")
-		}
-		if strings.ContainsAny(send.Sender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
-			return false, fmt.Errorf("invalid address")
-		}
-		if send.Sender != kalpFoundation {
-			gRemoveAmount, su := big.NewInt(0).SetString(amount, 10)
-			if !su {
-				logger.Infof("amount can't be converted to string ")
+// 	sender, err := ctx.GetUserID()
+// 	if err != nil {
+// 		return false, fmt.Errorf("error in getting user id: %v", err)
+// 	}
+// 	userRole, err := s.GetUserRoles(ctx, sender)
+// 	if err != nil {
+// 		logger.Infof("error checking user's role: %v", err)
+// 		return false, fmt.Errorf("error checking user's role:: %v", err)
+// 	}
+// 	if len(address) != 40 && userRole != kalpGateWayAdmin {
+// 		return false, fmt.Errorf("address must be 40 characters long")
+// 	}
+// 	if strings.ContainsAny(address, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && userRole != kalpGateWayAdmin {
+// 		return false, fmt.Errorf("invalid address")
+// 	}
+// 	gasFees, err := s.GetGasFees(ctx)
+// 	if err != nil {
+// 		return false, fmt.Errorf("failed to get gas gee: %v", err)
+// 	}
+// 	gasFeesAmount, su := big.NewInt(0).SetString(gasFees, 10)
+// 	if !su {
+// 		return false, fmt.Errorf("gasfee can't be converted to big int")
+// 	}
+// 	validateAmount, su := big.NewInt(0).SetString(amount, 10)
+// 	if !su {
+// 		logger.Infof("Amount can't be converted to string")
+// 		return false, fmt.Errorf("error with status code %v, invalid Amount %v", http.StatusBadRequest, amount)
+// 	}
+// 	if validateAmount.Cmp(big.NewInt(0)) == -1 || validateAmount.Cmp(big.NewInt(0)) == 0 { // <= 0 {
+// 		return false, fmt.Errorf("error with status code %v, invalid Amount %v", http.StatusBadRequest, amount)
+// 	}
+// 	logger.Infof("useRole: %s\n", userRole)
+// 	// Covers below 2 scenarios where gateway deducts gas fees and transfers to kalp foundation:
+// 	// 1. when Dapp/users sends non-GINI transactions via gateway
+// 	// 2. when HandleBridgeToken from bridge contract is called by Bridge Admin
+// 	if userRole == kalpGateWayAdmin {
+// 		var send Sender
+// 		errs := json.Unmarshal([]byte(address), &send)
+// 		if errs != nil {
+// 			logger.Info("internal error: error in parsing sender data")
+// 			return false, fmt.Errorf("internal error: error in parsing sender data")
+// 		}
+// 		if len(send.Sender) != 40 {
+// 			return false, fmt.Errorf("address must be 40 characters long")
+// 		}
+// 		if strings.ContainsAny(send.Sender, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") {
+// 			return false, fmt.Errorf("invalid address")
+// 		}
+// 		if send.Sender != kalpFoundation {
+// 			gRemoveAmount, su := big.NewInt(0).SetString(amount, 10)
+// 			if !su {
+// 				logger.Infof("amount can't be converted to string ")
 
-				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-			}
-			err = RemoveUtxo(ctx, send.Sender, gRemoveAmount)
-			if err != nil {
-				logger.Infof("transfer remove err: %v", err)
-				return false, fmt.Errorf("transfer remove err: %v", err)
-			}
-			gAddAmount, su := big.NewInt(0).SetString(amount, 10)
-			if !su {
-				logger.Infof("amount can't be converted to string ")
+// 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 			}
+// 			err = RemoveUtxo(ctx, send.Sender, gRemoveAmount)
+// 			if err != nil {
+// 				logger.Infof("transfer remove err: %v", err)
+// 				return false, fmt.Errorf("transfer remove err: %v", err)
+// 			}
+// 			gAddAmount, su := big.NewInt(0).SetString(amount, 10)
+// 			if !su {
+// 				logger.Infof("amount can't be converted to string ")
 
-				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-			}
-			err = AddUtxo(ctx, kalpFoundation, gAddAmount)
-			if err != nil {
-				logger.Infof("err: %v\n", err)
-				return false, fmt.Errorf("transfer add err: %v", err)
-			}
-			logger.Infof("foundation transfer : %s\n", userRole)
-		}
-	} else if b, err := IsCallerKalpBridge(ctx, BridgeContractAddress); b && err == nil {
-		// In this scenario transfer function is invoked fron Withdraw token funtion from bridge contract address
-		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
-		// In this scenario sender is kalp foundation is bridgeing from WithdrawToken Function,
-		// will credit amount to kalp foundation and remove amount from sender without gas fees
-		if sender == kalpFoundation {
-			sender = BridgeContractAddress
-			subAmount, su := big.NewInt(0).SetString(amount, 10)
-			if !su {
-				logger.Infof("amount can't be converted to string ")
-				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-			}
+// 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 			}
+// 			err = AddUtxo(ctx, kalpFoundation, gAddAmount)
+// 			if err != nil {
+// 				logger.Infof("err: %v\n", err)
+// 				return false, fmt.Errorf("transfer add err: %v", err)
+// 			}
+// 			logger.Infof("foundation transfer : %s\n", userRole)
+// 		}
+// 	} else if b, err := IsCallerKalpBridge(ctx, BridgeContractAddress); b && err == nil {
+// 		// In this scenario transfer function is invoked fron Withdraw token funtion from bridge contract address
+// 		logger.Infof("sender address changed to Bridge contract addres: \n", BridgeContractAddress)
+// 		// In this scenario sender is kalp foundation is bridgeing from WithdrawToken Function,
+// 		// will credit amount to kalp foundation and remove amount from sender without gas fees
+// 		if sender == kalpFoundation {
+// 			sender = BridgeContractAddress
+// 			subAmount, su := big.NewInt(0).SetString(amount, 10)
+// 			if !su {
+// 				logger.Infof("amount can't be converted to string ")
+// 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 			}
 
-			err = RemoveUtxo(ctx, sender, subAmount)
-			if err != nil {
-				logger.Infof("transfer remove err: %v", err)
-				return false, fmt.Errorf("transfer remove err: %v", err)
-			}
-			addAmount, su := big.NewInt(0).SetString(amount, 10)
-			if !su {
-				logger.Infof("amount can't be converted to string ")
-				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-			}
-			err = AddUtxo(ctx, kalpFoundation, addAmount)
-			if err != nil {
-				logger.Infof("err: %v\n", err)
-				return false, fmt.Errorf("transfer add err: %v", err)
-			}
-			logger.Infof("bridge transfer to foundation : %s\n", kalpFoundation)
-		} else {
-			// In this scenario sender is Kalp Bridge we will credit gas fees to kalp foundation and remove amount from bridge contract
-			// address. Reciver will recieve amount after gas fees deduction
-			sender = BridgeContractAddress
-			removeAmount, su := big.NewInt(0).SetString(amount, 10)
-			if !su {
-				logger.Infof("amount can't be converted to string ")
-				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-			}
-			if removeAmount.Cmp(gasFeesAmount) == -1 || removeAmount.Cmp(gasFeesAmount) == 0 {
-				return false, fmt.Errorf("error with status code %v, error:bridge amount can not be less than equal to gas fee", http.StatusBadRequest)
-			}
-			err = RemoveUtxo(ctx, sender, removeAmount)
-			if err != nil {
-				logger.Infof("transfer remove err: %v", err)
-				return false, fmt.Errorf("transfer remove err: %v", err)
-			}
-			addAmount, su := big.NewInt(0).SetString(amount, 10)
-			if !su {
-				logger.Infof("amount can't be converted to string ")
-				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-			}
+// 			err = RemoveUtxo(ctx, sender, subAmount)
+// 			if err != nil {
+// 				logger.Infof("transfer remove err: %v", err)
+// 				return false, fmt.Errorf("transfer remove err: %v", err)
+// 			}
+// 			addAmount, su := big.NewInt(0).SetString(amount, 10)
+// 			if !su {
+// 				logger.Infof("amount can't be converted to string ")
+// 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 			}
+// 			err = AddUtxo(ctx, kalpFoundation, addAmount)
+// 			if err != nil {
+// 				logger.Infof("err: %v\n", err)
+// 				return false, fmt.Errorf("transfer add err: %v", err)
+// 			}
+// 			logger.Infof("bridge transfer to foundation : %s\n", kalpFoundation)
+// 		} else {
+// 			// In this scenario sender is Kalp Bridge we will credit gas fees to kalp foundation and remove amount from bridge contract
+// 			// address. Reciver will recieve amount after gas fees deduction
+// 			sender = BridgeContractAddress
+// 			removeAmount, su := big.NewInt(0).SetString(amount, 10)
+// 			if !su {
+// 				logger.Infof("amount can't be converted to string ")
+// 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 			}
+// 			if removeAmount.Cmp(gasFeesAmount) == -1 || removeAmount.Cmp(gasFeesAmount) == 0 {
+// 				return false, fmt.Errorf("error with status code %v, error:bridge amount can not be less than equal to gas fee", http.StatusBadRequest)
+// 			}
+// 			err = RemoveUtxo(ctx, sender, removeAmount)
+// 			if err != nil {
+// 				logger.Infof("transfer remove err: %v", err)
+// 				return false, fmt.Errorf("transfer remove err: %v", err)
+// 			}
+// 			addAmount, su := big.NewInt(0).SetString(amount, 10)
+// 			if !su {
+// 				logger.Infof("amount can't be converted to string ")
+// 				return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 			}
 
-			bridgedAmount := addAmount.Sub(addAmount, gasFeesAmount)
-			logger.Infof("bridgedAmount :%v", bridgedAmount)
-			err = AddUtxo(ctx, address, bridgedAmount)
-			if err != nil {
-				logger.Infof("err: %v\n", err)
-				return false, fmt.Errorf("transfer add err: %v", err)
-			}
-			err = AddUtxo(ctx, kalpFoundation, gasFeesAmount)
-			if err != nil {
-				logger.Infof("err: %v\n", err)
-				return false, fmt.Errorf("transfer add err: %v", err)
-			}
-			logger.Infof("bridge transfer to normal user : %s\n", userRole)
-		}
-	} else if sender == kalpFoundation && address == kalpFoundation {
-		//In this scenario sender is kalp foundation and address is the kalp foundation so no addition or removal is required
-		logger.Infof("foundation transfer to foundation : %s address:%s\n", sender, address)
+// 			bridgedAmount := addAmount.Sub(addAmount, gasFeesAmount)
+// 			logger.Infof("bridgedAmount :%v", bridgedAmount)
+// 			err = AddUtxo(ctx, address, bridgedAmount)
+// 			if err != nil {
+// 				logger.Infof("err: %v\n", err)
+// 				return false, fmt.Errorf("transfer add err: %v", err)
+// 			}
+// 			err = AddUtxo(ctx, kalpFoundation, gasFeesAmount)
+// 			if err != nil {
+// 				logger.Infof("err: %v\n", err)
+// 				return false, fmt.Errorf("transfer add err: %v", err)
+// 			}
+// 			logger.Infof("bridge transfer to normal user : %s\n", userRole)
+// 		}
+// 	} else if sender == kalpFoundation && address == kalpFoundation {
+// 		//In this scenario sender is kalp foundation and address is the kalp foundation so no addition or removal is required
+// 		logger.Infof("foundation transfer to foundation : %s address:%s\n", sender, address)
 
-	} else if sender == kalpFoundation {
-		//In this scenario sender is kalp foundation and address is the reciver so no gas fees deduction in code
-		subAmount, su := big.NewInt(0).SetString(amount, 10)
-		if !su {
-			logger.Infof("amount can't be converted to string ")
-			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-		}
-		err := RemoveUtxo(ctx, sender, subAmount)
-		if err != nil {
-			logger.Infof("transfer remove err: %v", err)
-			return false, fmt.Errorf("transfer remove err: %v", err)
-		}
-		addAmount, su := big.NewInt(0).SetString(amount, 10)
-		if !su {
-			logger.Infof("amount can't be converted to string ")
-			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-		}
-		err = AddUtxo(ctx, address, addAmount)
-		if err != nil {
-			logger.Infof("err: %v\n", err)
-			return false, fmt.Errorf("transfer add err: %v", err)
-		}
-		logger.Infof("foundation transfer to user : %s\n", userRole)
+// 	} else if sender == kalpFoundation {
+// 		//In this scenario sender is kalp foundation and address is the reciver so no gas fees deduction in code
+// 		subAmount, su := big.NewInt(0).SetString(amount, 10)
+// 		if !su {
+// 			logger.Infof("amount can't be converted to string ")
+// 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 		}
+// 		err := RemoveUtxo(ctx, sender, subAmount)
+// 		if err != nil {
+// 			logger.Infof("transfer remove err: %v", err)
+// 			return false, fmt.Errorf("transfer remove err: %v", err)
+// 		}
+// 		addAmount, su := big.NewInt(0).SetString(amount, 10)
+// 		if !su {
+// 			logger.Infof("amount can't be converted to string ")
+// 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 		}
+// 		err = AddUtxo(ctx, address, addAmount)
+// 		if err != nil {
+// 			logger.Infof("err: %v\n", err)
+// 			return false, fmt.Errorf("transfer add err: %v", err)
+// 		}
+// 		logger.Infof("foundation transfer to user : %s\n", userRole)
 
-	} else if address == kalpFoundation {
-		//In this scenario sender is normal user and address is the kap foundation so gas fees+amount will be credited to kalp foundation
-		removeAmount, su := big.NewInt(0).SetString(amount, 10)
-		if !su {
-			logger.Infof("removeAmount can't be converted to string ")
-			return false, fmt.Errorf("removeAmount can't be converted to string: %v ", err)
-		}
-		err := RemoveUtxo(ctx, sender, removeAmount)
-		if err != nil {
-			logger.Infof("transfer remove err: %v", err)
-			return false, fmt.Errorf("transfer remove err: %v", err)
-		}
-		addAmount, su := big.NewInt(0).SetString(amount, 10)
-		if !su {
-			logger.Infof("amount can't be converted to string ")
-			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
-		}
-		err = AddUtxo(ctx, address, addAmount)
-		if err != nil {
-			logger.Infof("err: %v\n", err)
-			return false, fmt.Errorf("transfer add err: %v", err)
-		}
-		logger.Infof("foundation transfer to user : %s\n", userRole)
-	} else {
-		//This is normal scenario where amount will be deducted from sender and amount-gas fess will credited to address and gas fees will be credited to kalp foundation
-		logger.Infof("operator-->", sender)
-		logger.Info("transfer transferAmount")
-		if sender == address {
-			return false, fmt.Errorf("transfer to self not alllowed")
-		}
-		transferAmount, su := big.NewInt(0).SetString(amount, 10)
-		if !su {
-			logger.Infof("Amount can't be converted to string")
-			return false, fmt.Errorf("error with status code %v,Amount can't be converted to string", http.StatusConflict)
-		}
-		if transferAmount.Cmp(gasFeesAmount) == -1 || transferAmount.Cmp(gasFeesAmount) == 0 {
-			return false, fmt.Errorf("error with status code %v, error:transfer amount can not be less than equal to gas fee", http.StatusBadRequest)
-		}
-		logger.Infof("transferAmount %v\n", transferAmount)
-		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
-		// Withdraw the funds from the sender address
-		err = RemoveUtxo(ctx, sender, transferAmount)
-		if err != nil {
-			logger.Infof("transfer remove err: %v", err)
-			return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
-		}
-		addAmount, su := big.NewInt(0).SetString(amount, 10)
-		if !su {
-			logger.Infof("transfer Amount can't be converted to string ")
-			return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferAmount)
-		}
-		logger.Infof("Add amount %v\n", addAmount)
-		addAmounts := addAmount.Sub(addAmount, gasFeesAmount)
-		// Deposit the fund to the recipient address
-		err = AddUtxo(ctx, address, addAmounts)
-		if err != nil {
-			logger.Infof("err: %v\n", err)
-			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
-		}
-		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
-		err = AddUtxo(ctx, kalpFoundation, gasFeesAmount)
-		if err != nil {
-			logger.Infof("err: %v\n", err)
-			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
-		}
-	}
-	transferSingleEvent := TransferSingle{Operator: sender, From: sender, To: address, Value: amount}
-	if err := EmitTransferSingle(ctx, transferSingleEvent); err != nil {
-		logger.Infof("err: %v\n", err)
-		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
-	}
-	return true, nil
+// 	} else if address == kalpFoundation {
+// 		//In this scenario sender is normal user and address is the kap foundation so gas fees+amount will be credited to kalp foundation
+// 		removeAmount, su := big.NewInt(0).SetString(amount, 10)
+// 		if !su {
+// 			logger.Infof("removeAmount can't be converted to string ")
+// 			return false, fmt.Errorf("removeAmount can't be converted to string: %v ", err)
+// 		}
+// 		err := RemoveUtxo(ctx, sender, removeAmount)
+// 		if err != nil {
+// 			logger.Infof("transfer remove err: %v", err)
+// 			return false, fmt.Errorf("transfer remove err: %v", err)
+// 		}
+// 		addAmount, su := big.NewInt(0).SetString(amount, 10)
+// 		if !su {
+// 			logger.Infof("amount can't be converted to string ")
+// 			return false, fmt.Errorf("amount can't be converted to string: %v ", err)
+// 		}
+// 		err = AddUtxo(ctx, address, addAmount)
+// 		if err != nil {
+// 			logger.Infof("err: %v\n", err)
+// 			return false, fmt.Errorf("transfer add err: %v", err)
+// 		}
+// 		logger.Infof("foundation transfer to user : %s\n", userRole)
+// 	} else {
+// 		//This is normal scenario where amount will be deducted from sender and amount-gas fess will credited to address and gas fees will be credited to kalp foundation
+// 		logger.Infof("operator-->", sender)
+// 		logger.Info("transfer transferAmount")
+// 		if sender == address {
+// 			return false, fmt.Errorf("transfer to self not alllowed")
+// 		}
+// 		transferAmount, su := big.NewInt(0).SetString(amount, 10)
+// 		if !su {
+// 			logger.Infof("Amount can't be converted to string")
+// 			return false, fmt.Errorf("error with status code %v,Amount can't be converted to string", http.StatusConflict)
+// 		}
+// 		if transferAmount.Cmp(gasFeesAmount) == -1 || transferAmount.Cmp(gasFeesAmount) == 0 {
+// 			return false, fmt.Errorf("error with status code %v, error:transfer amount can not be less than equal to gas fee", http.StatusBadRequest)
+// 		}
+// 		logger.Infof("transferAmount %v\n", transferAmount)
+// 		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
+// 		// Withdraw the funds from the sender address
+// 		err = RemoveUtxo(ctx, sender, transferAmount)
+// 		if err != nil {
+// 			logger.Infof("transfer remove err: %v", err)
+// 			return false, fmt.Errorf("error with status code %v, error:error while reducing balance %v", http.StatusBadRequest, err)
+// 		}
+// 		addAmount, su := big.NewInt(0).SetString(amount, 10)
+// 		if !su {
+// 			logger.Infof("transfer Amount can't be converted to string ")
+// 			return false, fmt.Errorf("error with status code %v,transaction %v already accounted", http.StatusConflict, transferAmount)
+// 		}
+// 		logger.Infof("Add amount %v\n", addAmount)
+// 		addAmounts := addAmount.Sub(addAmount, gasFeesAmount)
+// 		// Deposit the fund to the recipient address
+// 		err = AddUtxo(ctx, address, addAmounts)
+// 		if err != nil {
+// 			logger.Infof("err: %v\n", err)
+// 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
+// 		}
+// 		logger.Infof("gasFeesAmount %v\n", gasFeesAmount)
+// 		err = AddUtxo(ctx, kalpFoundation, gasFeesAmount)
+// 		if err != nil {
+// 			logger.Infof("err: %v\n", err)
+// 			return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
+// 		}
+// 	}
+// 	transferSingleEvent := TransferSingle{Operator: sender, From: sender, To: address, Value: amount}
+// 	if err := EmitTransferSingle(ctx, transferSingleEvent); err != nil {
+// 		logger.Infof("err: %v\n", err)
+// 		return false, fmt.Errorf("error with status code %v, error:error while adding balance %v", http.StatusBadRequest, err)
+// 	}
+// 	return true, nil
 
-}
+// }
 
-func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
-	logger := kalpsdk.NewLogger()
-	owner = strings.Trim(owner, " ")
-	if owner == "" {
-		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
-	}
-	if len(owner) != 40 && owner != BridgeContractAddress {
-		return big.NewInt(0).String(), fmt.Errorf("address must be 40 characters long")
-	}
-	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && owner != BridgeContractAddress {
-		return big.NewInt(0).String(), fmt.Errorf("invalid address")
-	}
-	amt, err := GetTotalUTXO(ctx, owner)
-	if err != nil {
-		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
-	}
+// func (s *SmartContract) BalanceOf(ctx kalpsdk.TransactionContextInterface, owner string) (string, error) {
+// 	logger := kalpsdk.NewLogger()
+// 	owner = strings.Trim(owner, " ")
+// 	if owner == "" {
+// 		return big.NewInt(0).String(), fmt.Errorf("invalid input account is required")
+// 	}
+// 	if len(owner) != 40 && owner != BridgeContractAddress {
+// 		return big.NewInt(0).String(), fmt.Errorf("address must be 40 characters long")
+// 	}
+// 	if strings.ContainsAny(owner, "`~!@#$%^&*()-_+=[]{}\\|;':\",./<>? ") && owner != BridgeContractAddress {
+// 		return big.NewInt(0).String(), fmt.Errorf("invalid address")
+// 	}
+// 	amt, err := GetTotalUTXO(ctx, owner)
+// 	if err != nil {
+// 		return big.NewInt(0).String(), fmt.Errorf("error: %v", err)
+// 	}
 
-	logger.Infof("total balance%v\n", amt)
+// 	logger.Infof("total balance%v\n", amt)
 
-	return amt, nil
-}
+// 	return amt, nil
+// }
 
 // GetTransactionTimestamp retrieves the transaction timestamp from the context and returns it as a string.
 func (s *SmartContract) GetTransactionTimestamp(ctx kalpsdk.TransactionContextInterface) (string, error) {
