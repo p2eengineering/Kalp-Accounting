@@ -2,7 +2,7 @@ package kalpAccounting
 
 import (
 	//Standard Libs
-
+  
 	"fmt"
 	"math/big"
 	"net/http"
@@ -648,4 +648,126 @@ func (s *SmartContract) Allowance(ctx kalpsdk.TransactionContextInterface, owner
 
 func (s *SmartContract) TotalSupply(ctx kalpsdk.TransactionContextInterface) (string, error) {
 	return totalSupply, nil
+}
+
+func (s *SmartContract) ReconcileFoundation(ctx kalpsdk.TransactionContextInterface, numberOfUtxoStr string) error {
+	logger := kalpsdk.NewLogger()
+
+	if signerKalp, err := IsSignerKalpFoundation(ctx); err != nil {
+		return err
+	} else if !signerKalp {
+		return ginierr.New("Only Kalp Foundation can execute ReconcileFoundation function", http.StatusUnauthorized)
+	}
+
+	account, err := GetUserId(ctx)
+	if err != nil {
+		return ginierr.ErrFailedToGetPublicAddress
+	}
+
+	numberOfUtxo, _ := strconv.Atoi(numberOfUtxoStr)
+	if numberOfUtxo <= 1 {
+		return ginierr.New("numberOfUtxo must be greater than one to merge", http.StatusBadRequest)
+	}
+
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + UTXO + `"},"limit":` + fmt.Sprintf("%d", numberOfUtxo) + `,"use_index": "indexIdDocType"}`
+	logger.Infoln("queryString->", queryString)
+	resultsIterator, e := ctx.GetQueryResult(queryString)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error in running query", http.StatusInternalServerError)
+		logger.Error(err.FullError())
+		return err
+	}
+
+	var utxos []Utxo
+	totalAmount := big.NewInt(0)
+	count := 0
+
+	for resultsIterator.HasNext() && count < numberOfUtxo {
+		var u Utxo
+		queryResult, e := resultsIterator.Next()
+		if e != nil {
+			err := ginierr.NewInternalError(e, "failed to fetch Next from iterator", http.StatusInternalServerError)
+			logger.Error(err.FullError())
+			return err
+		}
+		e = json.Unmarshal(queryResult.Value, &u)
+		if e != nil {
+			err := ginierr.NewInternalError(e, "failed to unmarshal UTXO", http.StatusInternalServerError)
+			logger.Error(err.FullError())
+			return err
+		}
+		logger.Infoln("UTXO to be deleted->", u)
+
+		u.Key = queryResult.Key
+		amt, success := big.NewInt(0).SetString(u.Amount, 10)
+		if !success {
+			return ginierr.New("failed to convert amount string to big.Int", http.StatusInternalServerError)
+		}
+		totalAmount.Add(totalAmount, amt)
+		utxos = append(utxos, u)
+		count++
+	}
+
+	if count == 0 {
+		return ginierr.New("no UTXOs found to merge", http.StatusNotFound)
+	}
+
+	if count == 1 {
+		logger.Infoln("Only one UTXO found to merge")
+		return nil
+	}
+
+	// Remove selected UTXOs
+	for _, u := range utxos {
+		if e := ctx.DelStateWithoutKYC(u.Key); e != nil {
+			err := ginierr.NewInternalError(e, "failed to delete UTXO", http.StatusInternalServerError)
+			logger.Infoln(err.FullError())
+			return err
+		}
+		logger.Infoln("Deleting->", u.Key)
+	}
+
+	// Create new merged UTXO
+	utxoKey, e := ctx.CreateCompositeKey(UTXO, []string{account, ctx.GetTxID()})
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to create composite key", http.StatusInternalServerError)
+		logger.Infoln(err.FullError())
+		return err
+	}
+
+	newUtxo := Utxo{
+		DocType: UTXO,
+		Account: account,
+		Amount:  totalAmount.String(),
+	}
+	utxoJSON, e := json.Marshal(newUtxo)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal new UTXO", http.StatusInternalServerError)
+		logger.Infoln(err.FullError())
+		return err
+	}
+
+	logger.Infoln("Adding newUtxo->", utxoKey, newUtxo)
+	e = ctx.PutStateWithoutKYC(utxoKey, utxoJSON)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to put new merged UTXO", http.StatusInternalServerError)
+		logger.Infoln(err.FullError())
+		return err
+	}
+
+	reconcileKey, e := ctx.CreateCompositeKey(ReconcileFoundation, []string{ctx.GetTxID()})
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to create composite key", http.StatusInternalServerError)
+		logger.Infoln(err.FullError())
+		return err
+	}
+	e = ctx.PutStateWithoutKYC(reconcileKey, []byte("true"))
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to put new merged UTXO", http.StatusInternalServerError)
+		logger.Infoln(err.FullError())
+		return err
+	}
+
+	logger.Infoln("Added->", utxoJSON)
+	return nil
 }

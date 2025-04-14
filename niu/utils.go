@@ -1,11 +1,14 @@
 package kalpAccounting
 
 import (
+	ginierr "KAPS-NIU/ginierror"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/http"
 	"reflect"
+	"regexp"
 
 	"strings"
 
@@ -39,6 +42,11 @@ type TransferSingle struct {
 	ID       string      `json:"id"`
 	Value    interface{} `json:"value"`
 }
+
+const (
+	ReconcileFoundation = "ReconcileFoundation"
+	UserAddressRegex    = `^[0-9a-fA-F]{40}$`
+)
 
 func CustomBigIntConvertor(value interface{}) (*big.Int, error) {
 	switch v := value.(type) {
@@ -213,6 +221,14 @@ func GetUserId(sdk kalpsdk.TransactionContextInterface) (string, error) {
 
 	completeId := string(decodeID)
 	userId := completeId[(strings.Index(completeId, "x509::CN=") + 9):strings.Index(completeId, ",")]
+	isUser, err := IsUserAddress(userId)
+	if err != nil {
+		return "", fmt.Errorf("error validating user address: %w", err)
+	}
+
+	if !isUser {
+		return "", ginierr.ErrInvalidUserAddress(userId)
+	}
 	return userId, nil
 }
 
@@ -607,4 +623,34 @@ func (s *SmartContract) GetUserRoles(ctx kalpsdk.TransactionContextInterface, id
 	}
 
 	return userRole.Role, nil
+}
+
+func IsUserAddress(address string) (bool, error) {
+	if address == "" {
+		return false, ginierr.ErrEmptyAddress()
+	}
+
+	// Validate against user address regex
+	isValid, err := regexp.MatchString(UserAddressRegex, address)
+	if err != nil {
+		return false, ginierr.ErrRegexValidationFailed("user address", err)
+	}
+
+	if !isValid {
+		return false, nil
+	}
+	return true, nil
+}
+
+func IsSignerKalpFoundation(ctx kalpsdk.TransactionContextInterface) (bool, error) {
+	signer, e := GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to get public address", http.StatusInternalServerError)
+		return false, err
+	}
+
+	if signer != kalpFoundation {
+		return false, nil
+	}
+	return true, nil
 }
