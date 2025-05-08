@@ -63,7 +63,7 @@ func (s *SmartContract) GasFeesTransfer(ctx kalpsdk.TransactionContextInterface,
 		return false, err
 	}
 	if calledContractAddress != s.GetName() {
-		err := ginierr.New("GasFeesTransferSimple should not be called by other contracts", http.StatusUnauthorized)
+		err := ginierr.New("GasFeesTransfer should not be called by other contracts", http.StatusUnauthorized)
 		logger.Log.Error(err.FullError())
 		return false, err
 	}
