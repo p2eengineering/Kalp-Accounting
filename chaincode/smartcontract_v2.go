@@ -1,12 +1,14 @@
 package chaincode
 
 import (
+	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/events"
 	"gini-contract/chaincode/ginierr"
 	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/internal"
 	"gini-contract/chaincode/logger"
+	"math/big"
 	"net/http"
 	"strconv"
 
@@ -80,4 +82,34 @@ func (s *SmartContract) GasFeesTransfer(ctx kalpsdk.TransactionContextInterface,
 		}
 	}
 	return true, nil
+}
+
+func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
+	logger := kalpsdk.NewLogger()
+	logger.Infof("MintByFaucetAdmin---->")
+
+	userId, err := helper.GetUserId(ctx)
+	if err != nil {
+		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
+	}
+	if userId != constants.TestnetFaucetAdmin {
+		return fmt.Errorf("error with status code %v, only faucet admin can call MintByFaucetAdmin: %v", http.StatusUnauthorized, err)
+	}
+
+	accAmount, su := big.NewInt(0).SetString(amount, 10)
+	if !su {
+		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusBadRequest, amount)
+	}
+	if accAmount.Cmp(big.NewInt(0)) <= 0 { // accAmount <= 0
+		return fmt.Errorf("error with status code %v, invalid amount %v", http.StatusBadRequest, amount)
+	}
+
+	// Mint tokens
+	err = internal.AddUtxo(ctx, address, accAmount)
+	if err != nil {
+		return err
+	}
+	logger.Infof("MintToken Amount By FaucetAdmin---->%v\n", amount)
+	return nil
+
 }
