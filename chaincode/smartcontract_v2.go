@@ -1,7 +1,6 @@
 package chaincode
 
 import (
-	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/events"
 	"gini-contract/chaincode/ginierr"
@@ -85,31 +84,34 @@ func (s *SmartContract) GasFeesTransfer(ctx kalpsdk.TransactionContextInterface,
 }
 
 func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterface, address string, amount string) error {
-	logger := kalpsdk.NewLogger()
-	logger.Infof("MintByFaucetAdmin---->")
+	logger.Log.Infof("MintByFaucetAdmin---->")
 
-	userId, err := helper.GetUserId(ctx)
-	if err != nil {
-		return fmt.Errorf("error with status code %v, failed to get client id: %v", http.StatusBadRequest, err)
+	userId, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
 	}
 	if userId != constants.TestnetFaucetAdmin {
-		return fmt.Errorf("error with status code %v, only faucet admin can call MintByFaucetAdmin: %v", http.StatusUnauthorized, err)
+		err := ginierr.New("signer should be faucet admin for mint", http.StatusUnauthorized)
+		logger.Log.Error(err.FullError())
+		return err
 	}
 
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
-		return fmt.Errorf("error with status code %v,can't convert amount to big int %s", http.StatusBadRequest, amount)
+		return ginierr.ErrConvertingAmountToBigInt(amount)
 	}
 	if accAmount.Cmp(big.NewInt(0)) <= 0 { // accAmount <= 0
-		return fmt.Errorf("error with status code %v, invalid amount %v", http.StatusBadRequest, amount)
+		return ginierr.ErrInvalidAmount(amount)
 	}
 
 	// Mint tokens
-	err = internal.AddUtxo(ctx, address, accAmount)
+	err := internal.AddUtxo(ctx, address, accAmount)
 	if err != nil {
 		return err
 	}
-	logger.Infof("MintToken Amount By FaucetAdmin---->%v\n", amount)
+	logger.Log.Infof("MintToken Amount By FaucetAdmin---->%v\n", amount)
 	return nil
 
 }
