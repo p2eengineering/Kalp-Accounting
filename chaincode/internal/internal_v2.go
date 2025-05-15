@@ -55,7 +55,7 @@ func RemoveUtxoForGasFees(sdk kalpsdk.TransactionContextInterface, account strin
 		totalAmount.Add(totalAmount, utxoAmount)
 
 		if err := sdk.DelStateWithoutKYC(u.Key); err != nil {
-			return ginierr.ErrFailedToPutState(err)
+			return ginierr.ErrFailedToDelState(err)
 		}
 	}
 

@@ -68,6 +68,10 @@ func ErrFailedToPutState(e error) *CustomError {
 	return NewInternalError(e, "failed to put data", http.StatusInternalServerError)
 }
 
+func ErrFailedToDelState(e error) *CustomError {
+	return NewInternalError(e, "failed to delete data", http.StatusInternalServerError)
+}
+
 func ErrFailedToGetState(e error) *CustomError {
 	return NewInternalError(e, "failed to get data", http.StatusInternalServerError)
 }
