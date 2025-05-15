@@ -27,7 +27,7 @@ const (
 	Transfer                      = "Transfer"
 	VestingContractKey            = "vestingContract"
 	BridgeContractKey             = "bridgeContract"
-	InitialBridgeContractAddress  = "klp-6b616c70627269646765-cc"
+	InitialBridgeContractAddress  = "klp-519fe60d6e-cc"
 	GiniContractAddress           = "klp-f02611a93e-cc"
 	ContractAddressRegex          = `^klp-[a-fA-F0-9]+-cc`
 	UserAddressRegex              = `^[0-9a-fA-F]{40}$`
