@@ -97,6 +97,13 @@ func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterfac
 		logger.Log.Error(err.FullError())
 		return err
 	}
+	isValidAddress, err := helper.IsUserAddress(address)
+	if err != nil {
+		return err
+	}
+	if !isValidAddress {
+		return ginierr.ErrInvalidAddress(address)
+	}
 
 	accAmount, su := big.NewInt(0).SetString(amount, 10)
 	if !su {
@@ -107,7 +114,7 @@ func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterfac
 	}
 
 	// Mint tokens
-	err := internal.AddUtxo(ctx, address, accAmount)
+	err = internal.AddUtxo(ctx, address, accAmount)
 	if err != nil {
 		return err
 	}
