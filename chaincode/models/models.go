@@ -28,6 +28,7 @@ type Utxo struct {
 	Account string `json:"account"`
 	DocType string `json:"docType"`
 	Amount  string `json:"amount"`
+	Spent   bool   `json:"spent"`
 }
 
 type Allow struct {
@@ -49,7 +50,7 @@ func SetAllowance(ctx kalpsdk.TransactionContextInterface, spender string, amoun
 	if !isValidAddress {
 		return ginierr.ErrInvalidAddress(spender)
 	}
-	
+
 	if !helper.IsAmountProper(amount) {
 		return ginierr.ErrInvalidAmount(amount)
 	}

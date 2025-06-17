@@ -297,93 +297,55 @@ func RemoveUtxo(sdk kalpsdk.TransactionContextInterface, account string, iamount
 	if err != nil {
 		return fmt.Errorf("failed to create the composite key for owner %s: %v", account, err)
 	}
-	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"use_index": "indexIdDocType"}`
 
-	resultsIterator, err := sdk.GetQueryResult(queryString)
+	bal, err := GetTotalUTXO(sdk, account)
 	if err != nil {
-		return fmt.Errorf("failed to read: %v", err)
+		return ginierr.NewInternalError(err, fmt.Sprintf("failed to get balance for account %s", account), http.StatusInternalServerError)
 	}
-	var utxo []models.Utxo
-	amt := big.NewInt(0)
-	for resultsIterator.HasNext() {
-		var u models.Utxo
-		queryResult, err := resultsIterator.Next()
-		if err != nil {
-			return err
-		}
-		err = json.Unmarshal(queryResult.Value, &u)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal value %v", err)
-		}
-		u.Key = queryResult.Key
-		am, s := big.NewInt(0).SetString(u.Amount, 10)
-		if !s {
-			return fmt.Errorf("failed to set string")
-		}
-		amt.Add(amt, am)
-		utxo = append(utxo, u)
-		if amt.Cmp(amount) == 0 || amt.Cmp(amount) == 1 {
-			break
-		}
+	fmt.Printf("balance: %s\n", bal)
+	if bal == "0" {
+		return ginierr.NewInternalError(err, fmt.Sprintf("account %s has no balance", account), http.StatusInternalServerError)
 	}
-	if amount.Cmp(amt) == 1 {
-		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, constants.GINI, amount, amt)
+	balance, e := big.NewInt(0).SetString(bal, 10)
+	if !e {
+		return ginierr.NewInternalError(err, fmt.Sprintf("failed to parse balance for account %s", account), http.StatusInternalServerError)
 	}
-
-	for i := 0; i < len(utxo); i++ {
-		am, s := big.NewInt(0).SetString(utxo[i].Amount, 10)
-		if !s {
-			return fmt.Errorf("failed to set string")
-		}
-		if amount.Cmp(am) == 0 || amount.Cmp(am) == 1 {
-			amount = amount.Sub(amount, am)
-			if err := sdk.DelStateWithoutKYC(utxo[i].Key); err != nil {
-				return fmt.Errorf("%v", err)
-			}
-		} else if amount.Cmp(am) == -1 {
-			if err := sdk.DelStateWithoutKYC(utxo[i].Key); err != nil {
-				return fmt.Errorf("%v", err)
-			}
-
-			utxo := models.Utxo{
-				DocType: constants.UTXO,
-				Account: account,
-				Amount:  am.Sub(am, amount).String(),
-			}
-			utxoJSON, err := json.Marshal(utxo)
-			if err != nil {
-				return fmt.Errorf("failed to marshal owner with  and account address %s to JSON: %v", account, err)
-			}
-
-			e := sdk.PutStateWithoutKYC(utxoKey, utxoJSON)
-			if e != nil {
-				err := ginierr.NewInternalError(e, fmt.Sprintf("failed to update balance for account %s and amount %s", account, amount), http.StatusInternalServerError)
-				logger.Log.Errorf(err.FullError())
-				return err
-			}
-
-		}
+	if balance.Cmp(amount) == -1 {
+		return fmt.Errorf("account %v has insufficient balance for token %v, required balance: %v, available balance: %v", account, constants.GINI, amount, balance)
 	}
-
+	newUtxo := models.Utxo{
+		DocType: constants.UTXO,
+		Account: account,
+		Amount:  amount.String(),
+		Spent:   true,
+	}
+	utxoJSON, err := json.Marshal(newUtxo)
+	if err != nil {
+		return ginierr.NewInternalError(err, fmt.Sprintf("failed to marshal new UTXO for account %s", account), http.StatusInternalServerError)
+	}
+	if err := sdk.PutStateWithoutKYC(utxoKey, utxoJSON); err != nil {
+		return ginierr.ErrFailedToPutState(err)
+	}
 	return nil
 }
 
 func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (string, error) {
 
-	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"}}`
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"use_index": "indexAccountDocType"}`
 	logger.Log.Infof("queryString: %s\n", queryString)
 	resultsIterator, err := ctx.GetQueryResult(queryString)
 	if err != nil {
 		return "", fmt.Errorf("failed to read: %v", err)
 	}
 	amt := big.NewInt(0)
+	spentAmount := new(big.Int)
+	haveAmount := new(big.Int)
 	for resultsIterator.HasNext() {
 		var u map[string]interface{}
 		queryResult, err := resultsIterator.Next()
 		if err != nil {
 			return "", err
 		}
-		logger.Log.Infof("query Value %s\n", string(queryResult.Value))
 		logger.Log.Infof("query key %s\n", queryResult.Key)
 		err = json.Unmarshal(queryResult.Value, &u)
 		if err != nil {
@@ -395,10 +357,24 @@ func GetTotalUTXO(ctx kalpsdk.TransactionContextInterface, account string) (stri
 		if uamount, ok := u["amount"].(string); ok {
 			amount.SetString(uamount, 10)
 		}
+		spent := false
+		if u["spent"] != nil {
+			spent, _ = u["spent"].(bool)
+		}
 
-		amt = amt.Add(amt, amount)
+		if !spent {
+			logger.Log.Infof("query Value in have %s\n", string(queryResult.Value))
+
+			haveAmount = haveAmount.Add(amt, amount)
+		} else {
+			logger.Log.Infof("query Value  in spent %s\n", string(queryResult.Value))
+			spentAmount = spentAmount.Sub(spentAmount, amount)
+		}
 	}
-
+	fmt.Printf("haveAmount %s\n", haveAmount.String())
+	fmt.Printf("spentAmount %s\n", spentAmount.String())
+	amt = haveAmount.Sub(haveAmount, spentAmount)
+	fmt.Printf("amt %s\n", amt.String())
 	return amt.String(), nil
 }
 
