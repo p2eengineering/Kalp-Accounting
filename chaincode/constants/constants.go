@@ -3,6 +3,7 @@ package constants
 const (
 	KalpFoundationAddress         = "0b87970433b22494faff1cc7a819e71bddc7880c"
 	KalpGateWayAdminAddress       = "67c30fcb223182fef1c471a26527bfc4c50d093c"
+	KwalaAdminAddress             = "99f571bf286be3fe14f2added4431eb0ae302533"
 	TestnetFaucetAdmin            = "88016ab3510adc3905d858e08d3c08d8a78041bd"
 	InitialVestingContractBalance = "1988800000000000000000000000"
 	InitialFoundationBalance      = "11200000000000000000000000"

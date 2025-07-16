@@ -133,6 +133,13 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 		return false, err
 	}
 
+	// Only kwala admin can transfer gas fees from any kwala address
+	if signer != constants.KwalaAdminAddress {
+		err := ginierr.New("signer should be kwala admin for gas fees transfer", http.StatusUnauthorized)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
 	isValidAddress, err := helper.IsKwalaAccountAddress(fromAddress)
 	if err != nil {
 		return false, err
@@ -175,7 +182,7 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 }
 
 // TransferKalpToKwala transfers funds from Kalp account to Kwala account
-func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterface, kalpAccountAddress, amount string) (bool, error) {
+func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterface, amount string) (bool, error) {
 	signer, e := helper.GetUserId(ctx)
 	if e != nil {
 		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
@@ -183,12 +190,12 @@ func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterf
 		return false, err
 	}
 
-	isValidAddress, err := helper.IsUserAddress(kalpAccountAddress)
+	isValidAddress, err := helper.IsUserAddress(signer)
 	if err != nil {
 		return false, err
 	}
 	if !isValidAddress {
-		return false, ginierr.ErrInvalidAddress(kalpAccountAddress)
+		return false, ginierr.ErrInvalidAddress(signer)
 	}
 
 	amountBigInt, ok := new(big.Int).SetString(amount, 10)
@@ -204,13 +211,13 @@ func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterf
 	} else if denied {
 		return false, ginierr.ErrDeniedAddress(signer)
 	}
-	if denied, err := internal.IsDenied(ctx, kalpAccountAddress); err != nil {
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
 		return false, err
 	} else if denied {
-		return false, ginierr.ErrDeniedAddress(kalpAccountAddress)
+		return false, ginierr.ErrDeniedAddress(signer)
 	}
 
-	kwalaAccountAddress := fmt.Sprintf("%s-%s-%s", constants.KwalaAccountPrefix, kalpAccountAddress, constants.KwalaAccountSuffix)
+	kwalaAccountAddress := fmt.Sprintf("%s-%s-%s", constants.KwalaAccountPrefix, signer, constants.KwalaAccountSuffix)
 
 	// Validate the constructed kwala account address
 	isValidKwalaAddress, err := helper.IsKwalaAccountAddress(kwalaAccountAddress)
@@ -229,13 +236,13 @@ func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterf
 	}
 
 	// Transfer from Kalp account to Kwala account
-	if err = internal.RemoveUtxo(ctx, kalpAccountAddress, amountBigInt); err != nil {
+	if err = internal.RemoveUtxo(ctx, signer, amountBigInt); err != nil {
 		return false, err
 	}
 	if err = internal.AddUtxo(ctx, kwalaAccountAddress, amountBigInt); err != nil {
 		return false, err
 	}
-	if err := events.EmitTransfer(ctx, kalpAccountAddress, kwalaAccountAddress, amount); err != nil {
+	if err := events.EmitTransfer(ctx, signer, kwalaAccountAddress, amount); err != nil {
 		return false, err
 	}
 
