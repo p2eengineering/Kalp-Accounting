@@ -141,16 +141,11 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 		return false, ginierr.ErrInvalidAddress(fromAddress)
 	}
 
-	amountInt, e := strconv.ParseUint(amount, 10, 64)
-	if e != nil {
-		err := ginierr.NewInternalError(e, "error parsing amount", http.StatusBadRequest)
-		logger.Log.Error(err.FullError())
-		return false, ginierr.ErrInvalidAmount(amount)
+	amountBigInt, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		return false, ginierr.ErrConvertingAmountToBigInt(amount)
 	}
-	if amountInt == 0 {
-		return false, ginierr.ErrInvalidAmount(amount)
-	}
-	if amountInt > constants.InitialGatewayMaxGasFeeInt {
+	if amountBigInt.Cmp(big.NewInt(0)) <= 0 {
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
 
@@ -166,10 +161,10 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 	}
 
 	if fromAddress != constants.KalpFoundationAddress {
-		if err = internal.RemoveUtxo(ctx, fromAddress, amount); err != nil {
+		if err = internal.RemoveUtxo(ctx, fromAddress, amountBigInt); err != nil {
 			return false, err
 		}
-		if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amount); err != nil {
+		if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amountBigInt); err != nil {
 			return false, err
 		}
 		if err := events.EmitTransfer(ctx, fromAddress, constants.KalpFoundationAddress, amount); err != nil {
