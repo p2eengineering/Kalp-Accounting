@@ -35,13 +35,16 @@ func IsValidAddress(address string) (bool, error) {
 
 	isUser, err1 := IsUserAddress(address)
 	isContract, err2 := IsContractAddress(address)
+	isKwala, err3 := IsKwalaAccountAddress(address)
 	if err1 != nil {
 		return false, err1
 	} else if err2 != nil {
 		return false, err2
+	} else if err3 != nil {
+		return false, err3
 	}
 
-	return isUser || isContract, nil
+	return isUser || isContract || isKwala, nil
 }
 
 func IsContractAddress(address string) (bool, error) {
@@ -54,6 +57,24 @@ func IsContractAddress(address string) (bool, error) {
 	if err != nil {
 		logger.Log.Errorf("Error validating contract address: %v", err)
 		return false, ginierr.ErrRegexValidationFailed("contract address", err)
+	}
+
+	if !isValid {
+		return false, nil
+	}
+	return true, nil
+}
+
+func IsKwalaAccountAddress(address string) (bool, error) {
+	if address == "" {
+		return false, ginierr.ErrEmptyAddress()
+	}
+
+	// Validate against kwala account address regex
+	isValid, err := regexp.MatchString(constants.KwalaAccountRegex, address)
+	if err != nil {
+		logger.Log.Errorf("Error validating kwala account address: %v", err)
+		return false, ginierr.ErrRegexValidationFailed("kwala account address", err)
 	}
 
 	if !isValid {

@@ -1,6 +1,7 @@
 package chaincode
 
 import (
+	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/events"
 	"gini-contract/chaincode/ginierr"
@@ -121,4 +122,127 @@ func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterfac
 	logger.Log.Infof("MintToken Amount By FaucetAdmin---->%v\n", amount)
 	return nil
 
+}
+
+// TransferGasFeesToFoundation transfers gas fees from a specified address to the foundation
+func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionContextInterface, fromAddress string, amount string) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	isValidAddress, err := helper.IsKwalaAccountAddress(fromAddress)
+	if err != nil {
+		return false, err
+	}
+	if !isValidAddress {
+		return false, ginierr.ErrInvalidAddress(fromAddress)
+	}
+
+	amountInt, e := strconv.ParseUint(amount, 10, 64)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error parsing amount", http.StatusBadRequest)
+		logger.Log.Error(err.FullError())
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
+	if amountInt == 0 {
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
+	if amountInt > constants.InitialGatewayMaxGasFeeInt {
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
+
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(signer)
+	}
+	if denied, err := internal.IsDenied(ctx, fromAddress); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(fromAddress)
+	}
+
+	if fromAddress != constants.KalpFoundationAddress {
+		if err = internal.RemoveUtxo(ctx, fromAddress, amount); err != nil {
+			return false, err
+		}
+		if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amount); err != nil {
+			return false, err
+		}
+		if err := events.EmitTransfer(ctx, fromAddress, constants.KalpFoundationAddress, amount); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// TransferKalpToKwala transfers funds from Kalp account to Kwala account
+func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterface, kalpAccountAddress, amount string) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	isValidAddress, err := helper.IsUserAddress(kalpAccountAddress)
+	if err != nil {
+		return false, err
+	}
+	if !isValidAddress {
+		return false, ginierr.ErrInvalidAddress(kalpAccountAddress)
+	}
+
+	amountBigInt, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		return false, ginierr.ErrConvertingAmountToBigInt(amount)
+	}
+	if amountBigInt.Cmp(big.NewInt(0)) <= 0 {
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
+
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(signer)
+	}
+	if denied, err := internal.IsDenied(ctx, kalpAccountAddress); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(kalpAccountAddress)
+	}
+
+	kwalaAccountAddress := fmt.Sprintf("%s-%s-%s", constants.KwalaAccountPrefix, kalpAccountAddress, constants.KwalaAccountSuffix)
+
+	// Validate the constructed kwala account address
+	isValidKwalaAddress, err := helper.IsKwalaAccountAddress(kwalaAccountAddress)
+	if err != nil {
+		return false, err
+	}
+	if !isValidKwalaAddress {
+		return false, ginierr.ErrInvalidAddress(kwalaAccountAddress)
+	}
+
+	// Check if kwala account address is denied
+	if denied, err := internal.IsDenied(ctx, kwalaAccountAddress); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(kwalaAccountAddress)
+	}
+
+	// Transfer from Kalp account to Kwala account
+	if err = internal.RemoveUtxo(ctx, kalpAccountAddress, amountBigInt); err != nil {
+		return false, err
+	}
+	if err = internal.AddUtxo(ctx, kwalaAccountAddress, amountBigInt); err != nil {
+		return false, err
+	}
+	if err := events.EmitTransfer(ctx, kalpAccountAddress, kwalaAccountAddress, amount); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
