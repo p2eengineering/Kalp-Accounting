@@ -33,6 +33,18 @@ type MintEvent struct {
 	Value   string `json:"value"`
 }
 
+type TransferGasFromKwalaAccountToFoundationEvent struct {
+	FromAddress string `json:"fromAddress"`
+	ToAddress   string `json:"toAddress"`
+	Amount      string `json:"amount"`
+}
+
+type TransferGasFeesToFoundationEvent struct {
+	FromAddress string `json:"fromAddress"`
+	ToAddress   string `json:"toAddress"`
+	Amount      string `json:"amount"`
+}
+
 func EmitDenied(ctx kalpsdk.TransactionContextInterface, address string) error {
 	deniedEvent := DeniedEvent{
 		Address: address,
@@ -122,6 +134,47 @@ func EmitMint(ctx kalpsdk.TransactionContextInterface, account string, value str
 	}
 	if e := ctx.SetEvent(constants.Mint, mintEventJSON); e != nil {
 		err := ginierr.NewInternalError(e, "failed to emit Mint event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	return nil
+}
+
+func TransferGasFromKwalaAccountToFoundation(ctx kalpsdk.TransactionContextInterface, fromAddress string, toAddress string, amount string) error {
+	transferGasFromKwalaAccountToFoundationEvent := TransferGasFromKwalaAccountToFoundationEvent{
+		FromAddress: fromAddress,
+		ToAddress:   toAddress,
+		Amount:      amount,
+	}
+	transferGasFromKwalaAccountToFoundationEventJSON, e := json.Marshal(transferGasFromKwalaAccountToFoundationEvent)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal TransferGasFromKwalaAccountToFoundation event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	if e := ctx.SetEvent(constants.TransferGasFromKwalaAccountToFoundation, transferGasFromKwalaAccountToFoundationEventJSON); e != nil {
+		err := ginierr.NewInternalError(e, "failed to emit TransferGasFromKwalaAccountToFoundation event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	return nil
+}
+
+func TransferGasFeesToFoundation(ctx kalpsdk.TransactionContextInterface, fromAddress string, toAddress string, amount string) error {
+	transferGasFeesToFoundationEvent := TransferGasFeesToFoundationEvent{
+		FromAddress: fromAddress,
+		ToAddress:   toAddress,
+		Amount:      amount,
+	}
+
+	transferGasFeesToFoundationEventJSON, e := json.Marshal(transferGasFeesToFoundationEvent)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal TransferGasFeesToFoundation event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	if e := ctx.SetEvent(constants.TransferGasFeesToFoundation, transferGasFeesToFoundationEventJSON); e != nil {
+		err := ginierr.NewInternalError(e, "failed to emit TransferGasFeesToFoundation event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}

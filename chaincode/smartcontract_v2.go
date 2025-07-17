@@ -1,6 +1,7 @@
 package chaincode
 
 import (
+	"encoding/json"
 	"fmt"
 	"gini-contract/chaincode/constants"
 	"gini-contract/chaincode/events"
@@ -8,6 +9,7 @@ import (
 	"gini-contract/chaincode/helper"
 	"gini-contract/chaincode/internal"
 	"gini-contract/chaincode/logger"
+	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -124,6 +126,102 @@ func (s *SmartContract) MintByFaucetAdmin(ctx kalpsdk.TransactionContextInterfac
 
 }
 
+func (s *SmartContract) SetKwalaAdmin(ctx kalpsdk.TransactionContextInterface, userID string) error {
+	logger.Log.Info("SetKwalaAdmin........", userID)
+
+	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
+		return err
+	} else if !signerKalp {
+		return ginierr.New("Only Kalp Foundation can set the roles", http.StatusUnauthorized)
+	}
+
+	if userID == "" {
+		return fmt.Errorf("user Id can not be null")
+	}
+
+	isValidAddress, err := helper.IsUserAddress(userID)
+	if err != nil {
+		return err
+	}
+	if !isValidAddress {
+		return ginierr.ErrInvalidAddress(userID)
+	}
+
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KwalaAdminRole})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	kwalaAdminRole := models.UserRole{
+		Id:   userID,
+		Role: constants.KwalaAdminRole,
+	}
+
+	kwalaAdminRoleJSON, err := json.Marshal(kwalaAdminRole)
+	if err != nil {
+		return fmt.Errorf("unable to Marshal kwalaAdminRole struct : %v", err)
+	}
+
+	if e := ctx.PutStateWithoutKYC(key, kwalaAdminRoleJSON); e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to put user role struct: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	return nil
+}
+
+func (s *SmartContract) DeleteKwalaAdmin(ctx kalpsdk.TransactionContextInterface, userID string) error {
+	logger.Log.Info("DeleteKwalaAdmin........", userID)
+
+	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
+		return err
+	} else if !signerKalp {
+		return ginierr.New("Only Kalp Foundation can delete the roles", http.StatusUnauthorized)
+	}
+
+	if userID == "" {
+		return fmt.Errorf("user Id can not be null")
+	}
+
+	isValidAddress, err := helper.IsUserAddress(userID)
+	if err != nil {
+		return err
+	}
+	if !isValidAddress {
+		return ginierr.ErrInvalidAddress(userID)
+	}
+
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KwalaAdminRole})
+	if e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	existingRoleBytes, e := ctx.GetState(key)
+	if e != nil || existingRoleBytes == nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("kwala admin role not found for userID %s", userID), http.StatusNotFound)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	var userRole models.UserRole
+	if err := json.Unmarshal(existingRoleBytes, &userRole); err != nil {
+		return fmt.Errorf("failed to unmarshal user role: %v", err)
+	}
+
+	if e := ctx.DelStateWithoutKYC(key); e != nil {
+		err := ginierr.NewInternalError(e, fmt.Sprintf("unable to delete kwala admin role: %v", e), http.StatusInternalServerError)
+		logger.Log.Errorf(err.FullError())
+		return err
+	}
+
+	return nil
+}
+
 // TransferGasFeesToFoundation transfers gas fees from a specified address to the foundation
 func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionContextInterface, fromAddress string, amount string) (bool, error) {
 	signer, e := helper.GetUserId(ctx)
@@ -134,7 +232,11 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 	}
 
 	// Only kwala admin can transfer gas fees from any kwala address
-	if signer != constants.KwalaAdminAddress {
+	isKwalaAdmin, err := internal.IsKwalaAdminAddress(ctx, signer)
+	if err != nil {
+		return false, err
+	}
+	if !isKwalaAdmin {
 		err := ginierr.New("signer should be kwala admin for gas fees transfer", http.StatusUnauthorized)
 		logger.Log.Error(err.FullError())
 		return false, err
@@ -161,7 +263,7 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 	} else if denied {
 		return false, ginierr.ErrDeniedAddress(signer)
 	}
-	if denied, err := internal.IsDenied(ctx, fromAddress); err != nil {
+	if denied, err := internal.IsKwalaDenied(ctx, fromAddress); err != nil {
 		return false, err
 	} else if denied {
 		return false, ginierr.ErrDeniedAddress(fromAddress)
@@ -174,7 +276,7 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 		if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amountBigInt); err != nil {
 			return false, err
 		}
-		if err := events.EmitTransfer(ctx, fromAddress, constants.KalpFoundationAddress, amount); err != nil {
+		if err := events.TransferGasFromKwalaAccountToFoundation(ctx, fromAddress, constants.KalpFoundationAddress, amount); err != nil {
 			return false, err
 		}
 	}
@@ -242,7 +344,7 @@ func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterf
 	if err = internal.AddUtxo(ctx, kwalaAccountAddress, amountBigInt); err != nil {
 		return false, err
 	}
-	if err := events.EmitTransfer(ctx, signer, kwalaAccountAddress, amount); err != nil {
+	if err := events.TransferGasFeesToFoundation(ctx, signer, kwalaAccountAddress, amount); err != nil {
 		return false, err
 	}
 
