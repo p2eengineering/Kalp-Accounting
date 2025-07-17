@@ -134,7 +134,7 @@ func IsGatewayAdminAddress(ctx kalpsdk.TransactionContextInterface, userID strin
 
 func IsKwalaAdminAddress(ctx kalpsdk.TransactionContextInterface, userID string) (bool, error) {
 	// Construct the key to fetch the kwala admin role
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KwalaAdminRole})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KwalaAdminRole, userID})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s, role %s and userID %s: %v", constants.UserRolePrefix, constants.KwalaAdminRole, userID, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())

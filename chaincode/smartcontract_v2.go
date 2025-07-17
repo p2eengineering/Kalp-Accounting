@@ -147,7 +147,7 @@ func (s *SmartContract) SetKwalaAdmin(ctx kalpsdk.TransactionContextInterface, u
 		return ginierr.ErrInvalidAddress(userID)
 	}
 
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KwalaAdminRole})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KwalaAdminRole, userID})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
@@ -194,7 +194,7 @@ func (s *SmartContract) DeleteKwalaAdmin(ctx kalpsdk.TransactionContextInterface
 		return ginierr.ErrInvalidAddress(userID)
 	}
 
-	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userID, constants.KwalaAdminRole})
+	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{constants.KwalaAdminRole, userID})
 	if e != nil {
 		err := ginierr.NewInternalError(e, fmt.Sprintf("failed to create the composite key for prefix %s: %v", constants.UserRolePrefix, e), http.StatusInternalServerError)
 		logger.Log.Errorf(err.FullError())
