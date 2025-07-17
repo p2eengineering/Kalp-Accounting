@@ -276,7 +276,7 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 		if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, amountBigInt); err != nil {
 			return false, err
 		}
-		if err := events.TransferGasFromKwalaAccountToFoundation(ctx, fromAddress, constants.KalpFoundationAddress, amount); err != nil {
+		if err := events.TransferGasFromKwalaAccountToFoundation(ctx, fromAddress, amount); err != nil {
 			return false, err
 		}
 	}
@@ -344,7 +344,7 @@ func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterf
 	if err = internal.AddUtxo(ctx, kwalaAccountAddress, amountBigInt); err != nil {
 		return false, err
 	}
-	if err := events.TransferGasFeesToFoundation(ctx, signer, kwalaAccountAddress, amount); err != nil {
+	if err := events.EmitTransferKalpToKwala(ctx, signer, kwalaAccountAddress, amount); err != nil {
 		return false, err
 	}
 
