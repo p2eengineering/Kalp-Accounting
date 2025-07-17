@@ -139,7 +139,7 @@ func EmitMint(ctx kalpsdk.TransactionContextInterface, account string, value str
 	return nil
 }
 
-func TransferGasFromKwalaAccountToFoundation(ctx kalpsdk.TransactionContextInterface, from string, amount string) error {
+func EmitTransferGasFromKwalaAccountToFoundation(ctx kalpsdk.TransactionContextInterface, from string, amount string) error {
 	transferGasFromKwalaAccountToFoundationEvent := TransferGasFromKwalaAccountToFoundationEvent{
 		From:   from,
 		Amount: amount,
