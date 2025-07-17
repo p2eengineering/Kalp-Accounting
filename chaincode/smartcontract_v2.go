@@ -313,11 +313,6 @@ func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterf
 	} else if denied {
 		return false, ginierr.ErrDeniedAddress(signer)
 	}
-	if denied, err := internal.IsDenied(ctx, signer); err != nil {
-		return false, err
-	} else if denied {
-		return false, ginierr.ErrDeniedAddress(signer)
-	}
 
 	kwalaAccountAddress := fmt.Sprintf("%s-%s-%s", constants.KwalaAccountPrefix, signer, constants.KwalaAccountSuffix)
 
