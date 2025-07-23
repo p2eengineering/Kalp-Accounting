@@ -44,6 +44,12 @@ type TransferKalpToKwalaEvent struct {
 	Amount string `json:"amount"`
 }
 
+type TransferFromAnyKalpToKwalaEvent struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Amount string `json:"amount"`
+}
+
 func EmitDenied(ctx kalpsdk.TransactionContextInterface, address string) error {
 	deniedEvent := DeniedEvent{
 		Address: address,
@@ -173,6 +179,26 @@ func EmitTransferKalpToKwala(ctx kalpsdk.TransactionContextInterface, from strin
 	}
 	if e := ctx.SetEvent(constants.TransferKalpToKwala, transferKalpToKwalaEventJSON); e != nil {
 		err := ginierr.NewInternalError(e, "failed to emit TransferKalpToKwala event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	return nil
+}
+
+func EmitTransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContextInterface, from string, to string, amount string) error {
+	transferFromAnyKalpToKwalaEvent := TransferFromAnyKalpToKwalaEvent{
+		From:   from,
+		To:     to,
+		Amount: amount,
+	}
+	transferFromAnyKalpToKwalaEventJSON, e := json.Marshal(transferFromAnyKalpToKwalaEvent)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal TransferFromAnyKalpToKwala event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	if e := ctx.SetEvent(constants.TransferFromAnyKalpToKwala, transferFromAnyKalpToKwalaEventJSON); e != nil {
+		err := ginierr.NewInternalError(e, "failed to emit TransferFromAnyKalpToKwala event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
