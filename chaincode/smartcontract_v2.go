@@ -345,3 +345,60 @@ func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterf
 
 	return true, nil
 }
+
+func (s *SmartContract) TransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContextInterface, to, amount string) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	amountBigInt, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		return false, ginierr.ErrConvertingAmountToBigInt(amount)
+	}
+	if amountBigInt.Cmp(big.NewInt(0)) <= 0 {
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
+
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(signer)
+	}
+
+	isValidKwalaAddress, err := helper.IsKwalaAccountAddress(to)
+	if err != nil {
+		return false, err
+	}
+	if !isValidKwalaAddress {
+		return false, ginierr.ErrInvalidAddress(to)
+	}
+
+	var gasFees, actualAmount *big.Int
+	if gasFeesString, err := s.GetGasFees(ctx); err != nil {
+		return false, err
+	} else if val, ok := big.NewInt(0).SetString(gasFeesString, 10); !ok {
+		return false, ginierr.New("invalid gas fees found:"+gasFeesString, http.StatusInternalServerError)
+	} else {
+		gasFees = val
+	}
+
+	actualAmount = new(big.Int).Sub(amountBigInt, gasFees)
+
+	if err = internal.RemoveUtxo(ctx, signer, amountBigInt); err != nil {
+		return false, err
+	}
+	if err = internal.AddUtxo(ctx, to, actualAmount); err != nil {
+		return false, err
+	}
+	if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
+		return false, err
+	}
+	if err := events.EmitTransferFromAnyKalpToKwala(ctx, signer, to, amount); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
