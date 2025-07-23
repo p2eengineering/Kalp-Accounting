@@ -33,6 +33,17 @@ type MintEvent struct {
 	Value   string `json:"value"`
 }
 
+type TransferGasFromKwalaAccountToFoundationEvent struct {
+	From   string `json:"from"`
+	Amount string `json:"amount"`
+}
+
+type TransferKalpToKwalaEvent struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Amount string `json:"amount"`
+}
+
 func EmitDenied(ctx kalpsdk.TransactionContextInterface, address string) error {
 	deniedEvent := DeniedEvent{
 		Address: address,
@@ -122,6 +133,46 @@ func EmitMint(ctx kalpsdk.TransactionContextInterface, account string, value str
 	}
 	if e := ctx.SetEvent(constants.Mint, mintEventJSON); e != nil {
 		err := ginierr.NewInternalError(e, "failed to emit Mint event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	return nil
+}
+
+func EmitTransferGasFromKwalaAccountToFoundation(ctx kalpsdk.TransactionContextInterface, from string, amount string) error {
+	transferGasFromKwalaAccountToFoundationEvent := TransferGasFromKwalaAccountToFoundationEvent{
+		From:   from,
+		Amount: amount,
+	}
+	transferGasFromKwalaAccountToFoundationEventJSON, e := json.Marshal(transferGasFromKwalaAccountToFoundationEvent)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal TransferGasFromKwalaAccountToFoundation event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	if e := ctx.SetEvent(constants.TransferGasFromKwalaAccountToFoundation, transferGasFromKwalaAccountToFoundationEventJSON); e != nil {
+		err := ginierr.NewInternalError(e, "failed to emit TransferGasFromKwalaAccountToFoundation event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	return nil
+}
+
+func EmitTransferKalpToKwala(ctx kalpsdk.TransactionContextInterface, from string, to string, amount string) error {
+	transferKalpToKwalaEvent := TransferKalpToKwalaEvent{
+		From:   from,
+		To:     to,
+		Amount: amount,
+	}
+
+	transferKalpToKwalaEventJSON, e := json.Marshal(transferKalpToKwalaEvent)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal TransferKalpToKwala event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	if e := ctx.SetEvent(constants.TransferKalpToKwala, transferKalpToKwalaEventJSON); e != nil {
+		err := ginierr.NewInternalError(e, "failed to emit TransferKalpToKwala event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
