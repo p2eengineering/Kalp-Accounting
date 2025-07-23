@@ -346,20 +346,12 @@ func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterf
 	return true, nil
 }
 
-func (s *SmartContract) TransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContextInterface, from, to, amount string) (bool, error) {
-	_, e := helper.GetUserId(ctx)
+func (s *SmartContract) TransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContextInterface, to, amount string) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
 	if e != nil {
 		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return false, err
-	}
-
-	isValidAddress, err := helper.IsUserAddress(from)
-	if err != nil {
-		return false, err
-	}
-	if !isValidAddress {
-		return false, ginierr.ErrInvalidAddress(from)
 	}
 
 	amountBigInt, ok := new(big.Int).SetString(amount, 10)
@@ -370,10 +362,10 @@ func (s *SmartContract) TransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContex
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
 
-	if denied, err := internal.IsDenied(ctx, from); err != nil {
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
 		return false, err
 	} else if denied {
-		return false, ginierr.ErrDeniedAddress(from)
+		return false, ginierr.ErrDeniedAddress(signer)
 	}
 
 	isValidKwalaAddress, err := helper.IsKwalaAccountAddress(to)
@@ -395,7 +387,7 @@ func (s *SmartContract) TransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContex
 
 	actualAmount = new(big.Int).Sub(amountBigInt, gasFees)
 
-	if err = internal.RemoveUtxo(ctx, from, amountBigInt); err != nil {
+	if err = internal.RemoveUtxo(ctx, signer, amountBigInt); err != nil {
 		return false, err
 	}
 	if err = internal.AddUtxo(ctx, to, actualAmount); err != nil {
@@ -404,7 +396,7 @@ func (s *SmartContract) TransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContex
 	if err = internal.AddUtxo(ctx, constants.KalpFoundationAddress, gasFees); err != nil {
 		return false, err
 	}
-	if err := events.EmitTransferFromAnyKalpToKwala(ctx, from, to, amount); err != nil {
+	if err := events.EmitTransferFromAnyKalpToKwala(ctx, signer, to, amount); err != nil {
 		return false, err
 	}
 
