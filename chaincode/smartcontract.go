@@ -1147,7 +1147,6 @@ func (s *SmartContract) SetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface
 		return ginierr.ErrInvalidAmount(gatewayMaxFee)
 	}
 
-	// Validate non-negative
 	if feeInt.Sign() < 0 {
 		return ginierr.ErrInvalidAmount(gatewayMaxFee)
 	}
