@@ -402,3 +402,54 @@ func (s *SmartContract) TransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContex
 
 	return true, nil
 }
+
+func (s *SmartContract) TransferFromKwalaAdminToAnyKwala(ctx kalpsdk.TransactionContextInterface, to, amount string) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	isKwalaAdmin, err := internal.IsKwalaAdminAddress(ctx, signer)
+	if err != nil {
+		return false, err
+	}
+	if !isKwalaAdmin {
+		return false, ginierr.New("signer should be kwala admin for transfer", http.StatusUnauthorized)
+	}
+
+	isUserAddress, err := helper.IsUserAddress(to)
+	if err != nil {
+		return false, err
+	}
+	if !isUserAddress {
+		return false, ginierr.ErrInvalidAddress(to)
+	}
+
+	kwalaAccountAddress := fmt.Sprintf("%s-%s-%s", constants.KwalaAccountPrefix, to, constants.KwalaAccountSuffix)
+	isKwalaAddress, err := helper.IsKwalaAccountAddress(kwalaAccountAddress)
+	if err != nil {
+		return false, err
+	}
+	if !isKwalaAddress {
+		return false, ginierr.ErrInvalidAddress(kwalaAccountAddress)
+	}
+
+	amountBigInt, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		return false, ginierr.ErrConvertingAmountToBigInt(amount)
+	}
+	if amountBigInt.Cmp(big.NewInt(0)) <= 0 {
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
+
+	if err = internal.RemoveUtxo(ctx, signer, amountBigInt); err != nil {
+		return false, err
+	}
+	if err = internal.AddUtxo(ctx, to, amountBigInt); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
