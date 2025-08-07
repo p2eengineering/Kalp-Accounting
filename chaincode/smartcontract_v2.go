@@ -403,7 +403,7 @@ func (s *SmartContract) TransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContex
 	return true, nil
 }
 
-func (s *SmartContract) TransferFromKwalaAdminToAnyKwala(ctx kalpsdk.TransactionContextInterface, to, amount string) (bool, error) {
+func (s *SmartContract) MintToKwalaAccountOnBehalfOfKawalaAdmin(ctx kalpsdk.TransactionContextInterface, to, amount string) (bool, error) {
 	signer, e := helper.GetUserId(ctx)
 	if e != nil {
 		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
@@ -444,10 +444,11 @@ func (s *SmartContract) TransferFromKwalaAdminToAnyKwala(ctx kalpsdk.Transaction
 		return false, ginierr.ErrInvalidAmount(amount)
 	}
 
-	if err = internal.RemoveUtxo(ctx, signer, amountBigInt); err != nil {
+	if err = internal.AddUtxo(ctx, kwalaAccountAddress, amountBigInt); err != nil {
 		return false, err
 	}
-	if err = internal.AddUtxo(ctx, to, amountBigInt); err != nil {
+
+	if err := events.EmitMintToKwalaAccountOnBehalfOfKawalaAdmin(ctx, signer, kwalaAccountAddress, amount); err != nil {
 		return false, err
 	}
 

@@ -39,5 +39,6 @@ const (
 	TransferGasFromKwalaAccountToFoundation = "TransferGasFromKwalaAccountToFoundation"
 	TransferKalpToKwala                     = "TransferKalpToKwala"
 	TransferFromAnyKalpToKwala              = "TransferFromAnyKalpToKwala"
+	MintToKwalaAccountOnBehalfOfKawalaAdmin = "MintToKwalaAccountOnBehalfOfKawalaAdmin"
 	KwalaDenyListKey                        = "kwalaDenyList"
 )
