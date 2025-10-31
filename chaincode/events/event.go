@@ -50,6 +50,12 @@ type TransferFromAnyKalpToKwalaEvent struct {
 	Amount string `json:"amount"`
 }
 
+type MintToKwalaAccountOnBehalfOfKawalaAdminEvent struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Amount string `json:"amount"`
+}
+
 func EmitDenied(ctx kalpsdk.TransactionContextInterface, address string) error {
 	deniedEvent := DeniedEvent{
 		Address: address,
@@ -199,6 +205,26 @@ func EmitTransferFromAnyKalpToKwala(ctx kalpsdk.TransactionContextInterface, fro
 	}
 	if e := ctx.SetEvent(constants.TransferFromAnyKalpToKwala, transferFromAnyKalpToKwalaEventJSON); e != nil {
 		err := ginierr.NewInternalError(e, "failed to emit TransferFromAnyKalpToKwala event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	return nil
+}
+
+func EmitMintToKwalaAccountOnBehalfOfKawalaAdmin(ctx kalpsdk.TransactionContextInterface, from string, to string, amount string) error {
+	mintToKwalaAccountOnBehalfOfKawalaAdminEvent := MintToKwalaAccountOnBehalfOfKawalaAdminEvent{
+		From:   from,
+		To:     to,
+		Amount: amount,
+	}
+	mintToKwalaAccountOnBehalfOfKawalaAdminEventJSON, e := json.Marshal(mintToKwalaAccountOnBehalfOfKawalaAdminEvent)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal TransferFromKwalaAdminToAnyKwala event", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return err
+	}
+	if e := ctx.SetEvent(constants.MintToKwalaAccountOnBehalfOfKawalaAdmin, mintToKwalaAccountOnBehalfOfKawalaAdminEventJSON); e != nil {
+		err := ginierr.NewInternalError(e, "failed to emit TransferFromKwalaAdminToAnyKwala event", http.StatusInternalServerError)
 		logger.Log.Error(err.FullError())
 		return err
 	}
