@@ -283,6 +283,89 @@ func (s *SmartContract) TransferGasFeesToFoundation(ctx kalpsdk.TransactionConte
 	return true, nil
 }
 
+// TransferKWALACredits transfers KWALA credits from one KWALA address to another
+func (s *SmartContract) TransferKWALACredits(ctx kalpsdk.TransactionContextInterface, fromAddress string, toAddress string, amount string) (bool, error) {
+	signer, e := helper.GetUserId(ctx)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error getting signer", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	// Only kwala admin can transfer KWALA credits between addresses
+	isKwalaAdmin, err := internal.IsKwalaAdminAddress(ctx, signer)
+	if err != nil {
+		return false, err
+	}
+	if !isKwalaAdmin {
+		err := ginierr.New("signer should be kwala admin for KWALA credits transfer", http.StatusUnauthorized)
+		logger.Log.Error(err.FullError())
+		return false, err
+	}
+
+	// Validate fromAddress as KWALA account address
+	isValidFromAddress, err := helper.IsKwalaAccountAddress(fromAddress)
+	if err != nil {
+		return false, err
+	}
+	if !isValidFromAddress {
+		return false, ginierr.ErrInvalidAddress(fromAddress)
+	}
+
+	// Validate toAddress as KWALA account address
+	isValidToAddress, err := helper.IsKwalaAccountAddress(toAddress)
+	if err != nil {
+		return false, err
+	}
+	if !isValidToAddress {
+		return false, ginierr.ErrInvalidAddress(toAddress)
+	}
+
+	// Validate amount
+	amountBigInt, ok := new(big.Int).SetString(amount, 10)
+	if !ok {
+		return false, ginierr.ErrConvertingAmountToBigInt(amount)
+	}
+	if amountBigInt.Cmp(big.NewInt(0)) <= 0 {
+		return false, ginierr.ErrInvalidAmount(amount)
+	}
+
+	// Check if signer is denied
+	if denied, err := internal.IsDenied(ctx, signer); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(signer)
+	}
+
+	// Check if fromAddress is denied
+	if denied, err := internal.IsKwalaDenied(ctx, fromAddress); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(fromAddress)
+	}
+
+	// Check if toAddress is denied
+	if denied, err := internal.IsKwalaDenied(ctx, toAddress); err != nil {
+		return false, err
+	} else if denied {
+		return false, ginierr.ErrDeniedAddress(toAddress)
+	}
+
+	// Transfer KWALA credits from fromAddress to toAddress
+	if fromAddress != toAddress {
+		if err = internal.RemoveUtxo(ctx, fromAddress, amountBigInt); err != nil {
+			return false, err
+		}
+		if err = internal.AddUtxo(ctx, toAddress, amountBigInt); err != nil {
+			return false, err
+		}
+		if err := events.EmitTransfer(ctx, fromAddress, toAddress, amount); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 // TransferKalpToKwala transfers funds from Kalp account to Kwala account
 func (s *SmartContract) TransferKalpToKwala(ctx kalpsdk.TransactionContextInterface, amount string) (bool, error) {
 	signer, e := helper.GetUserId(ctx)
