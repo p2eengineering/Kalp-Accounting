@@ -103,3 +103,7 @@ func ErrFailedToGetKey(key string) *CustomError {
 func ErrInsufficientAllowance() *CustomError {
 	return New(fmt.Sprintf("The account does not have sufficient allowance"), http.StatusInternalServerError)
 }
+
+func ErrDeprecatedFunction(name string) *CustomError {
+	return New(fmt.Sprintf("deprecated: %s is no longer supported; KWALA credits/accounts are managed in Web2", name), http.StatusGone)
+}
