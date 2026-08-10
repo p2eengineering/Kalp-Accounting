@@ -68,6 +68,10 @@ func ErrFailedToPutState(e error) *CustomError {
 	return NewInternalError(e, "failed to put data", http.StatusInternalServerError)
 }
 
+func ErrFailedToDelState(e error) *CustomError {
+	return NewInternalError(e, "failed to delete data", http.StatusInternalServerError)
+}
+
 func ErrFailedToGetState(e error) *CustomError {
 	return NewInternalError(e, "failed to get data", http.StatusInternalServerError)
 }
@@ -98,4 +102,8 @@ func ErrFailedToGetKey(key string) *CustomError {
 
 func ErrInsufficientAllowance() *CustomError {
 	return New(fmt.Sprintf("The account does not have sufficient allowance"), http.StatusInternalServerError)
+}
+
+func ErrDeprecatedFunction(name string) *CustomError {
+	return New(fmt.Sprintf("deprecated: %s is no longer supported; KWALA credits/accounts are managed in Web2", name), http.StatusGone)
 }

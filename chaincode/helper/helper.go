@@ -62,6 +62,24 @@ func IsContractAddress(address string) (bool, error) {
 	return true, nil
 }
 
+func IsKwalaAccountAddress(address string) (bool, error) {
+	if address == "" {
+		return false, ginierr.ErrEmptyAddress()
+	}
+
+	// Validate against kwala account address regex
+	isValid, err := regexp.MatchString(constants.KwalaAccountRegex, address)
+	if err != nil {
+		logger.Log.Errorf("Error validating kwala account address: %v", err)
+		return false, ginierr.ErrRegexValidationFailed("kwala account address", err)
+	}
+
+	if !isValid {
+		return false, nil
+	}
+	return true, nil
+}
+
 func IsUserAddress(address string) (bool, error) {
 	if address == "" {
 		return false, ginierr.ErrEmptyAddress()

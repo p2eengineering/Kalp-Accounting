@@ -12,6 +12,7 @@ import (
 	"gini-contract/chaincode/models"
 	"math/big"
 	"net/http"
+	"strconv"
 
 	"github.com/p2eengineering/kalp-sdk-public/kalpsdk"
 	"golang.org/x/exp/slices"
@@ -47,21 +48,6 @@ func (s *SmartContract) Initialize(ctx kalpsdk.TransactionContextInterface, name
 	}
 	if !isContract {
 		return false, ginierr.ErrInvalidContractAddress(vestingContractAddress)
-	}
-
-	if kyced, e := ctx.GetKYC(constants.KalpFoundationAddress); e != nil {
-		err := ginierr.NewInternalError(e, "Error fetching KYC status of foundation", http.StatusInternalServerError)
-		logger.Log.Errorf(err.FullError())
-		return false, err
-	} else if !kyced {
-		return false, ginierr.New("Foundation is not KYC'd", http.StatusBadRequest)
-	}
-	if kyced, e := ctx.GetKYC(constants.KalpGateWayAdminAddress); e != nil {
-		err := ginierr.NewInternalError(e, "Error fetching KYC status of Gateway Admin", http.StatusInternalServerError)
-		logger.Log.Errorf(err.FullError())
-		return false, err
-	} else if !kyced {
-		return false, ginierr.New("Gateway Admin is not KYC'd", http.StatusBadRequest)
 	}
 
 	if _, err := internal.InitializeRoles(ctx, constants.KalpGateWayAdminAddress, constants.KalpGateWayAdminRole); err != nil {
@@ -137,14 +123,6 @@ func (s *SmartContract) SetUserRoles(ctx kalpsdk.TransactionContextInterface, da
 	ValidRoles := []string{constants.KalpGateWayAdminRole}
 	if !slices.Contains(ValidRoles, userRole.Role) {
 		return fmt.Errorf("invalid input role")
-	}
-
-	if kyced, e := ctx.GetKYC(userRole.Id); e != nil {
-		err := ginierr.NewInternalError(e, "Error fetching KYC status of user for creating Gateway admin", http.StatusInternalServerError)
-		logger.Log.Errorf(err.FullError())
-		return err
-	} else if !kyced {
-		return ginierr.New("User is not KYC'd", http.StatusBadRequest)
 	}
 
 	key, e := ctx.CreateCompositeKey(constants.UserRolePrefix, []string{userRole.Id, constants.KalpGateWayAdminRole})
@@ -424,8 +402,6 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 	actualAmount = new(big.Int).Sub(amountInInt, gasFees)
 	logger.Log.Info("actualAmount => ", actualAmount)
 
-	var e error
-
 	vestingContract, err := s.GetVestingContract(ctx)
 	if err != nil {
 		return false, err
@@ -503,25 +479,6 @@ func (s *SmartContract) Transfer(ctx kalpsdk.TransactionContextInterface, recipi
 		return false, err
 	} else if denied {
 		return false, ginierr.ErrDeniedAddress(recipient)
-	}
-
-	var kycSender, kycSigner bool
-	if kycSender, e = ctx.GetKYC(sender); e != nil {
-		err := ginierr.NewInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return false, err
-	}
-
-	if kycSigner, e = ctx.GetKYC(signer); e != nil {
-		err := ginierr.NewInternalError(e, "error fetching KYC for signer", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return false, err
-	}
-
-	if !(kycSender || kycSigner) {
-		err := ginierr.New(fmt.Sprintf("IsSender kyced: %v, IsSigner kyced: %v", kycSender, kycSigner), http.StatusForbidden)
-		logger.Log.Error(err.FullError())
-		return false, err
 	}
 
 	senderBalance, err := s.balance(ctx, sender)
@@ -721,28 +678,6 @@ func (s *SmartContract) TransferFrom(ctx kalpsdk.TransactionContextInterface, se
 		return false, err
 	} else if denied {
 		return false, ginierr.ErrDeniedAddress(spender)
-	}
-
-	var kycSender, kycSpender, kycSigner bool
-	if kycSender, e = ctx.GetKYC(sender); e != nil {
-		err := ginierr.NewInternalError(e, "error fetching KYC for sender", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return false, err
-	}
-	if kycSpender, e = ctx.GetKYC(spender); e != nil {
-		err := ginierr.NewInternalError(e, "error fetching KYC for spender", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return false, err
-	}
-	if kycSigner, e = ctx.GetKYC(signer); e != nil {
-		err := ginierr.NewInternalError(e, "error fetching KYC for signer", http.StatusInternalServerError)
-		logger.Log.Error(err.FullError())
-		return false, err
-	}
-	if !(kycSender || kycSpender || kycSigner) {
-		err := ginierr.New("None of the sender, spender, or signer is KYC'd", http.StatusForbidden)
-		logger.Log.Error(err.FullError())
-		return false, err
 	}
 
 	senderBalance, err := s.balance(ctx, sender)
@@ -1147,7 +1082,6 @@ func (s *SmartContract) SetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface
 		return ginierr.ErrInvalidAmount(gatewayMaxFee)
 	}
 
-	// Validate non-negative
 	if feeInt.Sign() < 0 {
 		return ginierr.ErrInvalidAmount(gatewayMaxFee)
 	}
@@ -1177,4 +1111,126 @@ func (s *SmartContract) GetGatewayMaxFee(ctx kalpsdk.TransactionContextInterface
 		return "", fmt.Errorf("gatewayMaxFee not set")
 	}
 	return string(bytes), nil
+}
+
+func (s *SmartContract) ReconcileFoundation(ctx kalpsdk.TransactionContextInterface, numberOfUtxoStr string) (int, error) {
+	if signerKalp, err := internal.IsSignerKalpFoundation(ctx); err != nil {
+		return 0, err
+	} else if !signerKalp {
+		return 0, ginierr.New("Only Kalp Foundation can execute ReconcileFoundation function", http.StatusUnauthorized)
+	}
+
+	account, err := helper.GetUserId(ctx)
+	if err != nil {
+		return 0, ginierr.ErrFailedToGetPublicAddress
+	}
+
+	numberOfUtxo, _ := strconv.Atoi(numberOfUtxoStr)
+	if numberOfUtxo <= 1 {
+		return 0, ginierr.New("numberOfUtxo must be greater than one to merge", http.StatusBadRequest)
+	}
+
+	queryString := `{"selector":{"account":"` + account + `","docType":"` + constants.UTXO + `"},"limit":` + fmt.Sprintf("%d", numberOfUtxo) + `,"use_index": "indexIdDocType"}`
+	logger.Log.Infoln("queryString->", queryString)
+	resultsIterator, e := ctx.GetQueryResult(queryString)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "error in running query", http.StatusInternalServerError)
+		logger.Log.Error(err.FullError())
+		return 0, err
+	}
+
+	var utxos []models.Utxo
+	totalAmount := big.NewInt(0)
+	count := 0
+
+	for resultsIterator.HasNext() && count < numberOfUtxo {
+		var u models.Utxo
+		queryResult, e := resultsIterator.Next()
+		if e != nil {
+			err := ginierr.NewInternalError(e, "failed to fetch Next from iterator", http.StatusInternalServerError)
+			logger.Log.Error(err.FullError())
+			return 0, err
+		}
+		e = json.Unmarshal(queryResult.Value, &u)
+		if e != nil {
+			err := ginierr.NewInternalError(e, "failed to unmarshal UTXO", http.StatusInternalServerError)
+			logger.Log.Error(err.FullError())
+			return 0, err
+		}
+		logger.Log.Infoln("UTXO to be deleted->", u)
+
+		u.Key = queryResult.Key
+		amt, success := big.NewInt(0).SetString(u.Amount, 10)
+		if !success {
+			return 0, ginierr.New("failed to convert amount string to big.Int", http.StatusInternalServerError)
+		}
+		totalAmount.Add(totalAmount, amt)
+		utxos = append(utxos, u)
+		count++
+	}
+
+	if count == 0 {
+		return 0, ginierr.New("no UTXOs found to merge", http.StatusNotFound)
+	}
+
+	if count == 1 {
+		logger.Log.Infoln("Only one UTXO found to merge")
+		return 0, nil
+	}
+
+	// Remove selected UTXOs
+	deletionsDone := 0
+	for _, u := range utxos {
+		if e := ctx.DelStateWithoutKYC(u.Key); e != nil {
+			err := ginierr.NewInternalError(e, "failed to delete UTXO", http.StatusInternalServerError)
+			logger.Log.Infoln(err.FullError())
+			return 0, err
+		}
+		logger.Log.Infoln("Deleting->", u.Key)
+		deletionsDone++
+	}
+
+	// Create new merged UTXO
+	utxoKey, e := ctx.CreateCompositeKey(constants.UTXO, []string{account, ctx.GetTxID()})
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to create composite key", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return 0, err
+	}
+
+	newUtxo := models.Utxo{
+		DocType: constants.UTXO,
+		Account: account,
+		Amount:  totalAmount.String(),
+	}
+	utxoJSON, e := json.Marshal(newUtxo)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to marshal new UTXO", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return 0, err
+	}
+
+	logger.Log.Infoln("Adding newUtxo->", utxoKey, newUtxo)
+	e = ctx.PutStateWithoutKYC(utxoKey, utxoJSON)
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to put new merged UTXO", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return 0, err
+	}
+
+	reconcileKey, e := ctx.CreateCompositeKey(constants.ReconcileFoundation, []string{ctx.GetTxID()})
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to create composite key", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return 0, err
+	}
+	e = ctx.PutStateWithoutKYC(reconcileKey, []byte("true"))
+	if e != nil {
+		err := ginierr.NewInternalError(e, "failed to put new merged UTXO", http.StatusInternalServerError)
+		logger.Log.Infoln(err.FullError())
+		return 0, err
+	}
+
+	logger.Log.Infoln("Added->", utxoJSON)
+	return deletionsDone, nil
 }
